@@ -2,6 +2,10 @@
 
 A professional, real-time web application for managing sports player auctions (IPL-style cricket league auctions).
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/anuvratyelne-create/auctionapp)
+
+**Live Demo:** Coming soon
+
 ## Features
 
 ### Core Auction
