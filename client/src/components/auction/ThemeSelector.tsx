@@ -4,11 +4,11 @@ import { useUIStore } from '../../stores/uiStore';
 import AnimatedBackground from './AnimatedBackground';
 import { useState } from 'react';
 
-interface TemplateSelectorProps {
+interface ThemeSelectorProps {
   onClose: () => void;
 }
 
-export default function TemplateSelector({ onClose }: TemplateSelectorProps) {
+export default function ThemeSelector({ onClose }: ThemeSelectorProps) {
   const { selectedThemeId, setSelectedTheme } = useUIStore();
   const [category, setCategory] = useState<'all' | 'animated' | 'stadium' | 'image' | 'minimal'>('all');
 
@@ -33,12 +33,12 @@ export default function TemplateSelector({ onClose }: TemplateSelectorProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-5 border-b border-slate-700/50">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30">
-              <Palette className="text-amber-400" size={24} />
+            <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-600/10 border border-purple-500/30">
+              <Palette className="text-purple-400" size={24} />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">Choose Theme</h2>
-              <p className="text-sm text-slate-400">Background and visual style</p>
+              <p className="text-sm text-slate-400">Background wallpapers and accent colors</p>
             </div>
           </div>
           <button
@@ -64,7 +64,7 @@ export default function TemplateSelector({ onClose }: TemplateSelectorProps) {
                 onClick={() => setCategory(cat.key)}
                 className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                   category === cat.key
-                    ? 'bg-amber-500 text-black'
+                    ? 'bg-purple-500 text-white'
                     : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50'
                 }`}
               >
@@ -108,7 +108,7 @@ function ThemeCard({ template, isSelected, onSelect }: ThemeCardProps) {
       onClick={onSelect}
       className={`relative rounded-2xl overflow-hidden border-2 transition-all aspect-video group ${
         isSelected
-          ? 'border-amber-500 ring-4 ring-amber-500/20 scale-[1.02]'
+          ? 'border-purple-500 ring-4 ring-purple-500/20 scale-[1.02]'
           : 'border-slate-700/50 hover:border-slate-500 hover:scale-[1.02]'
       }`}
     >
@@ -152,8 +152,8 @@ function ThemeCard({ template, isSelected, onSelect }: ThemeCardProps) {
 
       {/* Selected Check */}
       {isSelected && (
-        <div className="absolute top-2 left-2 w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center shadow-lg">
-          <Check size={16} className="text-black" />
+        <div className="absolute top-2 left-2 w-7 h-7 bg-purple-500 rounded-full flex items-center justify-center shadow-lg">
+          <Check size={16} className="text-white" />
         </div>
       )}
 
@@ -170,7 +170,7 @@ function ThemeCard({ template, isSelected, onSelect }: ThemeCardProps) {
       </div>
 
       {/* Hover Effect */}
-      <div className="absolute inset-0 bg-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="absolute inset-0 bg-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
     </button>
   );
 }

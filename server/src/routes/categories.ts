@@ -149,6 +149,39 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   }
 });
 
+// Bulk update categories with standard prices
+router.post('/update-standard-prices', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const standardPrices: Record<string, number> = {
+      'Platinum': 50000,
+      'Gold': 30000,
+      'Silver': 20000,
+      'Bronze': 10000
+    };
+
+    const results = [];
+    for (const [name, base_price] of Object.entries(standardPrices)) {
+      const { data, error } = await supabase
+        .from('categories')
+        .update({ base_price })
+        .eq('tournament_id', req.tournamentId)
+        .eq('name', name)
+        .select();
+
+      if (data && data.length > 0) {
+        results.push({ name, base_price, updated: true });
+      }
+    }
+
+    res.json({
+      message: 'Categories updated with standard prices',
+      updated: results
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update categories' });
+  }
+});
+
 // Delete category
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

@@ -93,6 +93,8 @@ export const setupSocketHandlers = (io: Server) => {
       socket.join(`live:${tournamentId}`);
       const state = getAuctionState(tournamentId);
       socket.emit('auction:state', state);
+      // Also emit timer state for views that listen separately
+      socket.emit('timer:sync', state.timer);
     });
 
     socket.on('join:summary', (tournamentId: string) => {
@@ -103,6 +105,8 @@ export const setupSocketHandlers = (io: Server) => {
       socket.join(`overlay:${tournamentId}`);
       const state = getAuctionState(tournamentId);
       socket.emit('auction:state', state);
+      // Also emit timer state for views that listen separately
+      socket.emit('timer:sync', state.timer);
     });
 
     // Admin actions - these are handled via REST API and broadcast from there

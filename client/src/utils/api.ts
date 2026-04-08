@@ -97,6 +97,24 @@ class ApiClient {
     return this.request('/tournaments/current');
   }
 
+  async createTournament(data: {
+    name: string;
+    logo_url?: string | null;
+    sports_type?: 'cricket' | 'football' | 'kabaddi' | 'basketball' | 'other';
+    auction_date?: string | null;
+    auction_time?: string | null;
+    total_points?: number;
+    default_base_bid?: number;
+    bid_increment?: number;
+    min_players?: number;
+    max_players?: number;
+  }) {
+    return this.request<{ tournament: any; token: string; message: string }>('/tournaments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async updateTournament(data: Partial<{
     name: string;
     logo_url: string;
@@ -203,6 +221,12 @@ class ApiClient {
     return this.request(`/categories/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  }
+
+  async updateStandardCategoryPrices() {
+    return this.request('/categories/update-standard-prices', {
+      method: 'POST',
     });
   }
 

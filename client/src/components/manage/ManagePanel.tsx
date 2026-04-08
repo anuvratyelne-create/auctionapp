@@ -8,6 +8,8 @@ import { formatIndianNumber } from '../../utils/formatters';
 import { PLAYER_CATEGORIES, getRoleShortLabel, getRoleIcon, getRoleLabel, convertLegacyRole } from '../../config/playerRoles';
 import ExportSection from '../export/ExportSection';
 import ImageUpload from '../common/ImageUpload';
+import LayoutSelector from '../auction/LayoutSelector';
+import ThemeSelector from '../auction/ThemeSelector';
 import {
   Users,
   UserPlus,
@@ -29,6 +31,8 @@ import {
   Link,
   Timer,
   Volume2,
+  Palette,
+  Layout,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -1489,7 +1493,9 @@ function AuctionSettingsCard() {
     soundEnabled, toggleSound,
     soundVolume, setSoundVolume,
     acceleratedMode, toggleAcceleratedMode,
-    acceleratedTimerDuration, setAcceleratedTimerDuration
+    acceleratedTimerDuration, setAcceleratedTimerDuration,
+    showLayoutSelector, toggleLayoutSelector,
+    showThemeSelector, toggleThemeSelector
   } = useUIStore();
 
   const timerOptions = [15, 20, 30, 45, 60, 90];
@@ -1629,8 +1635,59 @@ function AuctionSettingsCard() {
               Use accelerated mode for quick re-auctions of unsold players with shorter timers
             </p>
           </div>
+
+          {/* Layout & Theme Selectors */}
+          <div className="md:col-span-2 pt-4 border-t border-slate-700/50">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Layout Selector */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Layout size={18} className="text-amber-400" />
+                  <label className="text-sm text-slate-400">Layout Template</label>
+                </div>
+                <button
+                  onClick={toggleLayoutSelector}
+                  className="w-full flex items-center gap-3 px-6 py-4 rounded-xl bg-gradient-to-r from-amber-600/20 to-orange-600/20 border border-amber-500/30 text-white hover:from-amber-600/30 hover:to-orange-600/30 transition-all hover:scale-[1.02]"
+                >
+                  <Layout size={24} className="text-amber-400" />
+                  <div className="text-left">
+                    <span className="font-bold block">Change Layout</span>
+                    <span className="text-xs text-slate-400">How elements are arranged</span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Theme Selector */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Palette size={18} className="text-purple-400" />
+                  <label className="text-sm text-slate-400">Visual Theme</label>
+                </div>
+                <button
+                  onClick={toggleThemeSelector}
+                  className="w-full flex items-center gap-3 px-6 py-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 text-white hover:from-purple-600/30 hover:to-pink-600/30 transition-all hover:scale-[1.02]"
+                >
+                  <Palette size={24} className="text-purple-400" />
+                  <div className="text-left">
+                    <span className="font-bold block">Change Theme</span>
+                    <span className="text-xs text-slate-400">Backgrounds and colors</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Layout Selector Modal */}
+      {showLayoutSelector && (
+        <LayoutSelector onClose={toggleLayoutSelector} />
+      )}
+
+      {/* Theme Selector Modal */}
+      {showThemeSelector && (
+        <ThemeSelector onClose={toggleThemeSelector} />
+      )}
     </div>
   );
 }

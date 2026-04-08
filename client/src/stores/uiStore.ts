@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { soundManager } from '../utils/soundManager';
+import { LayoutType } from '../config/auctionLayouts';
 
 type Panel = 'auction' | 'summary' | 'players' | 'category' | 'manage' | 'retention' | 'stats' | 'draft' | 'analytics';
 
@@ -13,8 +14,14 @@ interface UIState {
   showExtraMenu: boolean;
   showChat: boolean;
   showImportModal: boolean;
-  selectedTemplateId: string;
+  // Separate layout and theme
+  selectedLayout: LayoutType;
+  selectedThemeId: string;
   showTemplateSelector: boolean;
+  showLayoutSelector: boolean;
+  showThemeSelector: boolean;
+  // Legacy support
+  selectedTemplateId: string;
   soundEnabled: boolean;
   soundVolume: number;
   timerDuration: number;
@@ -27,8 +34,12 @@ interface UIState {
   toggleExtraMenu: () => void;
   toggleChat: () => void;
   setShowImportModal: (show: boolean) => void;
+  setSelectedLayout: (layout: LayoutType) => void;
+  setSelectedTheme: (themeId: string) => void;
   setSelectedTemplate: (templateId: string) => void;
   toggleTemplateSelector: () => void;
+  toggleLayoutSelector: () => void;
+  toggleThemeSelector: () => void;
   toggleSound: () => void;
   setSoundVolume: (volume: number) => void;
   setTimerDuration: (duration: number) => void;
@@ -46,8 +57,12 @@ export const useUIStore = create<UIState>()(
       showExtraMenu: false,
       showChat: false,
       showImportModal: false,
-      selectedTemplateId: 'tech-blue',
+      selectedLayout: 'classic',
+      selectedThemeId: 'stadium-premium',
+      selectedTemplateId: 'stadium-premium', // Legacy
       showTemplateSelector: false,
+      showLayoutSelector: false,
+      showThemeSelector: false,
       soundEnabled: true,
       soundVolume: 0.7,
       timerDuration: 30,
@@ -64,7 +79,6 @@ export const useUIStore = create<UIState>()(
           if (isFullscreen) {
             document.documentElement.requestFullscreen?.();
           } else {
-            // Only exit fullscreen if actually in fullscreen mode
             if (document.fullscreenElement) {
               document.exitFullscreen?.();
             }
@@ -95,12 +109,28 @@ export const useUIStore = create<UIState>()(
         set({ showImportModal: show });
       },
 
+      setSelectedLayout: (layout) => {
+        set({ selectedLayout: layout, showLayoutSelector: false });
+      },
+
+      setSelectedTheme: (themeId) => {
+        set({ selectedThemeId: themeId, selectedTemplateId: themeId, showTemplateSelector: false });
+      },
+
       setSelectedTemplate: (templateId) => {
-        set({ selectedTemplateId: templateId, showTemplateSelector: false });
+        set({ selectedTemplateId: templateId, selectedThemeId: templateId, showTemplateSelector: false });
       },
 
       toggleTemplateSelector: () => {
-        set((state) => ({ showTemplateSelector: !state.showTemplateSelector }));
+        set((state) => ({ showTemplateSelector: !state.showTemplateSelector, showLayoutSelector: false }));
+      },
+
+      toggleLayoutSelector: () => {
+        set((state) => ({ showLayoutSelector: !state.showLayoutSelector, showTemplateSelector: false, showThemeSelector: false }));
+      },
+
+      toggleThemeSelector: () => {
+        set((state) => ({ showThemeSelector: !state.showThemeSelector, showTemplateSelector: false, showLayoutSelector: false }));
       },
 
       toggleSound: () => {
@@ -129,6 +159,8 @@ export const useUIStore = create<UIState>()(
     {
       name: 'auction-ui-storage',
       partialize: (state) => ({
+        selectedLayout: state.selectedLayout,
+        selectedThemeId: state.selectedThemeId,
         selectedTemplateId: state.selectedTemplateId,
         soundEnabled: state.soundEnabled,
         soundVolume: state.soundVolume,

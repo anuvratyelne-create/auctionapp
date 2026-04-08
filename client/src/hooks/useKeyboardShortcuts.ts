@@ -1,5 +1,4 @@
 import { useEffect, useCallback } from 'react';
-import { useUIStore } from '../stores/uiStore';
 import { Team } from '../types';
 
 interface UseKeyboardShortcutsProps {
@@ -15,7 +14,6 @@ export const useKeyboardShortcuts = ({
   onIncrementBid,
   enabled = true,
 }: UseKeyboardShortcutsProps) => {
-  const { setActivePanel, toggleFullscreen } = useUIStore();
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -31,42 +29,6 @@ export const useKeyboardShortcuts = ({
 
       const key = event.key.toUpperCase();
 
-      // Panel navigation
-      switch (key) {
-        case 'A':
-          event.preventDefault();
-          setActivePanel('auction');
-          return;
-        case 'S':
-          event.preventDefault();
-          setActivePanel('summary');
-          return;
-        case 'P':
-          event.preventDefault();
-          setActivePanel('players');
-          return;
-        case 'C':
-          event.preventDefault();
-          setActivePanel('category');
-          return;
-        case 'M':
-          event.preventDefault();
-          setActivePanel('manage');
-          return;
-        case 'R':
-          event.preventDefault();
-          setActivePanel('retention');
-          return;
-        case 'T':
-          event.preventDefault();
-          setActivePanel('stats');
-          return;
-        case 'F':
-          event.preventDefault();
-          toggleFullscreen();
-          return;
-      }
-
       // Arrow up for bid increment
       if (event.key === 'ArrowUp') {
         event.preventDefault();
@@ -74,7 +36,7 @@ export const useKeyboardShortcuts = ({
         return;
       }
 
-      // Team keyboard shortcuts
+      // Team keyboard shortcuts for bidding
       const team = teams.find(
         (t) => t.keyboard_key?.toUpperCase() === key
       );
@@ -83,7 +45,7 @@ export const useKeyboardShortcuts = ({
         onTeamBid(team);
       }
     },
-    [enabled, teams, onTeamBid, onIncrementBid, setActivePanel, toggleFullscreen]
+    [enabled, teams, onTeamBid, onIncrementBid]
   );
 
   useEffect(() => {

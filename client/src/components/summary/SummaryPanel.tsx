@@ -31,7 +31,11 @@ export default function SummaryPanel() {
         loadTeamPlayers(selectedTeam.id);
       }
     });
-  }, []);
+
+    return () => {
+      socket.off('teams:updated');
+    };
+  }, [socket, selectedTeam]);
 
   const loadTeams = async () => {
     try {

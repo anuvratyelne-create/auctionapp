@@ -18,7 +18,11 @@ export default function PlayersPanel() {
     socket.onPlayersUpdated(() => {
       loadPlayers();
     });
-  }, []);
+
+    return () => {
+      socket.off('players:updated');
+    };
+  }, [socket]);
 
   useEffect(() => {
     loadPlayers();

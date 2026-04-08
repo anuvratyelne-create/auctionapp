@@ -34,7 +34,13 @@ export default function StatsPanel() {
     socket.onStatsUpdated(() => {
       loadStats();
     });
-  }, []);
+
+    return () => {
+      socket.off('teams:updated');
+      socket.off('players:updated');
+      socket.off('stats:updated');
+    };
+  }, [socket]);
 
   const loadStats = async () => {
     try {

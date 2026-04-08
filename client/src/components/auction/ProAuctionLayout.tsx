@@ -8,6 +8,7 @@ import { api } from '../../utils/api';
 import { soundManager } from '../../utils/soundManager';
 import { Team, Player } from '../../types';
 import { getTemplate } from '../../config/auctionTemplates';
+import { getRoleLabel, getRoleShortLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
 import ProPlayerCard from './ProPlayerCard';
 import TeamButtons from './TeamButtons';
 import AuctionTimer from './AuctionTimer';
@@ -17,7 +18,7 @@ import AnimatedBackground from './AnimatedBackground';
 import FortuneWheel from './FortuneWheel';
 import PlayerEntryAnimation from './PlayerEntryAnimation';
 import BudgetAlerts from '../common/BudgetAlerts';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Palette, Volume2, VolumeX, Disc, FastForward } from 'lucide-react';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward } from 'lucide-react';
 
 // Dynamic bid increment based on current bid amount
 function getBidIncrement(currentBid: number): number {
@@ -29,8 +30,8 @@ function getBidIncrement(currentBid: number): number {
 
 export default function ProAuctionLayout() {
   const { tournament } = useAuthStore();
-  const { selectedTemplateId, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode } = useUIStore();
-  const template = getTemplate(selectedTemplateId);
+  const { selectedThemeId, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode } = useUIStore();
+  const template = getTemplate(selectedThemeId);
   const {
     currentPlayer,
     currentBid,
@@ -54,17 +55,31 @@ export default function ProAuctionLayout() {
   const previousStatusRef = useRef(status);
 
   useEffect(() => {
+    if (!tournament?.id) return;
+
+    // Connect to socket and join tournament room
+    socketClient.connect(tournament.id);
+
     loadTeams();
     loadAuctionState();
+
+    // Listen for auction state updates from server
+    socketClient.onAuctionState((state) => {
+      setAuctionState(state);
+    });
 
     socketClient.onTeamsUpdated(() => {
       loadTeams();
     });
 
+    socketClient.onPlayersUpdated(() => {
+      // Refresh players if needed
+    });
+
     return () => {
-      socketClient.off('teams:updated');
+      socketClient.removeAllListeners();
     };
-  }, []);
+  }, [tournament?.id, setAuctionState]);
 
   useEffect(() => {
     if (status === 'bidding' && currentBid !== previousBidRef.current) {
@@ -440,20 +455,6 @@ export default function ProAuctionLayout() {
             )}
           </button>
 
-          {/* Template Selector Button */}
-          <button
-            onClick={toggleTemplateSelector}
-            className="p-4 rounded-xl transition-all hover:scale-105"
-            style={{
-              background: `linear-gradient(135deg, ${template.accentColor}30, ${template.accentColor}10)`,
-              border: `2px solid ${template.accentColor}50`,
-              boxShadow: `0 0 20px ${template.accentColor}20`
-            }}
-            title="Change Template"
-          >
-            <Palette size={24} style={{ color: template.accentColor }} />
-          </button>
-
           {/* Sponsor Area - Larger for projector */}
           <div
             className="rounded-2xl px-6 py-4 min-w-[180px] text-center"
@@ -476,126 +477,125 @@ export default function ProAuctionLayout() {
         </div>
       </div>
 
-      {/* Main Content - Player Card Left, Bidding Team Right */}
-      <div className="relative z-10 flex-1 flex items-stretch px-12 py-6 gap-8">
-        {/* Left Side - Player Card */}
-        <div className="flex-1 flex items-center justify-center pl-12">
-          <ProPlayerCard
-            player={currentPlayer}
-            status={status}
-            currentBid={currentBid}
-            currentTeam={currentTeam ? teams.find(t => t.id === currentTeam.id) || currentTeam : null}
-            accentColor={template.accentColor}
-          />
-        </div>
+      {/* Main Content - Classic Layout */}
+      <div className="relative z-10 flex-1 flex items-stretch">
+        <div className="flex-1 flex items-stretch px-12 py-6 gap-8">
+            {/* Left Side - Player Card */}
+            <div className="flex-1 flex items-center justify-center pl-12">
+              <ProPlayerCard
+                player={currentPlayer}
+                status={status}
+                currentBid={currentBid}
+                currentTeam={currentTeam ? teams.find(t => t.id === currentTeam.id) || currentTeam : null}
+                accentColor={template.accentColor}
+              />
+            </div>
 
-        {/* Right Side - Floating Bidding Team Display (no card background) */}
-        {currentTeam && status === 'bidding' && (
-          <div className="w-96 flex items-center justify-center pr-12">
-            {(() => {
-              const biddingTeam = teams.find(t => t.id === currentTeam.id) || currentTeam;
-              return (
-                <div className="flex flex-col items-center gap-4">
-                  {/* Floating Team Logo with glow */}
-                  <div
-                    className="relative"
-                    style={{
-                      filter: `drop-shadow(0 0 40px ${template.accentColor}60) drop-shadow(0 0 80px ${template.accentColor}30)`
-                    }}
-                  >
-                    {biddingTeam.logo_url ? (
-                      <img
-                        src={biddingTeam.logo_url}
-                        alt={biddingTeam.name}
-                        className="w-36 h-36 object-contain"
-                      />
-                    ) : (
+            {/* Right Side - Floating Bidding Team Display */}
+            {currentTeam && status === 'bidding' && (
+              <div className="w-96 flex items-center justify-center pr-12">
+                {(() => {
+                  const biddingTeam = teams.find(t => t.id === currentTeam.id) || currentTeam;
+                  return (
+                    <div className="flex flex-col items-center gap-4">
+                      {/* Floating Team Logo with glow */}
                       <div
-                        className="w-36 h-36 rounded-2xl flex items-center justify-center text-4xl font-black text-white"
+                        className="relative"
                         style={{
-                          background: `linear-gradient(135deg, ${template.accentColor}, ${template.accentColor}80)`,
-                          boxShadow: `0 0 50px ${template.accentColor}60`
+                          filter: `drop-shadow(0 0 40px ${template.accentColor}60) drop-shadow(0 0 80px ${template.accentColor}30)`
                         }}
                       >
-                        {biddingTeam.short_name}
+                        {biddingTeam.logo_url ? (
+                          <img
+                            src={biddingTeam.logo_url}
+                            alt={biddingTeam.name}
+                            className="w-36 h-36 object-contain"
+                          />
+                        ) : (
+                          <div
+                            className="w-36 h-36 rounded-2xl flex items-center justify-center text-4xl font-black text-white"
+                            style={{
+                              background: `linear-gradient(135deg, ${template.accentColor}, ${template.accentColor}80)`,
+                              boxShadow: `0 0 50px ${template.accentColor}60`
+                            }}
+                          >
+                            {biddingTeam.short_name}
+                          </div>
+                        )}
+
+                        {/* Pulsing ring around logo */}
+                        <div
+                          className="absolute inset-0 rounded-full animate-ping opacity-20"
+                          style={{ border: `3px solid ${template.accentColor}` }}
+                        />
                       </div>
-                    )}
 
-                    {/* Pulsing ring around logo */}
-                    <div
-                      className="absolute inset-0 rounded-full animate-ping opacity-20"
-                      style={{ border: `3px solid ${template.accentColor}` }}
-                    />
-                  </div>
+                      {/* Team Name - styled bar */}
+                      <div
+                        className="relative px-8 py-3 rounded-l-full"
+                        style={{
+                          background: `linear-gradient(270deg, transparent, ${template.accentColor}20, ${template.accentColor}40)`,
+                          borderRight: `4px solid ${template.accentColor}`
+                        }}
+                      >
+                        <h3 className="text-2xl font-black text-white tracking-tight uppercase text-right">
+                          {biddingTeam.name}
+                        </h3>
+                      </div>
 
-                  {/* Team Name - styled bar like player name */}
-                  <div
-                    className="relative px-8 py-3 rounded-l-full"
-                    style={{
-                      background: `linear-gradient(270deg, transparent, ${template.accentColor}20, ${template.accentColor}40)`,
-                      borderRight: `4px solid ${template.accentColor}`
-                    }}
-                  >
-                    <h3 className="text-2xl font-black text-white tracking-tight uppercase text-right">
-                      {biddingTeam.name}
-                    </h3>
-                  </div>
+                      {/* Stats bars */}
+                      <div className="flex flex-col gap-3 w-full">
+                        <div
+                          className="relative px-6 py-3 rounded-l-full"
+                          style={{
+                            background: `linear-gradient(270deg, transparent, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.3))`,
+                            borderRight: `4px solid #22c55e`
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white/70 uppercase tracking-wider">Remaining</span>
+                            <span className="text-xl font-black text-emerald-400">
+                              {biddingTeam.remaining_budget?.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
 
-                  {/* Stats - visible colored bars */}
-                  <div className="flex flex-col gap-3 w-full">
-                    {/* Remaining Budget - Green */}
-                    <div
-                      className="relative px-6 py-3 rounded-l-full"
-                      style={{
-                        background: `linear-gradient(270deg, transparent, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.3))`,
-                        borderRight: `4px solid #22c55e`
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white/70 uppercase tracking-wider">Remaining</span>
-                        <span className="text-xl font-black text-emerald-400">
-                          {biddingTeam.remaining_budget?.toLocaleString('en-IN')}
-                        </span>
+                        <div
+                          className="relative px-6 py-3 rounded-l-full"
+                          style={{
+                            background: `linear-gradient(270deg, transparent, rgba(6, 182, 212, 0.15), rgba(6, 182, 212, 0.3))`,
+                            borderRight: `4px solid #06b6d4`
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white/70 uppercase tracking-wider">Players</span>
+                            <span className="text-xl font-black text-cyan-400">
+                              {biddingTeam.player_count || 0}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div
+                          className="relative px-6 py-3 rounded-l-full"
+                          style={{
+                            background: `linear-gradient(270deg, transparent, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.3))`,
+                            borderRight: `4px solid #f59e0b`
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white/70 uppercase tracking-wider">Max Bid</span>
+                            <span className="text-xl font-black text-amber-400">
+                              {biddingTeam.max_bid?.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Players - Cyan */}
-                    <div
-                      className="relative px-6 py-3 rounded-l-full"
-                      style={{
-                        background: `linear-gradient(270deg, transparent, rgba(6, 182, 212, 0.15), rgba(6, 182, 212, 0.3))`,
-                        borderRight: `4px solid #06b6d4`
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white/70 uppercase tracking-wider">Players</span>
-                        <span className="text-xl font-black text-cyan-400">
-                          {biddingTeam.player_count || 0}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Max Bid - Amber */}
-                    <div
-                      className="relative px-6 py-3 rounded-l-full"
-                      style={{
-                        background: `linear-gradient(270deg, transparent, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.3))`,
-                        borderRight: `4px solid #f59e0b`
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white/70 uppercase tracking-wider">Max Bid</span>
-                        <span className="text-xl font-black text-amber-400">
-                          {biddingTeam.max_bid?.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+                  );
+                })()}
+              </div>
+            )}
           </div>
-        )}
       </div>
 
       {/* Bottom Control Bar */}

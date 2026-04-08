@@ -1,15 +1,23 @@
+export type SportsType = 'cricket' | 'football' | 'kabaddi' | 'basketball' | 'other';
+
 export interface Tournament {
   id: string;
   name: string;
   logo_url?: string;
+  sports_type: SportsType;
+  auction_date?: string;
+  auction_time?: string;
   total_points: number;
   min_players: number;
   max_players: number;
   bid_increment: number;
+  default_base_bid: number;
   share_code: string;
   status: 'setup' | 'live' | 'paused' | 'completed';
   player_display_mode: 'random' | 'sequential';
+  owner_id?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Team {

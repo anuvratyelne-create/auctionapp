@@ -1,9 +1,23 @@
 import { Router, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { z } from 'zod';
 
 const router = Router();
+
+const createTournamentSchema = z.object({
+  name: z.string().min(1, 'Auction name is required'),
+  logo_url: z.string().url().optional().nullable(),
+  sports_type: z.enum(['cricket', 'football', 'kabaddi', 'basketball', 'other']).default('cricket'),
+  auction_date: z.string().optional().nullable(),
+  auction_time: z.string().optional().nullable(),
+  total_points: z.number().min(1000).default(1000000),
+  default_base_bid: z.number().min(100).default(10000),
+  bid_increment: z.number().min(100).default(5000),
+  min_players: z.number().min(1).default(15),
+  max_players: z.number().min(1).default(18),
+});
 
 const updateTournamentSchema = z.object({
   name: z.string().optional(),
@@ -14,6 +28,93 @@ const updateTournamentSchema = z.object({
   bid_increment: z.number().min(100).optional(),
   status: z.enum(['setup', 'live', 'paused', 'completed']).optional(),
   player_display_mode: z.enum(['random', 'sequential']).optional()
+});
+
+// Create new tournament
+router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const data = createTournamentSchema.parse(req.body);
+
+    // Generate unique share code
+    const shareCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // Check if userId is a valid UUID (demo user has "demo" as userId)
+    const isValidUUID = req.userId && req.userId !== 'demo' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.userId);
+
+    // Create the tournament
+    const { data: tournament, error: tournamentError } = await supabase
+      .from('tournaments')
+      .insert({
+        name: data.name,
+        logo_url: data.logo_url || null,
+        sports_type: data.sports_type,
+        auction_date: data.auction_date || null,
+        auction_time: data.auction_time || null,
+        total_points: data.total_points,
+        default_base_bid: data.default_base_bid,
+        bid_increment: data.bid_increment,
+        min_players: data.min_players,
+        max_players: data.max_players,
+        share_code: shareCode,
+        status: 'setup',
+        owner_id: isValidUUID ? req.userId : null
+      })
+      .select()
+      .single();
+
+    if (tournamentError) {
+      console.error('Tournament creation error:', tournamentError);
+      return res.status(500).json({ error: 'Failed to create tournament' });
+    }
+
+    // Update user's tournament_id to the new tournament (skip for demo user)
+    if (isValidUUID) {
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ tournament_id: tournament.id })
+        .eq('id', req.userId);
+
+      if (userError) {
+        console.error('User update error:', userError);
+        // Don't rollback tournament - it's still valid, just not associated
+      }
+    }
+
+    // Create default categories for the new tournament
+    const defaultCategories = [
+      { name: 'Platinum', base_price: 50000, display_order: 1 },
+      { name: 'Gold', base_price: 30000, display_order: 2 },
+      { name: 'Silver', base_price: 20000, display_order: 3 },
+      { name: 'Bronze', base_price: 10000, display_order: 4 }
+    ];
+
+    await supabase.from('categories').insert(
+      defaultCategories.map(cat => ({
+        ...cat,
+        tournament_id: tournament.id
+      }))
+    );
+
+    // Generate new JWT token with the new tournament ID
+    const token = jwt.sign(
+      { userId: req.userId, tournamentId: tournament.id },
+      process.env.JWT_SECRET!,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      tournament,
+      token,
+      message: 'Tournament created successfully'
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    console.error('Create tournament error:', error);
+    res.status(500).json({ error: 'Failed to create tournament' });
+  }
 });
 
 // Get tournament by share code (public)
