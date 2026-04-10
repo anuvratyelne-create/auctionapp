@@ -8,6 +8,9 @@ interface LayoutSelectorProps {
 
 const layoutIcons: Record<LayoutType, React.ReactNode> = {
   'classic': <Layout size={28} />,
+  'premium-broadcast': <Layout size={28} />,
+  'minimal-card': <Layout size={28} />,
+  'ipl-style': <Layout size={28} />,
 };
 
 export default function LayoutSelector({ onClose }: LayoutSelectorProps) {
@@ -15,9 +18,9 @@ export default function LayoutSelector({ onClose }: LayoutSelectorProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
-      <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-3xl border border-slate-700/50 shadow-2xl w-full max-w-md max-h-[85vh] overflow-hidden">
+      <div className="bg-gradient-to-br from-slate-900 to-slate-950 rounded-3xl border border-slate-700/50 shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden mx-4">
         {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-slate-700/50">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-slate-700/50 flex-shrink-0">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/30">
               <Layout className="text-amber-400" size={24} />
@@ -35,8 +38,8 @@ export default function LayoutSelector({ onClose }: LayoutSelectorProps) {
           </button>
         </div>
 
-        {/* Layouts Grid */}
-        <div className="p-6">
+        {/* Layouts Grid - Scrollable */}
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           <div className="grid grid-cols-1 gap-4">
             {layoutTemplates.map((layout) => (
               <button

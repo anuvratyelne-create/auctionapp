@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
@@ -14,7 +14,7 @@ import StatsPanel from '../components/stats/StatsPanel';
 import RetentionPanel from '../components/retention/RetentionPanel';
 import TeamComparisonModal from '../components/comparison/TeamComparisonModal';
 import { auctionTemplates } from '../config/auctionTemplates';
-import { PLAYER_CATEGORIES, getRoleIcon, getRoleLabel, getRoleShortLabel } from '../config/playerRoles';
+import { PLAYER_CATEGORIES } from '../config/playerRoles';
 import AnimatedBackground from '../components/auction/AnimatedBackground';
 import {
   LayoutDashboard,
@@ -48,7 +48,6 @@ import {
   FileText,
   List,
   ArrowLeft,
-  Palette,
   Image,
   Stamp,
   PartyPopper,
@@ -62,7 +61,6 @@ import {
   BarChart3,
   Maximize,
   GitCompare,
-  X
 } from 'lucide-react';
 
 type SidebarPanel = 'dashboard' | 'new-auction' | 'my-auctions' | 'auction-detail' | 'auction-panel' | 'profile' | 'teams' | 'create-team' | 'categories' | 'create-category' | 'players-list' | 'create-player' | 'customize-theme';
@@ -523,10 +521,6 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
 
   const uploadLogo = async (file: File): Promise<string | null> => {
     try {
-      // Create a unique filename
-      const timestamp = Date.now();
-      const filename = `tournament-logos/${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-
       // For now, we'll use a data URL as a fallback if no upload service is configured
       // In production, this should upload to Supabase storage
       return new Promise((resolve) => {
@@ -1879,7 +1873,7 @@ function CategoriesListPanel({ tournament, categories, onNavigate, onRefresh }: 
 }
 
 // Create Category Panel
-function CreateCategoryPanel({ tournament, onNavigate, onCategoryCreated }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onCategoryCreated: () => void }) {
+function CreateCategoryPanel({ tournament: _tournament, onNavigate, onCategoryCreated }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onCategoryCreated: () => void }) {
   const [formData, setFormData] = useState({
     name: '',
     basePrice: 10000,
@@ -2597,7 +2591,7 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
 }
 
 // Customize Theme Panel
-function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNavigate: (panel: SidebarPanel) => void }) {
+function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tournament: any; onNavigate: (panel: SidebarPanel) => void }) {
   const { selectedThemeId, setSelectedTheme, soundEnabled, toggleSound } = useUIStore();
   const [selectedStamp, setSelectedStamp] = useState('classic');
   const [selectedEffect, setSelectedEffect] = useState('fireworks');
@@ -2813,7 +2807,7 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
             </div>
           </div>
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={() => toggleSound()}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors ${
               soundEnabled
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
@@ -2880,7 +2874,45 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
 function FullAuctionLayout({ onBack }: { onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<'auction' | 'summary' | 'players' | 'category' | 'retention' | 'stats' | 'manage'>('auction');
   const [showComparison, setShowComparison] = useState(false);
+  const [navVisible, setNavVisible] = useState(false);
+  const [navHovered, setNavHovered] = useState(false);
   const { isFullscreen, toggleFullscreen } = useUIStore();
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Simple auto-hide: show when mouse at bottom, hide after delay when mouse leaves
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const windowHeight = window.innerHeight;
+      const distanceFromBottom = windowHeight - e.clientY;
+
+      // Show nav when mouse within 50px of bottom
+      if (distanceFromBottom <= 50) {
+        if (hideTimeoutRef.current) {
+          clearTimeout(hideTimeoutRef.current);
+          hideTimeoutRef.current = null;
+        }
+        setNavVisible(true);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  // Hide nav when mouse leaves and not hovering over nav
+  useEffect(() => {
+    if (navVisible && !navHovered) {
+      hideTimeoutRef.current = setTimeout(() => {
+        setNavVisible(false);
+      }, 600);
+    }
+
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, [navVisible, navHovered]);
 
   const navItems = [
     { key: 'auction' as const, label: 'Auction', icon: Gavel },
@@ -2954,9 +2986,18 @@ function FullAuctionLayout({ onBack }: { onBack: () => void }) {
         {renderContent()}
       </main>
 
-      {/* Bottom Navigation */}
-      <nav className="flex-shrink-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 px-2 py-2 z-50">
-        <div className="flex items-center justify-center gap-1">
+      {/* Bottom Navigation - Auto-hide like Windows taskbar */}
+      <nav
+        className={`fixed bottom-0 left-0 right-0 bg-slate-900/98 backdrop-blur-xl border-t border-slate-700/50 px-4 py-3 z-50 transition-all duration-200 ease-out ${
+          navVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+        }`}
+        onMouseEnter={() => setNavHovered(true)}
+        onMouseLeave={() => setNavHovered(false)}
+      >
+        {/* Top accent line */}
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber-500 to-transparent" />
+
+        <div className="flex items-center justify-center gap-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.key;
@@ -2964,14 +3005,14 @@ function FullAuctionLayout({ onBack }: { onBack: () => void }) {
               <button
                 key={item.key}
                 onClick={() => setActiveTab(item.key)}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg transition-all ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
                   isActive
-                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-lg shadow-amber-500/10'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 }`}
               >
-                <Icon size={16} />
-                <span className={`text-xs sm:text-sm font-medium ${isActive ? '' : 'hidden sm:inline'}`}>
+                <Icon size={18} />
+                <span className={`text-sm font-medium ${isActive ? '' : 'hidden sm:inline'}`}>
                   {item.label}
                 </span>
               </button>
@@ -2979,36 +3020,45 @@ function FullAuctionLayout({ onBack }: { onBack: () => void }) {
           })}
 
           {/* Divider */}
-          <div className="h-6 w-px bg-slate-700 mx-1" />
+          <div className="h-8 w-px bg-slate-700 mx-2" />
 
           {/* Compare Button */}
           <button
             onClick={() => setShowComparison(true)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-purple-400 hover:bg-purple-500/20 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-purple-400 hover:bg-purple-500/20 transition-colors"
             title="Compare Teams"
           >
-            <GitCompare size={16} />
-            <span className="hidden sm:inline text-xs sm:text-sm font-medium">Compare</span>
+            <GitCompare size={18} />
+            <span className="hidden sm:inline text-sm font-medium">Compare</span>
           </button>
 
           {/* Fullscreen Button */}
           <button
             onClick={toggleFullscreen}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
               isFullscreen
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/40'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
             title="Fullscreen"
           >
-            <Maximize size={16} />
+            <Maximize size={18} />
           </button>
         </div>
       </nav>
 
+      {/* Small indicator at bottom when nav is hidden */}
+      <div
+        className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-40 transition-opacity duration-200 ${
+          navVisible ? 'opacity-0' : 'opacity-100'
+        }`}
+      >
+        <div className="w-24 h-1 bg-gradient-to-r from-transparent via-slate-500/60 to-transparent rounded-full mb-1" />
+      </div>
+
       {/* Team Comparison Modal */}
       {showComparison && (
-        <TeamComparisonModal onClose={() => setShowComparison(false)} />
+        <TeamComparisonModal teamIds={[]} onClose={() => setShowComparison(false)} />
       )}
     </div>
   );

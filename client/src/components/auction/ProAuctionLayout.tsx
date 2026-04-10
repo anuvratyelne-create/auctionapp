@@ -8,7 +8,6 @@ import { api } from '../../utils/api';
 import { soundManager } from '../../utils/soundManager';
 import { Team, Player } from '../../types';
 import { getTemplate } from '../../config/auctionTemplates';
-import { getRoleLabel, getRoleShortLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
 import ProPlayerCard from './ProPlayerCard';
 import TeamButtons from './TeamButtons';
 import AuctionTimer from './AuctionTimer';
@@ -18,7 +17,9 @@ import AnimatedBackground from './AnimatedBackground';
 import FortuneWheel from './FortuneWheel';
 import PlayerEntryAnimation from './PlayerEntryAnimation';
 import BudgetAlerts from '../common/BudgetAlerts';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward } from 'lucide-react';
+import { PremiumBroadcastLayout } from './layouts';
+import PremiumPlayerEntry from './layouts/PremiumPlayerEntry';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout } from 'lucide-react';
 
 // Dynamic bid increment based on current bid amount
 function getBidIncrement(currentBid: number): number {
@@ -30,7 +31,7 @@ function getBidIncrement(currentBid: number): number {
 
 export default function ProAuctionLayout() {
   const { tournament } = useAuthStore();
-  const { selectedThemeId, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode } = useUIStore();
+  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode } = useUIStore();
   const template = getTemplate(selectedThemeId);
   const {
     currentPlayer,
@@ -50,6 +51,7 @@ export default function ProAuctionLayout() {
   const [toast, setToast] = useState<{ message: string; team?: Team; type: 'error' | 'warning' | 'info' } | null>(null);
   const [showPlayerEntry, setShowPlayerEntry] = useState(false);
   const [entryPlayer, setEntryPlayer] = useState<Player | null>(null);
+  const [showLayoutPicker, setShowLayoutPicker] = useState(false);
   const timerResetKey = useRef(0);
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
@@ -284,6 +286,118 @@ export default function ProAuctionLayout() {
     enabled: status === 'bidding',
   });
 
+  // Premium Broadcast Layout
+  if (selectedLayout === 'premium-broadcast') {
+    return (
+      <div className="relative min-h-screen h-screen flex flex-col overflow-hidden">
+        {/* Premium Broadcast Display */}
+        <div className="flex-1 relative">
+          <PremiumBroadcastLayout
+            tournament={tournament}
+            currentPlayer={currentPlayer}
+            currentBid={currentBid}
+            currentTeam={currentTeam}
+            teams={teams}
+            status={status}
+            timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
+            timerKey={timerResetKey.current}
+          />
+        </div>
+
+        {/* Control Bar Overlay - positioned above bottom nav */}
+        <div className="absolute bottom-16 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent pt-8 pb-4 px-6">
+          <div className="flex items-center justify-between max-w-6xl mx-auto">
+            {/* Left: New Player + Search */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleNewPlayer}
+                disabled={loading || status === 'bidding'}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-primary-600 to-purple-600 hover:from-primary-500 hover:to-purple-500 text-white transition-all disabled:opacity-50"
+              >
+                <UserPlus size={18} />
+                New Player
+              </button>
+              <button
+                onClick={handleOpenFortuneWheel}
+                disabled={status === 'bidding'}
+                className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors border border-amber-500/30 disabled:opacity-50"
+                title="Fortune Wheel"
+              >
+                <Disc size={18} />
+              </button>
+            </div>
+
+            {/* Center: Teams */}
+            <div className="flex-1 flex justify-center">
+              <TeamButtons
+                teams={teams}
+                onTeamBid={handleTeamBid}
+                currentTeamId={currentTeam?.id}
+                disabled={status !== 'bidding'}
+              />
+            </div>
+
+            {/* Right: Actions */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSold}
+                disabled={!currentTeam || status !== 'bidding'}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 text-white transition-all disabled:opacity-40"
+              >
+                <Check size={18} />
+                Sold
+              </button>
+              <button
+                onClick={handleUnsold}
+                disabled={!currentPlayer || status !== 'bidding'}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-red-600 to-rose-600 text-white transition-all disabled:opacity-40"
+              >
+                <X size={18} />
+                Unsold
+              </button>
+              {/* Layout Toggle */}
+              <button
+                onClick={() => setSelectedLayout('classic')}
+                className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors border border-purple-500/30"
+                title="Switch to Classic Layout"
+              >
+                <Layout size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Fortune Wheel Modal */}
+        {showFortuneWheel && (
+          <FortuneWheel
+            players={availablePlayers}
+            onSelect={handleFortuneWheelSelect}
+            onClose={() => setShowFortuneWheel(false)}
+          />
+        )}
+
+        {/* Sold Celebration */}
+        {showCelebration && currentTeam && (
+          <SoldCelebration isActive={showCelebration} teamColor={template.accentColor} />
+        )}
+
+        {/* Budget Alerts */}
+        <BudgetAlerts teams={teams} totalBudget={tournament?.total_points || 100000} />
+
+        {/* Premium Player Entry Animation */}
+        {showPlayerEntry && entryPlayer && (
+          <PremiumPlayerEntry
+            player={entryPlayer}
+            onComplete={() => {
+              setShowPlayerEntry(false);
+              setEntryPlayer(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen h-screen flex flex-col overflow-hidden bg-slate-950">
       {/* Animated Background (for LIVE templates) */}
@@ -454,6 +568,57 @@ export default function ProAuctionLayout() {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
             )}
           </button>
+
+          {/* Layout Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowLayoutPicker(!showLayoutPicker)}
+              className="p-4 rounded-xl transition-all hover:scale-105"
+              style={{
+                background: selectedLayout !== 'classic'
+                  ? 'linear-gradient(135deg, rgba(139,92,246,0.4), rgba(139,92,246,0.2))'
+                  : `linear-gradient(135deg, ${template.accentColor}30, ${template.accentColor}10)`,
+                border: selectedLayout !== 'classic'
+                  ? '2px solid rgba(139,92,246,0.6)'
+                  : `2px solid ${template.accentColor}50`,
+                boxShadow: selectedLayout !== 'classic'
+                  ? '0 0 20px rgba(139,92,246,0.3)'
+                  : `0 0 20px ${template.accentColor}20`
+              }}
+              title="Change Layout"
+            >
+              <Layout
+                size={24}
+                className={selectedLayout !== 'classic' ? 'text-purple-400' : ''}
+                style={{ color: selectedLayout !== 'classic' ? undefined : template.accentColor }}
+              />
+            </button>
+            {showLayoutPicker && (
+              <div className="absolute top-full right-0 mt-2 bg-slate-900/95 backdrop-blur-xl rounded-xl border border-slate-700 shadow-2xl p-3 z-50 min-w-[200px]">
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 px-2">Select Layout</p>
+                {[
+                  { id: 'classic', name: 'Classic', desc: 'Default layout' },
+                  { id: 'premium-broadcast', name: 'Premium Broadcast', desc: 'TV broadcast style' },
+                ].map((layout) => (
+                  <button
+                    key={layout.id}
+                    onClick={() => {
+                      setSelectedLayout(layout.id as any);
+                      setShowLayoutPicker(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors mb-1 ${
+                      selectedLayout === layout.id
+                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                        : 'text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    <p className="font-medium">{layout.name}</p>
+                    <p className="text-xs text-slate-500">{layout.desc}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Sponsor Area - Larger for projector */}
           <div
