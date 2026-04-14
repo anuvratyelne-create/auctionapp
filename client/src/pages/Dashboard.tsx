@@ -16,6 +16,7 @@ import TeamComparisonModal from '../components/comparison/TeamComparisonModal';
 import { auctionTemplates } from '../config/auctionTemplates';
 import { PLAYER_CATEGORIES } from '../config/playerRoles';
 import AnimatedBackground from '../components/auction/AnimatedBackground';
+import ImageUpload from '../components/common/ImageUpload';
 import {
   LayoutDashboard,
   Plus,
@@ -114,8 +115,14 @@ export default function Dashboard() {
       setTeams(teamsData as Team[]);
       setPlayers(playersData as Player[]);
       setCategories(categoriesData as Category[]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load data:', error);
+      // If token is invalid/expired, logout and redirect to login
+      if (error?.message?.includes('Invalid or expired token') ||
+          error?.message?.includes('Access token required')) {
+        logout();
+        navigate('/login');
+      }
     }
   };
 
@@ -2592,10 +2599,67 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
 
 // Customize Theme Panel
 function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tournament: any; onNavigate: (panel: SidebarPanel) => void }) {
-  const { selectedThemeId, setSelectedTheme, soundEnabled, toggleSound } = useUIStore();
+  const {
+    selectedThemeId, setSelectedTheme,
+    soundEnabled, toggleSound,
+    showSponsors, toggleSponsors,
+    sponsorRotationInterval, setSponsorRotationInterval
+  } = useUIStore();
   const [selectedStamp, setSelectedStamp] = useState('classic');
   const [selectedEffect, setSelectedEffect] = useState('fireworks');
   const [previewPlaying, setPreviewPlaying] = useState<string | null>(null);
+  const [sponsors, setSponsors] = useState<Array<{ id: string; name?: string; logo_url: string; display_order: number }>>([]);
+  const [loadingSponsors, setLoadingSponsors] = useState(false);
+  const [newSponsorName, setNewSponsorName] = useState('');
+  const [newSponsorPhoto, setNewSponsorPhoto] = useState('');
+  const [addingSponsor, setAddingSponsor] = useState(false);
+
+  // Load sponsors
+  useEffect(() => {
+    loadSponsors();
+  }, []);
+
+  const loadSponsors = async () => {
+    setLoadingSponsors(true);
+    try {
+      const data = await api.getSponsors() as Array<{ id: string; name?: string; logo_url: string; display_order: number }>;
+      setSponsors(data.sort((a, b) => a.display_order - b.display_order));
+    } catch (error) {
+      console.error('Failed to load sponsors:', error);
+    }
+    setLoadingSponsors(false);
+  };
+
+  const handleAddSponsor = async () => {
+    if (!newSponsorPhoto) return;
+    if (sponsors.length >= 10) {
+      alert('Maximum 10 sponsors allowed');
+      return;
+    }
+    setAddingSponsor(true);
+    try {
+      await api.addSponsor(newSponsorPhoto, newSponsorName.trim() || undefined, sponsors.length + 1);
+      setNewSponsorName('');
+      setNewSponsorPhoto('');
+      await loadSponsors();
+    } catch (error) {
+      console.error('Failed to add sponsor:', error);
+      alert('Failed to add sponsor');
+    }
+    setAddingSponsor(false);
+  };
+
+  const handleDeleteSponsor = async (id: string) => {
+    if (!confirm('Delete this sponsor?')) return;
+    try {
+      await api.deleteSponsor(id);
+      await loadSponsors();
+    } catch (error) {
+      console.error('Failed to delete sponsor:', error);
+    }
+  };
+
+  const rotationOptions = [3, 4, 5, 6, 7, 8, 10];
 
   const stamps = [
     { id: 'classic', name: 'Classic Red', color: 'bg-red-500' },
@@ -2792,6 +2856,133 @@ function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tourname
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Sponsors Section */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Sponsors</h3>
+              <p className="text-sm text-slate-500">Add up to 10 sponsor logos (rotates on screen)</p>
+            </div>
+          </div>
+          <button
+            onClick={toggleSponsors}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors ${
+              showSponsors
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                : 'bg-slate-800 text-slate-400 border border-slate-700'
+            }`}
+          >
+            {showSponsors ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+            {showSponsors ? 'Visible' : 'Hidden'}
+          </button>
+        </div>
+
+        {/* Rotation Interval */}
+        <div className="mb-4 p-4 bg-slate-800/50 rounded-xl">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-slate-400">Rotation Interval</span>
+            <span className="text-xs text-slate-500">{sponsorRotationInterval} seconds</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {rotationOptions.map((sec) => (
+              <button
+                key={sec}
+                onClick={() => setSponsorRotationInterval(sec)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  sponsorRotationInterval === sec
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-white'
+                }`}
+              >
+                {sec}s
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Current Sponsors */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-slate-400">Current Sponsors ({sponsors.length}/10)</span>
+            {loadingSponsors && <span className="text-xs text-slate-500">Loading...</span>}
+          </div>
+
+          {sponsors.length === 0 ? (
+            <div className="text-center py-6 text-slate-500 bg-slate-800/30 rounded-xl">
+              No sponsors added yet
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {sponsors.map((sponsor, idx) => (
+                <div
+                  key={sponsor.id}
+                  className="relative group bg-slate-800/50 rounded-xl p-3 border border-slate-700/50"
+                >
+                  <div className="absolute top-1 left-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center text-[10px] font-bold text-black">
+                    {idx + 1}
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSponsor(sponsor.id)}
+                    className="absolute top-1 right-1 w-5 h-5 bg-red-500/80 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 size={10} className="text-white" />
+                  </button>
+                  <div className="h-12 flex items-center justify-center mb-2">
+                    <img
+                      src={sponsor.logo_url}
+                      alt={sponsor.name || `Sponsor ${idx + 1}`}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <p className="text-xs text-center text-slate-400 truncate">
+                    {sponsor.name || `Sponsor ${idx + 1}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add New Sponsor */}
+        {sponsors.length < 10 && (
+          <div className="p-4 bg-slate-800/30 rounded-xl border border-dashed border-slate-700">
+            <p className="text-sm text-slate-400 mb-3">Add New Sponsor ({sponsors.length + 1}/10)</p>
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Sponsor Name (optional)"
+                value={newSponsorName}
+                onChange={(e) => setNewSponsorName(e.target.value)}
+                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+              <ImageUpload
+                value={newSponsorPhoto}
+                onChange={setNewSponsorPhoto}
+                label="Sponsor Logo"
+                placeholder="Drop sponsor logo here or click to upload"
+                folder="sponsors"
+                maxSizeMB={2}
+              />
+              <button
+                onClick={handleAddSponsor}
+                disabled={!newSponsorPhoto || addingSponsor}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold rounded-lg transition-colors"
+              >
+                <Plus size={18} />
+                {addingSponsor ? 'Adding...' : 'Add Sponsor'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Audio Settings Section */}

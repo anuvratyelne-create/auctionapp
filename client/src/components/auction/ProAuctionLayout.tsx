@@ -35,7 +35,7 @@ function getBidIncrement(currentBid: number): number {
 
 export default function ProAuctionLayout() {
   const { tournament } = useAuthStore();
-  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode } = useUIStore();
+  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode, showSponsors, sponsorRotationInterval } = useUIStore();
   const template = getTemplate(selectedThemeId);
   const {
     currentPlayer,
@@ -58,6 +58,8 @@ export default function ProAuctionLayout() {
   const [showLayoutPicker, setShowLayoutPicker] = useState(false);
   const [showSoldAnimation, setShowSoldAnimation] = useState(false);
   const [soldAnimationData, setSoldAnimationData] = useState<{ player: Player; team: Team; price: number } | null>(null);
+  const [sponsors, setSponsors] = useState<Array<{ id: string; name?: string; logo_url: string }>>([]);
+  const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
   const timerResetKey = useRef(0);
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
@@ -134,6 +136,30 @@ export default function ProAuctionLayout() {
       console.error('Failed to load teams:', error);
     }
   };
+
+  // Load sponsors
+  useEffect(() => {
+    const loadSponsors = async () => {
+      try {
+        const data = await api.getSponsors() as Array<{ id: string; name?: string; logo_url: string; display_order: number }>;
+        setSponsors(data.sort((a, b) => a.display_order - b.display_order));
+      } catch (error) {
+        console.error('Failed to load sponsors:', error);
+      }
+    };
+    loadSponsors();
+  }, []);
+
+  // Rotate sponsors based on interval
+  useEffect(() => {
+    if (sponsors.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentSponsorIndex((prev) => (prev + 1) % sponsors.length);
+    }, sponsorRotationInterval * 1000);
+    return () => clearInterval(interval);
+  }, [sponsors.length, sponsorRotationInterval]);
+
+  const currentSponsor = sponsors[currentSponsorIndex];
 
   const loadAuctionState = async () => {
     try {
@@ -827,25 +853,39 @@ export default function ProAuctionLayout() {
             )}
           </div>
 
-          {/* Sponsor Area - Larger for projector */}
-          <div
-            className="rounded-2xl px-6 py-4 min-w-[180px] text-center"
-            style={{
-              background: `linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))`,
-              border: `2px solid ${template.accentColor}30`,
-              boxShadow: `0 0 30px ${template.accentColor}10`
-            }}
-          >
-            <p
-              className="text-xs uppercase tracking-widest font-medium mb-2"
-              style={{ color: `${template.accentColor}` }}
-            >
-              Powered By
-            </p>
-            <div className="h-16 flex items-center justify-center">
-              <span className="text-white/50 text-sm font-medium">Your Logo</span>
+          {/* Sponsor Area - Large, no box */}
+          {showSponsors && currentSponsor?.logo_url && (
+            <div className="flex flex-col items-center">
+              <img
+                src={currentSponsor.logo_url}
+                alt={currentSponsor.name || 'Sponsor'}
+                className="h-32 md:h-40 max-w-[300px] object-contain transition-all duration-500"
+                style={{ filter: `drop-shadow(0 0 20px ${template.accentColor}70)` }}
+              />
+              {currentSponsor.name && (
+                <p
+                  className="text-sm font-bold uppercase tracking-wider mt-2"
+                  style={{ color: template.accentColor, textShadow: `0 0 10px ${template.accentColor}50` }}
+                >
+                  {currentSponsor.name}
+                </p>
+              )}
+              {sponsors.length > 1 && (
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  {sponsors.map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="w-2 h-2 rounded-full transition-all"
+                      style={{
+                        background: idx === currentSponsorIndex ? template.accentColor : `${template.accentColor}40`,
+                        boxShadow: idx === currentSponsorIndex ? `0 0 6px ${template.accentColor}` : 'none',
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </div>
 

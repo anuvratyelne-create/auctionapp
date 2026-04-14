@@ -3,7 +3,16 @@ import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
 import { formatIndianNumber } from '../../../utils/formatters';
 import { soundManager } from '../../../utils/soundManager';
+import { api } from '../../../utils/api';
+import { useUIStore } from '../../../stores/uiStore';
 import { User, Flame } from 'lucide-react';
+
+interface Sponsor {
+  id: string;
+  name?: string;
+  logo_url: string;
+  display_order: number;
+}
 
 interface FireBroadcastLayoutProps {
   tournament: any;
@@ -243,6 +252,33 @@ export default function FireBroadcastLayout({
   timerSeconds = 15,
   timerKey = 0,
 }: FireBroadcastLayoutProps) {
+  const { showSponsors, sponsorRotationInterval } = useUIStore();
+  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
+  const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
+
+  // Fetch sponsors
+  useEffect(() => {
+    const loadSponsors = async () => {
+      try {
+        const data = await api.getSponsors() as Sponsor[];
+        setSponsors(data.sort((a, b) => a.display_order - b.display_order));
+      } catch (error) {
+        console.error('Failed to load sponsors:', error);
+      }
+    };
+    loadSponsors();
+  }, []);
+
+  // Rotate sponsors based on custom interval
+  useEffect(() => {
+    if (sponsors.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentSponsorIndex((prev) => (prev + 1) % sponsors.length);
+    }, sponsorRotationInterval * 1000);
+    return () => clearInterval(interval);
+  }, [sponsors.length, sponsorRotationInterval]);
+
+  const currentSponsor = sponsors[currentSponsorIndex];
 
   return (
     <div className="relative w-full h-full min-h-screen overflow-x-hidden" style={{ background: '#0a0505' }}>
@@ -303,19 +339,91 @@ export default function FireBroadcastLayout({
             </div>
           </div>
 
-          {/* Status badge - positioned right */}
-          <div
-            className="absolute right-6 top-6 px-6 py-2 rounded-full font-bold uppercase tracking-wider"
-            style={{
-              background: status === 'bidding'
-                ? `linear-gradient(135deg, ${FIRE_COLORS.orange}, ${FIRE_COLORS.red})`
-                : status === 'sold'
-                ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                : 'linear-gradient(135deg, #64748b, #475569)',
-              boxShadow: status === 'bidding' ? `0 0 30px ${FIRE_COLORS.orange}80` : 'none',
-            }}
-          >
-            {status === 'bidding' ? '🔥 LIVE BIDDING' : status === 'sold' ? '✓ SOLD' : status.toUpperCase()}
+          {/* Right side - Status + Sponsor */}
+          <div className="absolute right-6 top-6 flex flex-col items-end gap-3">
+            {/* Status badge */}
+            <div
+              className="px-6 py-2 rounded-full font-bold uppercase tracking-wider"
+              style={{
+                background: status === 'bidding'
+                  ? `linear-gradient(135deg, ${FIRE_COLORS.orange}, ${FIRE_COLORS.red})`
+                  : status === 'sold'
+                  ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                  : 'linear-gradient(135deg, #64748b, #475569)',
+                boxShadow: status === 'bidding' ? `0 0 30px ${FIRE_COLORS.orange}80` : 'none',
+              }}
+            >
+              {status === 'bidding' ? '🔥 LIVE BIDDING' : status === 'sold' ? '✓ SOLD' : status.toUpperCase()}
+            </div>
+
+            {/* Sponsor - Powered By Box (Fire themed) */}
+            {showSponsors && (
+              <div
+                className="px-6 py-4 rounded-xl flex flex-col items-center relative overflow-hidden"
+                style={{
+                  background: `linear-gradient(135deg, rgba(15, 5, 5, 0.95), rgba(30, 10, 10, 0.95))`,
+                  border: `2px solid ${FIRE_COLORS.orange}40`,
+                  boxShadow: `0 0 25px ${FIRE_COLORS.red}30, inset 0 0 30px ${FIRE_COLORS.orange}10`,
+                }}
+              >
+                {/* Ember accents */}
+                <div
+                  className="absolute top-2 right-3 w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ background: FIRE_COLORS.orange, boxShadow: `0 0 6px ${FIRE_COLORS.orange}` }}
+                />
+                <div
+                  className="absolute bottom-2 left-3 w-1 h-1 rounded-full animate-pulse"
+                  style={{ background: FIRE_COLORS.yellow, boxShadow: `0 0 4px ${FIRE_COLORS.yellow}`, animationDelay: '0.5s' }}
+                />
+
+                <p
+                  className="text-[10px] uppercase tracking-[0.2em] mb-2"
+                  style={{ color: `${FIRE_COLORS.ember}90` }}
+                >
+                  Powered By
+                </p>
+
+                <div className="h-16 flex items-center justify-center min-w-[120px]">
+                  {currentSponsor?.logo_url ? (
+                    <img
+                      src={currentSponsor.logo_url}
+                      alt={currentSponsor.name || 'Sponsor'}
+                      className="max-h-full max-w-[180px] object-contain transition-all duration-500"
+                      style={{ filter: `drop-shadow(0 0 12px ${FIRE_COLORS.orange}60)` }}
+                    />
+                  ) : (
+                    <span style={{ color: FIRE_COLORS.ember }} className="text-sm">Your Sponsor</span>
+                  )}
+                </div>
+
+                {currentSponsor?.name && (
+                  <p
+                    className="mt-1 text-xs font-bold uppercase tracking-wider"
+                    style={{
+                      color: FIRE_COLORS.yellow,
+                      textShadow: `0 0 10px ${FIRE_COLORS.orange}80`,
+                    }}
+                  >
+                    {currentSponsor.name}
+                  </p>
+                )}
+
+                {sponsors.length > 1 && (
+                  <div className="flex items-center justify-center gap-1.5 mt-2">
+                    {sponsors.map((_, idx) => (
+                      <div
+                        key={idx}
+                        className="w-1.5 h-1.5 rounded-full transition-all"
+                        style={{
+                          background: idx === currentSponsorIndex ? FIRE_COLORS.orange : `${FIRE_COLORS.ember}40`,
+                          boxShadow: idx === currentSponsorIndex ? `0 0 6px ${FIRE_COLORS.orange}` : 'none',
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

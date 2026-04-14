@@ -139,10 +139,10 @@ class ApiClient {
     return this.request('/tournaments/sponsors');
   }
 
-  async addSponsor(logo_url: string, display_order?: number) {
+  async addSponsor(logo_url: string, name?: string, display_order?: number) {
     return this.request('/tournaments/sponsors', {
       method: 'POST',
-      body: JSON.stringify({ logo_url, display_order }),
+      body: JSON.stringify({ logo_url, name, display_order }),
     });
   }
 

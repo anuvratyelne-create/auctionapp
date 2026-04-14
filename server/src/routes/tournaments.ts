@@ -223,12 +223,13 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
 // Add sponsor
 router.post('/sponsors', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { logo_url, display_order } = req.body;
+    const { name, logo_url, display_order } = req.body;
 
     const { data: sponsor, error } = await supabase
       .from('sponsors')
       .insert({
         tournament_id: req.tournamentId,
+        name: name || null,
         logo_url,
         display_order: display_order || 1
       })

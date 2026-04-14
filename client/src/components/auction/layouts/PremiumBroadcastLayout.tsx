@@ -3,6 +3,8 @@ import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
 import { formatIndianNumber } from '../../../utils/formatters';
 import { soundManager } from '../../../utils/soundManager';
+import { api } from '../../../utils/api';
+import { useUIStore } from '../../../stores/uiStore';
 import { Wallet, Users, TrendingUp, Zap, Trophy } from 'lucide-react';
 
 interface PremiumBroadcastLayoutProps {
@@ -153,7 +155,34 @@ export default function PremiumBroadcastLayout({
   timerSeconds = 15,
   timerKey = 0,
 }: PremiumBroadcastLayoutProps) {
+  const { showSponsors, sponsorRotationInterval } = useUIStore();
   const [time, setTime] = useState(new Date());
+  const [sponsors, setSponsors] = useState<Array<{ id: string; name?: string; logo_url: string }>>([]);
+  const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
+
+  // Load sponsors
+  useEffect(() => {
+    const loadSponsors = async () => {
+      try {
+        const data = await api.getSponsors() as Array<{ id: string; name?: string; logo_url: string; display_order: number }>;
+        setSponsors(data.sort((a, b) => a.display_order - b.display_order));
+      } catch (error) {
+        console.error('Failed to load sponsors:', error);
+      }
+    };
+    loadSponsors();
+  }, []);
+
+  // Rotate sponsors
+  useEffect(() => {
+    if (sponsors.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentSponsorIndex((prev) => (prev + 1) % sponsors.length);
+    }, sponsorRotationInterval * 1000);
+    return () => clearInterval(interval);
+  }, [sponsors.length, sponsorRotationInterval]);
+
+  const currentSponsor = sponsors[currentSponsorIndex];
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -244,13 +273,41 @@ export default function PremiumBroadcastLayout({
 
             {/* Right: Sponsor + Time */}
             <div className="flex items-center gap-8">
-              {/* Sponsor */}
-              <div className="px-8 py-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
-                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Powered By</p>
-                <div className="h-10 flex items-center justify-center">
-                  <span className="text-slate-300 text-base font-semibold">Your Sponsor</span>
+              {/* Sponsor - Powered By Box */}
+              {showSponsors && (
+                <div className="px-8 py-3 rounded-xl bg-slate-800/60 border border-slate-700/50 flex flex-col items-center">
+                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Powered By</p>
+                  <div className="h-10 flex items-center justify-center min-w-[100px]">
+                    {currentSponsor?.logo_url ? (
+                      <img
+                        src={currentSponsor.logo_url}
+                        alt={currentSponsor.name || 'Sponsor'}
+                        className="max-h-full max-w-[160px] object-contain transition-all duration-500"
+                        style={{ filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.4))' }}
+                      />
+                    ) : (
+                      <span className="text-slate-400 text-sm font-semibold">Your Sponsor</span>
+                    )}
+                  </div>
+                  {currentSponsor?.name && (
+                    <p className="mt-1 text-xs font-semibold text-blue-400 uppercase tracking-wider">
+                      {currentSponsor.name}
+                    </p>
+                  )}
+                  {sponsors.length > 1 && (
+                    <div className="flex items-center gap-1 mt-1">
+                      {sponsors.map((_, idx) => (
+                        <div
+                          key={idx}
+                          className={`w-1.5 h-1.5 rounded-full transition-all ${
+                            idx === currentSponsorIndex ? 'bg-blue-400' : 'bg-slate-600'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {/* Time */}
               <div className="text-right">

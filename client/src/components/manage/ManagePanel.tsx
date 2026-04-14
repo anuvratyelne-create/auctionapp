@@ -1495,7 +1495,8 @@ function AuctionSettingsCard() {
     acceleratedMode, toggleAcceleratedMode,
     acceleratedTimerDuration, setAcceleratedTimerDuration,
     showLayoutSelector, toggleLayoutSelector,
-    showThemeSelector, toggleThemeSelector
+    showThemeSelector, toggleThemeSelector,
+    showSponsors, toggleSponsors
   } = useUIStore();
 
   const timerOptions = [15, 20, 30, 45, 60, 90];
@@ -1578,6 +1579,34 @@ function AuctionSettingsCard() {
                   />
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Sponsor Display Settings */}
+          <div className="md:col-span-2 pt-4 border-t border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+                <div>
+                  <label className="text-sm text-white font-medium">Show Sponsors</label>
+                  <p className="text-xs text-slate-500">Display sponsor banner on auction layouts</p>
+                </div>
+              </div>
+              <button
+                onClick={toggleSponsors}
+                className={`relative w-12 h-6 rounded-full transition-all ${
+                  showSponsors ? 'bg-amber-500' : 'bg-slate-600'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                    showSponsors ? 'left-7' : 'left-1'
+                  }`}
+                />
+              </button>
             </div>
           </div>
 

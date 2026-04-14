@@ -27,6 +27,8 @@ interface UIState {
   timerDuration: number;
   acceleratedMode: boolean;
   acceleratedTimerDuration: number;
+  showSponsors: boolean;
+  sponsorRotationInterval: number;
   setActivePanel: (panel: Panel) => void;
   toggleFullscreen: () => void;
   setShowTeamSquad: (teamId: string | null) => void;
@@ -45,6 +47,8 @@ interface UIState {
   setTimerDuration: (duration: number) => void;
   toggleAcceleratedMode: () => void;
   setAcceleratedTimerDuration: (duration: number) => void;
+  toggleSponsors: () => void;
+  setSponsorRotationInterval: (interval: number) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -68,6 +72,8 @@ export const useUIStore = create<UIState>()(
       timerDuration: 30,
       acceleratedMode: false,
       acceleratedTimerDuration: 10,
+      showSponsors: true,
+      sponsorRotationInterval: 5,
 
       setActivePanel: (panel) => {
         set({ activePanel: panel, showExtraMenu: false });
@@ -155,6 +161,14 @@ export const useUIStore = create<UIState>()(
       setAcceleratedTimerDuration: (duration) => {
         set({ acceleratedTimerDuration: duration });
       },
+
+      toggleSponsors: () => {
+        set((state) => ({ showSponsors: !state.showSponsors }));
+      },
+
+      setSponsorRotationInterval: (interval) => {
+        set({ sponsorRotationInterval: interval });
+      },
     }),
     {
       name: 'auction-ui-storage',
@@ -167,6 +181,8 @@ export const useUIStore = create<UIState>()(
         timerDuration: state.timerDuration,
         acceleratedMode: state.acceleratedMode,
         acceleratedTimerDuration: state.acceleratedTimerDuration,
+        showSponsors: state.showSponsors,
+        sponsorRotationInterval: state.sponsorRotationInterval,
       }),
     }
   )
