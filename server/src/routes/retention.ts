@@ -193,10 +193,37 @@ router.post('/retain', authenticateToken, async (req: AuthRequest, res: Response
         team_id: team_id,
         status: 'retained'
       })
-      .eq('id', player_id);
+      .eq('id', player_id)
+      .eq('is_retained', false); // Only update if not already retained (prevents race condition)
 
     if (playerError) {
       return res.status(500).json({ error: 'Failed to retain player' });
+    }
+
+    // Verify the retention count again after update (race condition protection)
+    const { data: verifyRetentions } = await supabase
+      .from('players')
+      .select('id')
+      .eq('tournament_id', req.tournamentId)
+      .eq('team_id', team_id)
+      .eq('is_retained', true);
+
+    if ((verifyRetentions?.length || 0) > tournament.max_retentions_per_team) {
+      // Race condition occurred - rollback
+      await supabase
+        .from('players')
+        .update({
+          is_retained: false,
+          retention_price: null,
+          retained_at: null,
+          team_id: null,
+          status: 'available'
+        })
+        .eq('id', player_id);
+
+      return res.status(400).json({
+        error: `Maximum retentions (${tournament.max_retentions_per_team}) reached for this team`
+      });
     }
 
     // Update team's retention spent

@@ -12,13 +12,17 @@ import ProPlayerCard from './ProPlayerCard';
 import TeamButtons from './TeamButtons';
 import AuctionTimer from './AuctionTimer';
 import SoldCelebration from './SoldCelebration';
+import SoldPlayerAnimation from './SoldPlayerAnimation';
+import ClassicSoldAnimation from './ClassicSoldAnimation';
 import TemplateSelector from './TemplateSelector';
 import AnimatedBackground from './AnimatedBackground';
 import FortuneWheel from './FortuneWheel';
 import PlayerEntryAnimation from './PlayerEntryAnimation';
 import BudgetAlerts from '../common/BudgetAlerts';
-import { PremiumBroadcastLayout } from './layouts';
+import { PremiumBroadcastLayout, FireBroadcastLayout } from './layouts';
 import PremiumPlayerEntry from './layouts/PremiumPlayerEntry';
+import FirePlayerEntry from './FirePlayerEntry';
+import FireSoldAnimation from './FireSoldAnimation';
 import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout } from 'lucide-react';
 
 // Dynamic bid increment based on current bid amount
@@ -52,6 +56,8 @@ export default function ProAuctionLayout() {
   const [showPlayerEntry, setShowPlayerEntry] = useState(false);
   const [entryPlayer, setEntryPlayer] = useState<Player | null>(null);
   const [showLayoutPicker, setShowLayoutPicker] = useState(false);
+  const [showSoldAnimation, setShowSoldAnimation] = useState(false);
+  const [soldAnimationData, setSoldAnimationData] = useState<{ player: Player; team: Team; price: number } | null>(null);
   const timerResetKey = useRef(0);
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
@@ -97,9 +103,20 @@ export default function ProAuctionLayout() {
   useEffect(() => {
     // Play sounds and show celebration on status change
     if (status === 'sold' && previousStatusRef.current !== 'sold') {
+      // Play sold sound ONCE
       soundManager.play('sold');
+      // Show sold animation with player and team info
+      if (currentPlayer && currentTeam) {
+        setSoldAnimationData({
+          player: currentPlayer,
+          team: currentTeam,
+          price: currentBid
+        });
+        setShowSoldAnimation(true);
+      }
+      // Show confetti celebration alongside
       setShowCelebration(true);
-      const timer = setTimeout(() => setShowCelebration(false), 4000);
+      const timer = setTimeout(() => setShowCelebration(false), 5000);
       previousStatusRef.current = status;
       return () => clearTimeout(timer);
     }
@@ -107,7 +124,7 @@ export default function ProAuctionLayout() {
       soundManager.play('unsold');
     }
     previousStatusRef.current = status;
-  }, [status]);
+  }, [status, currentPlayer, currentTeam, currentBid]);
 
   const loadTeams = async () => {
     try {
@@ -381,12 +398,174 @@ export default function ProAuctionLayout() {
           <SoldCelebration isActive={showCelebration} teamColor={template.accentColor} />
         )}
 
+        {/* Sold Player Animation */}
+        {showSoldAnimation && soldAnimationData && (
+          <SoldPlayerAnimation
+            player={soldAnimationData.player}
+            team={soldAnimationData.team}
+            soldPrice={soldAnimationData.price}
+            teamColor={template.accentColor}
+            onComplete={() => {
+              setShowSoldAnimation(false);
+              setSoldAnimationData(null);
+            }}
+          />
+        )}
+
         {/* Budget Alerts */}
         <BudgetAlerts teams={teams} totalBudget={tournament?.total_points || 100000} />
 
         {/* Premium Player Entry Animation */}
         {showPlayerEntry && entryPlayer && (
           <PremiumPlayerEntry
+            player={entryPlayer}
+            onComplete={() => {
+              setShowPlayerEntry(false);
+              setEntryPlayer(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Fire Layout
+  if (selectedLayout === 'fire') {
+    return (
+      <div className="relative min-h-screen h-screen flex flex-col overflow-hidden">
+        {/* Fire Broadcast Display */}
+        <div className="flex-1 relative">
+          <FireBroadcastLayout
+            tournament={tournament}
+            currentPlayer={currentPlayer}
+            currentBid={currentBid}
+            currentTeam={currentTeam}
+            teams={teams}
+            status={status}
+            timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
+            timerKey={timerResetKey.current}
+          />
+        </div>
+
+        {/* Control Bar Overlay - Fire themed */}
+        <div className="absolute bottom-16 left-0 right-0 z-50 pt-8 pb-4 px-6"
+          style={{
+            background: 'linear-gradient(to top, rgba(0,0,0,0.95), rgba(20,5,5,0.8), transparent)',
+          }}
+        >
+          <div className="flex items-center justify-between max-w-6xl mx-auto">
+            {/* Left: New Player + Fortune Wheel - Fire styled */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleNewPlayer}
+                disabled={loading || status === 'bidding'}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-50 hover:scale-105 border border-orange-500/40"
+                style={{
+                  background: 'linear-gradient(135deg, #c2410c, #991b1b)',
+                  boxShadow: '0 0 20px rgba(249, 115, 22, 0.3)',
+                }}
+              >
+                <UserPlus size={18} />
+                New Player
+              </button>
+              <button
+                onClick={handleOpenFortuneWheel}
+                disabled={status === 'bidding'}
+                className="p-2.5 rounded-xl text-orange-400 hover:scale-105 transition-all disabled:opacity-50 border border-orange-500/40"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
+                }}
+                title="Fortune Wheel"
+              >
+                <Disc size={18} />
+              </button>
+            </div>
+
+            {/* Center: Teams - Fire themed */}
+            <div className="flex-1 flex justify-center">
+              <TeamButtons
+                teams={teams}
+                onTeamBid={handleTeamBid}
+                currentTeamId={currentTeam?.id}
+                disabled={status !== 'bidding'}
+                theme="fire"
+              />
+            </div>
+
+            {/* Right: Actions - Fire styled */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSold}
+                disabled={!currentTeam || status !== 'bidding'}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 hover:scale-105 border border-emerald-500/40"
+                style={{
+                  background: 'linear-gradient(135deg, #059669, #047857)',
+                  boxShadow: !currentTeam || status !== 'bidding' ? 'none' : '0 0 15px rgba(16, 185, 129, 0.4)',
+                }}
+              >
+                <Check size={18} />
+                Sold
+              </button>
+              <button
+                onClick={handleUnsold}
+                disabled={!currentPlayer || status !== 'bidding'}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 hover:scale-105 border border-red-500/40"
+                style={{
+                  background: 'linear-gradient(135deg, #dc2626, #991b1b)',
+                  boxShadow: !currentPlayer || status !== 'bidding' ? 'none' : '0 0 15px rgba(239, 68, 68, 0.4)',
+                }}
+              >
+                <X size={18} />
+                Unsold
+              </button>
+              {/* Layout Toggle */}
+              <button
+                onClick={() => setSelectedLayout('classic')}
+                className="p-2.5 rounded-xl text-orange-400 hover:scale-105 transition-all border border-orange-500/40"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
+                }}
+                title="Switch to Classic Layout"
+              >
+                <Layout size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Fortune Wheel Modal */}
+        {showFortuneWheel && (
+          <FortuneWheel
+            players={availablePlayers}
+            onSelect={handleFortuneWheelSelect}
+            onClose={() => setShowFortuneWheel(false)}
+          />
+        )}
+
+        {/* Sold Celebration */}
+        {showCelebration && currentTeam && (
+          <SoldCelebration isActive={showCelebration} teamColor="#f97316" />
+        )}
+
+        {/* Fire Sold Animation */}
+        {showSoldAnimation && soldAnimationData && (
+          <FireSoldAnimation
+            player={soldAnimationData.player}
+            team={soldAnimationData.team}
+            soldPrice={soldAnimationData.price}
+            onComplete={() => {
+              setShowSoldAnimation(false);
+              setSoldAnimationData(null);
+            }}
+          />
+        )}
+
+        {/* Budget Alerts */}
+        <BudgetAlerts teams={teams} totalBudget={tournament?.total_points || 100000} />
+
+        {/* Fire Player Entry Animation */}
+        {showPlayerEntry && entryPlayer && (
+          <FirePlayerEntry
             player={entryPlayer}
             onComplete={() => {
               setShowPlayerEntry(false);
@@ -426,7 +605,34 @@ export default function ProAuctionLayout() {
       )}
 
       {/* Sold Celebration Effect */}
-      <SoldCelebration isActive={showCelebration} />
+      <SoldCelebration isActive={showCelebration} teamColor={template.accentColor} />
+
+      {/* Sold Player Animation - Classic or Premium based on layout */}
+      {showSoldAnimation && soldAnimationData && (
+        selectedLayout === 'classic' ? (
+          <ClassicSoldAnimation
+            player={soldAnimationData.player}
+            team={soldAnimationData.team}
+            soldPrice={soldAnimationData.price}
+            teamColor={template.accentColor}
+            onComplete={() => {
+              setShowSoldAnimation(false);
+              setSoldAnimationData(null);
+            }}
+          />
+        ) : (
+          <SoldPlayerAnimation
+            player={soldAnimationData.player}
+            team={soldAnimationData.team}
+            soldPrice={soldAnimationData.price}
+            teamColor={template.accentColor}
+            onComplete={() => {
+              setShowSoldAnimation(false);
+              setSoldAnimationData(null);
+            }}
+          />
+        )
+      )}
 
       {/* Template Selector Modal */}
       {showTemplateSelector && (
@@ -599,6 +805,7 @@ export default function ProAuctionLayout() {
                 {[
                   { id: 'classic', name: 'Classic', desc: 'Default layout' },
                   { id: 'premium-broadcast', name: 'Premium Broadcast', desc: 'TV broadcast style' },
+                  { id: 'fire', name: '🔥 Fire', desc: 'Dramatic fire theme' },
                 ].map((layout) => (
                   <button
                     key={layout.id}

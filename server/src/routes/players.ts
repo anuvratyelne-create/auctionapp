@@ -37,7 +37,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       if (status === 'available') {
         query = query
           .not('category_id', 'is', null)
-          .not('base_price', 'is', null);
+          .not('base_price', 'is', null)
+          .or('stats->>pending.is.null,stats->>pending.neq.true');
       }
     }
 
@@ -108,6 +109,30 @@ router.get('/pending', authenticateToken, async (req: AuthRequest, res: Response
     res.json(players || []);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch pending players' });
+  }
+});
+
+// Search player by number - MUST be before /:id route
+router.get('/search/number/:number', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { data: player, error } = await supabase
+      .from('players')
+      .select(`
+        *,
+        categories(id, name, base_price),
+        teams(id, name, short_name, logo_url)
+      `)
+      .eq('tournament_id', req.tournamentId)
+      .eq('jersey_number', req.params.number)
+      .single();
+
+    if (error || !player) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    res.json(player);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to search player' });
   }
 });
 
@@ -391,30 +416,6 @@ router.post('/:id/toggle-availability', authenticateToken, async (req: AuthReque
     res.json(player);
   } catch (error) {
     res.status(500).json({ error: 'Failed to toggle player availability' });
-  }
-});
-
-// Search player by number
-router.get('/search/number/:number', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const { data: player, error } = await supabase
-      .from('players')
-      .select(`
-        *,
-        categories(id, name, base_price),
-        teams(id, name, short_name, logo_url)
-      `)
-      .eq('tournament_id', req.tournamentId)
-      .eq('jersey_number', req.params.number)
-      .single();
-
-    if (error || !player) {
-      return res.status(404).json({ error: 'Player not found' });
-    }
-
-    res.json(player);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to search player' });
   }
 });
 

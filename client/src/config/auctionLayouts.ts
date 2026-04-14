@@ -1,6 +1,6 @@
 // Layout Templates - Controls HOW things are arranged (independent of theme/colors)
 
-export type LayoutType = 'classic' | 'premium-broadcast' | 'minimal-card' | 'ipl-style';
+export type LayoutType = 'classic' | 'premium-broadcast' | 'minimal-card' | 'ipl-style' | 'fire';
 
 export interface LayoutTemplate {
   id: LayoutType;
@@ -37,6 +37,13 @@ export const layoutTemplates: LayoutTemplate[] = [
     name: 'Minimal Card',
     description: 'Clean, simple card-based layout',
     preview: 'minimal-card',
+    hasStats: false,
+  },
+  {
+    id: 'fire',
+    name: 'Fire',
+    description: 'Dramatic fire theme with animated flames and embers',
+    preview: 'fire',
     hasStats: false,
   },
 ];

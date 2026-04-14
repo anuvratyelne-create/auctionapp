@@ -173,8 +173,9 @@ router.get('/live', authenticateToken, async (req: AuthRequest, res: Response) =
     }
 
     const soldPlayers = players?.filter(p => p.status === 'sold') || [];
-    const retainedPlayers = players?.filter(p => p.status === 'retained' || p.is_retained) || [];
-    const allAcquired = [...soldPlayers, ...retainedPlayers.filter(rp => !soldPlayers.find(sp => (sp as any).id === (rp as any).id))];
+    const retainedPlayers = players?.filter(p => (p.status === 'retained' || p.is_retained) && p.status !== 'sold') || [];
+    // Combine sold and retained (no need for duplicate check since we filter above)
+    const allAcquired = [...soldPlayers, ...retainedPlayers];
 
     const totalPlayers = players?.length || 0;
     const totalSoldValue = soldPlayers.reduce((sum, p) => sum + (p.sold_price || 0), 0);

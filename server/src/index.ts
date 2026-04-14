@@ -17,6 +17,7 @@ import retentionRoutes from './routes/retention';
 import statsRoutes from './routes/stats';
 import exportRoutes from './routes/export';
 import { setupSocketHandlers } from './socket/handlers';
+import supabase from './config/supabase';
 
 dotenv.config();
 
@@ -115,9 +116,7 @@ app.post('/api/fix-bidding', async (req, res) => {
 });
 
 // Setup demo tournament (one-time setup endpoint)
-import supabase from './config/supabase';
-
-app.post('/api/setup-demo', async (req, res) => {
+app.post('/api/setup-demo', async (_req, res) => {
   try {
     // Find demo tournament
     const { data: tournament } = await supabase

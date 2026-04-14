@@ -11,6 +11,7 @@ const layoutIcons: Record<LayoutType, React.ReactNode> = {
   'premium-broadcast': <Layout size={28} />,
   'minimal-card': <Layout size={28} />,
   'ipl-style': <Layout size={28} />,
+  'fire': <span className="text-2xl">🔥</span>,
 };
 
 export default function LayoutSelector({ onClose }: LayoutSelectorProps) {

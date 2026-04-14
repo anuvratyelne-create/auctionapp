@@ -221,10 +221,12 @@ router.post('/login', async (req: Request, res: Response) => {
       { expiresIn: '7d' }
     );
 
+    // user.tournaments is a nested object from the join, not an array
+    const tournament = Array.isArray(user.tournaments) ? user.tournaments[0] : user.tournaments;
     res.json({
       token,
       user: { id: user.id, mobile: user.mobile },
-      tournament: user.tournaments  // Return full tournament object
+      tournament: tournament || null  // Return full tournament object
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

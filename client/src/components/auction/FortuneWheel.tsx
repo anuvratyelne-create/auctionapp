@@ -41,8 +41,31 @@ export default function FortuneWheel({
   const tickCountRef = useRef(0);
 
   // Limit to max 12 players for readability
-  const wheelPlayers = players.slice(0, 12);
-  const segmentAngle = 360 / wheelPlayers.length;
+  const wheelPlayers = (players || []).slice(0, 12);
+  const segmentAngle = wheelPlayers.length > 0 ? 360 / wheelPlayers.length : 360;
+
+  // Early return if no players available (after hooks)
+  if (!players || players.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 max-w-md w-full mx-4 border border-slate-700/50 text-center">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 rounded-full bg-slate-700/50 hover:bg-slate-600/50 transition-colors"
+          >
+            <X size={20} className="text-slate-400" />
+          </button>
+          <p className="text-white text-lg mb-4">No players available for the wheel</p>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Play tick sounds during spin
   useEffect(() => {

@@ -35,7 +35,8 @@ export default function AuctionTimer({
       setIsRunning(true);
       socket.emit('timer:start', { tournamentId, timeLeft: duration, duration });
     }
-  }, []); // Only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, disabled]); // Run when autoStart or disabled changes
 
   // Sync timer state from socket
   useEffect(() => {

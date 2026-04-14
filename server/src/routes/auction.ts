@@ -88,11 +88,12 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
 
     selectedPlayer.status = 'bidding';
 
-    // Update auction state
+    // Update auction state - ensure base_price is valid
     const io = req.app.get('io');
+    const basePrice = selectedPlayer.base_price || selectedPlayer.categories?.base_price || 1000;
     const state = updateAuctionState(req.tournamentId!, {
       currentPlayer: selectedPlayer,
-      currentBid: selectedPlayer.base_price,
+      currentBid: basePrice,
       currentTeam: null,
       bidHistory: [],
       status: 'bidding'
