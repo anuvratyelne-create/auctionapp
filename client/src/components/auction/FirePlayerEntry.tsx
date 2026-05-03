@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Player } from '../../types';
 import { User } from 'lucide-react';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatAmount } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
+import { useUIStore } from '../../stores/uiStore';
 
 interface FirePlayerEntryProps {
   player: Player;
@@ -19,21 +20,34 @@ const FIRE_COLORS = {
 
 export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryProps) {
   const [phase, setPhase] = useState<'blackout' | 'ignite' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('blackout');
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
 
+  // Animation phases - 10 second total duration
   useEffect(() => {
+    // Use a flag to prevent re-running if component re-renders
+    let cancelled = false;
+
     soundManager.play('whoosh');
 
     const timers = [
-      setTimeout(() => setPhase('ignite'), 400),
-      setTimeout(() => setPhase('reveal'), 1200),
-      setTimeout(() => setPhase('name'), 3000),
-      setTimeout(() => setPhase('stats'), 5000),
-      setTimeout(() => setPhase('ready'), 7000),
-      setTimeout(() => setPhase('exit'), 9000),
-      setTimeout(() => onComplete(), 10000),
+      setTimeout(() => !cancelled && setPhase('ignite'), 400),
+      setTimeout(() => !cancelled && setPhase('reveal'), 1200),
+      setTimeout(() => !cancelled && setPhase('name'), 3000),
+      setTimeout(() => !cancelled && setPhase('stats'), 5000),
+      setTimeout(() => !cancelled && setPhase('ready'), 7000),
+      setTimeout(() => !cancelled && setPhase('exit'), 9000),
+      setTimeout(() => {
+        if (!cancelled) onComplete();
+      }, 10000),
     ];
-    return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
 
   return (
     <div
@@ -162,8 +176,8 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
               )}
             </div>
 
-            {/* Jersey number badge */}
-            {player.jersey_number && (
+            {/* Player UID badge */}
+            {player.player_uid && (
               <div
                 className={`absolute -bottom-2 left-1/2 -translate-x-1/2 transition-all duration-500 ${
                   phase === 'name' || phase === 'stats' || phase === 'ready' || phase === 'exit'
@@ -177,7 +191,7 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
                     boxShadow: `0 0 30px ${FIRE_COLORS.orange}80`,
                   }}
                 >
-                  #{player.jersey_number}
+                  {player.player_uid}
                 </div>
               </div>
             )}
@@ -249,7 +263,7 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
                 WebkitTextFillColor: 'transparent',
               }}
             >
-              {formatIndianNumber(player.base_price)}
+              {formatAmount(player.base_price, usePoints)}
             </span>
           </div>
         </div>

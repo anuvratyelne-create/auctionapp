@@ -2,23 +2,20 @@ import { Team, Player } from '../../types';
 import { TrendingUp, Wallet, Users, ArrowUp, Sparkles } from 'lucide-react';
 import { formatIndianNumber } from '../../utils/formatters';
 import AnimatedBidAmount from './AnimatedBidAmount';
-
-// Dynamic bid increment based on current bid amount
-function getBidIncrement(currentBid: number): number {
-  if (currentBid >= 50000) return 5000;
-  if (currentBid >= 30000) return 3000;
-  if (currentBid >= 20000) return 2000;
-  return 1000;
-}
+import { getBidIncrement, formatIncrement } from '../../config/budgetPresets';
+import { useUIStore } from '../../stores/uiStore';
 
 interface BidDisplayProps {
   currentBid: number;
   currentTeam: Team | null;
   player: Player | null;
+  teamBudget?: number;
 }
 
-export default function BidDisplay({ currentBid, currentTeam, player }: BidDisplayProps) {
-  const nextIncrement = getBidIncrement(currentBid);
+export default function BidDisplay({ currentBid, currentTeam, player, teamBudget }: BidDisplayProps) {
+  const nextIncrement = getBidIncrement(currentBid, teamBudget);
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
 
   if (!player) {
     return (
@@ -61,18 +58,18 @@ export default function BidDisplay({ currentBid, currentTeam, player }: BidDispl
             {/* Big Number with Glow and Animation */}
             <div className="relative inline-block">
               <div className="text-6xl font-black text-white tracking-tight">
-                <AnimatedBidAmount value={currentBid} duration={400} />
+                <AnimatedBidAmount value={currentBid} duration={400} usePoints={usePoints} />
               </div>
               {/* Glow effect */}
               <div className="absolute inset-0 text-6xl font-black text-amber-400 blur-xl opacity-30 tracking-tight pointer-events-none">
-                <AnimatedBidAmount value={currentBid} duration={400} />
+                <AnimatedBidAmount value={currentBid} duration={400} usePoints={usePoints} />
               </div>
             </div>
 
             {/* Increment Badge */}
             <div className="mt-3 inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600/20 to-green-600/20 border border-emerald-500/30 px-4 py-1.5 rounded-full">
               <ArrowUp size={14} className="text-emerald-400" />
-              <span className="text-sm text-emerald-400 font-bold">+{formatIndianNumber(nextIncrement)}</span>
+              <span className="text-sm text-emerald-400 font-bold">{formatIncrement(nextIncrement)}</span>
             </div>
           </div>
 
@@ -119,7 +116,7 @@ export default function BidDisplay({ currentBid, currentTeam, player }: BidDispl
                       <span className="text-[10px] uppercase tracking-wider">Balance</span>
                     </div>
                     <p className="text-lg font-bold text-white">
-                      {formatIndianNumber(currentTeam.remaining_budget)}
+                      {usePoints ? `${formatIndianNumber(currentTeam.remaining_budget)} pts` : `₹${formatIndianNumber(currentTeam.remaining_budget)}`}
                     </p>
                   </div>
                   <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
@@ -149,7 +146,7 @@ export default function BidDisplay({ currentBid, currentTeam, player }: BidDispl
             <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 border border-amber-500/30 rounded-xl p-4 text-center">
               <div className="flex items-center justify-center gap-2 mb-1">
                 <TrendingUp size={16} className="text-amber-400" />
-                <span className="text-amber-400 font-bold">Next Bid: +{formatIndianNumber(nextIncrement)}</span>
+                <span className="text-amber-400 font-bold">Next Bid: {formatIncrement(nextIncrement)}</span>
               </div>
               <p className="text-amber-200/50 text-xs">
                 Press <kbd className="px-1.5 py-0.5 rounded bg-slate-700/80 border border-slate-600 text-amber-300 font-mono mx-1">↑</kbd> to increment

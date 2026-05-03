@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { z } from 'zod';
+import { getRolesByFilterCategory } from '../config/roleMapping';
 
 const router = Router();
 
@@ -15,10 +16,34 @@ const createPlayerSchema = z.object({
   sequence_num: z.number().optional()
 });
 
+// Helper function to generate next player UID for a tournament
+async function generatePlayerUID(tournamentId: string): Promise<string> {
+  const { data: lastPlayer } = await supabase
+    .from('players')
+    .select('player_uid')
+    .eq('tournament_id', tournamentId)
+    .not('player_uid', 'is', null)
+    .order('player_uid', { ascending: false })
+    .limit(1)
+    .single();
+
+  let nextNum = 1;
+  if (lastPlayer?.player_uid) {
+    // Extract number from UID (e.g., "P001" -> 1)
+    const match = lastPlayer.player_uid.match(/P(\d+)/);
+    if (match) {
+      nextNum = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  // Format as P001, P002, etc.
+  return `P${nextNum.toString().padStart(3, '0')}`;
+}
+
 // Get all players
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, category_id } = req.query;
+    const { status, category_id, role_category } = req.query;
 
     let query = supabase
       .from('players')
@@ -53,7 +78,19 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(500).json({ error: 'Failed to fetch players' });
     }
 
-    res.json(players || []);
+    // Filter by role category if specified
+    let filteredPlayers = players || [];
+    if (role_category && typeof role_category === 'string') {
+      const validRoles = getRolesByFilterCategory(role_category);
+      if (validRoles.length > 0) {
+        filteredPlayers = filteredPlayers.filter((player: any) => {
+          const playerRole = player.stats?.role?.toLowerCase();
+          return playerRole && validRoles.some(r => r.toLowerCase() === playerRole);
+        });
+      }
+    }
+
+    res.json(filteredPlayers);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch players' });
   }
@@ -67,7 +104,7 @@ router.get('/public/:tournamentId', async (req, res) => {
     let query = supabase
       .from('players')
       .select(`
-        id, name, photo_url, jersey_number, base_price, sold_price, status,
+        id, name, photo_url, player_uid, jersey_number, base_price, sold_price, status,
         categories(id, name),
         teams(id, name, short_name, logo_url)
       `)
@@ -112,7 +149,31 @@ router.get('/pending', authenticateToken, async (req: AuthRequest, res: Response
   }
 });
 
-// Search player by number - MUST be before /:id route
+// Search player by Player UID - MUST be before /:id route
+router.get('/search/uid/:uid', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { data: player, error } = await supabase
+      .from('players')
+      .select(`
+        *,
+        categories(id, name, base_price),
+        teams(id, name, short_name, logo_url)
+      `)
+      .eq('tournament_id', req.tournamentId)
+      .ilike('player_uid', req.params.uid)
+      .single();
+
+    if (error || !player) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    res.json(player);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to search player' });
+  }
+});
+
+// Search player by jersey number (legacy) - MUST be before /:id route
 router.get('/search/number/:number', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { data: player, error } = await supabase
@@ -187,6 +248,9 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     const sequenceNum = data.sequence_num || ((lastPlayer?.sequence_num || 0) + 1);
 
+    // Generate unique player UID
+    const playerUID = await generatePlayerUID(req.tournamentId!);
+
     const { data: player, error } = await supabase
       .from('players')
       .insert({
@@ -194,6 +258,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         tournament_id: req.tournamentId,
         base_price: basePrice,
         sequence_num: sequenceNum,
+        player_uid: playerUID,
         status: 'available'
       })
       .select(`
@@ -247,6 +312,24 @@ router.post('/bulk', authenticateToken, async (req: AuthRequest, res: Response) 
 
     const categoryPrices = new Map(categories?.map(c => [c.id, c.base_price]) || []);
 
+    // Get last player UID to continue sequence
+    const { data: lastUIDPlayer } = await supabase
+      .from('players')
+      .select('player_uid')
+      .eq('tournament_id', req.tournamentId)
+      .not('player_uid', 'is', null)
+      .order('player_uid', { ascending: false })
+      .limit(1)
+      .single();
+
+    let nextUIDNum = 1;
+    if (lastUIDPlayer?.player_uid) {
+      const match = lastUIDPlayer.player_uid.match(/P(\d+)/);
+      if (match) {
+        nextUIDNum = parseInt(match[1], 10) + 1;
+      }
+    }
+
     const playersToInsert = players.map((p: any, idx: number) => ({
       name: p.name,
       photo_url: p.photo_url || null,
@@ -255,6 +338,7 @@ router.post('/bulk', authenticateToken, async (req: AuthRequest, res: Response) 
       base_price: p.base_price || categoryPrices.get(p.category_id) || 1000,
       stats: p.stats || {},
       sequence_num: nextSeq + idx,
+      player_uid: `P${(nextUIDNum + idx).toString().padStart(3, '0')}`,
       tournament_id: req.tournamentId,
       status: 'available'
     }));
@@ -519,6 +603,9 @@ router.post('/public/register/:shareCode', async (req, res) => {
 
     const sequenceNum = (lastPlayer?.sequence_num || 0) + 1;
 
+    // Generate unique player UID
+    const playerUID = await generatePlayerUID(tournament.id);
+
     // Create the player - store pending flag in stats since 'pending' is not a valid status enum
     // We'll use status='available' but with stats.pending=true to indicate awaiting approval
     const { data: player, error: createError } = await supabase
@@ -526,6 +613,7 @@ router.post('/public/register/:shareCode', async (req, res) => {
       .insert({
         name: data.name,
         jersey_number: data.jersey_number || null,
+        player_uid: playerUID,
         category_id: null, // Admin will assign
         base_price: null, // Admin will assign
         photo_url: data.photo_url || null,
@@ -535,7 +623,7 @@ router.post('/public/register/:shareCode', async (req, res) => {
         status: 'available', // Use available status, pending tracked via stats.pending
       })
       .select(`
-        id, name, jersey_number, photo_url, status, stats
+        id, name, player_uid, jersey_number, photo_url, status, stats
       `)
       .single();
 

@@ -4,6 +4,8 @@ import { formatIndianNumber } from '../../utils/formatters';
 import AnimatedBidAmount from './AnimatedBidAmount';
 import { getRoleLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
 import StatusSticker from './StatusSticker';
+import { getBidIncrement, formatIncrement } from '../../config/budgetPresets';
+import { useUIStore } from '../../stores/uiStore';
 
 interface ProPlayerCardProps {
   player: Player | null;
@@ -11,18 +13,13 @@ interface ProPlayerCardProps {
   currentBid: number;
   currentTeam: Team | null;
   accentColor?: string;
+  teamBudget?: number;
 }
 
-// Dynamic bid increment based on current bid amount
-function getBidIncrement(currentBid: number): number {
-  if (currentBid >= 50000) return 5000;
-  if (currentBid >= 30000) return 3000;
-  if (currentBid >= 20000) return 2000;
-  return 1000;
-}
-
-export default function ProPlayerCard({ player, status, currentBid, currentTeam, accentColor = '#f59e0b' }: ProPlayerCardProps) {
-  const nextIncrement = getBidIncrement(currentBid);
+export default function ProPlayerCard({ player, status, currentBid, currentTeam, accentColor = '#f59e0b', teamBudget }: ProPlayerCardProps) {
+  const nextIncrement = getBidIncrement(currentBid, teamBudget);
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
 
   if (!player) {
     return (
@@ -61,8 +58,8 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
       <div className="flex items-center gap-8 lg:gap-12">
         {/* Left Side - Player Photo with decorative frame */}
         <div className="relative flex-shrink-0">
-          {/* Jersey Number Badge */}
-          {player.jersey_number && (
+          {/* Player UID Badge */}
+          {player.player_uid && (
             <div
               className="absolute -top-4 -left-4 z-20 w-16 h-16 rounded-full flex items-center justify-center text-white font-black text-2xl shadow-2xl"
               style={{
@@ -70,7 +67,7 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
                 boxShadow: `0 0 30px ${accentColor}60`
               }}
             >
-              {player.jersey_number}
+              {player.player_uid}
             </div>
           )}
 
@@ -170,15 +167,14 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
               </p>
               <div className="flex items-baseline gap-3">
                 <div className="text-4xl lg:text-5xl font-black text-white">
-                  <AnimatedBidAmount value={currentBid} duration={400} />
+                  <AnimatedBidAmount value={currentBid} duration={400} usePoints={usePoints} />
                 </div>
-                <span className="text-lg text-white/60">pts</span>
               </div>
               {currentTeam && (
                 <div className="mt-2 flex items-center gap-2">
                   <ArrowUp size={14} style={{ color: accentColor }} />
                   <span className="text-sm" style={{ color: accentColor }}>
-                    +{formatIndianNumber(nextIncrement)} next bid
+                    {formatIncrement(nextIncrement)} next bid
                   </span>
                 </div>
               )}
@@ -209,7 +205,7 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
                   <div className="flex items-center gap-4 text-sm text-white/60">
                     <span className="flex items-center gap-1">
                       <Wallet size={12} />
-                      {formatIndianNumber(currentTeam.remaining_budget)}
+                      {usePoints ? `${formatIndianNumber(currentTeam.remaining_budget)} pts` : `₹${formatIndianNumber(currentTeam.remaining_budget)}`}
                     </span>
                     <span className="flex items-center gap-1">
                       <Users size={12} />

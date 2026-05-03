@@ -29,6 +29,12 @@ interface UIState {
   acceleratedTimerDuration: number;
   showSponsors: boolean;
   sponsorRotationInterval: number;
+  // City layout specific
+  cityBackgroundId: string;
+  // Premium layout specific
+  premiumBackgroundId: string;
+  // Display mode for currency
+  displayMode: 'rupees' | 'points';
   setActivePanel: (panel: Panel) => void;
   toggleFullscreen: () => void;
   setShowTeamSquad: (teamId: string | null) => void;
@@ -49,6 +55,9 @@ interface UIState {
   setAcceleratedTimerDuration: (duration: number) => void;
   toggleSponsors: () => void;
   setSponsorRotationInterval: (interval: number) => void;
+  setCityBackground: (backgroundId: string) => void;
+  setPremiumBackground: (backgroundId: string) => void;
+  setDisplayMode: (mode: 'rupees' | 'points') => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -74,6 +83,9 @@ export const useUIStore = create<UIState>()(
       acceleratedTimerDuration: 10,
       showSponsors: true,
       sponsorRotationInterval: 5,
+      cityBackgroundId: 'city-night-skyline',
+      premiumBackgroundId: 'dark-velvet',
+      displayMode: 'rupees',
 
       setActivePanel: (panel) => {
         set({ activePanel: panel, showExtraMenu: false });
@@ -169,6 +181,18 @@ export const useUIStore = create<UIState>()(
       setSponsorRotationInterval: (interval) => {
         set({ sponsorRotationInterval: interval });
       },
+
+      setCityBackground: (backgroundId) => {
+        set({ cityBackgroundId: backgroundId });
+      },
+
+      setPremiumBackground: (backgroundId) => {
+        set({ premiumBackgroundId: backgroundId });
+      },
+
+      setDisplayMode: (mode) => {
+        set({ displayMode: mode });
+      },
     }),
     {
       name: 'auction-ui-storage',
@@ -183,6 +207,9 @@ export const useUIStore = create<UIState>()(
         acceleratedTimerDuration: state.acceleratedTimerDuration,
         showSponsors: state.showSponsors,
         sponsorRotationInterval: state.sponsorRotationInterval,
+        cityBackgroundId: state.cityBackgroundId,
+        premiumBackgroundId: state.premiumBackgroundId,
+        displayMode: state.displayMode,
       }),
     }
   )

@@ -1,8 +1,9 @@
 import { Player, AuctionState } from '../../types';
-import { User, Hash, Sparkles } from 'lucide-react';
-import { formatIndianNumber } from '../../utils/formatters';
+import { User, Sparkles } from 'lucide-react';
+import { formatAmount } from '../../utils/formatters';
 import { getRoleLabel, getRoleShortLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
 import StatusSticker from './StatusSticker';
+import { useUIStore } from '../../stores/uiStore';
 
 interface PlayerCardProps {
   player: Player | null;
@@ -10,6 +11,9 @@ interface PlayerCardProps {
 }
 
 export default function PlayerCard({ player, status }: PlayerCardProps) {
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
+
   if (!player) {
     return (
       <div className="relative h-full min-h-[450px]">
@@ -126,10 +130,9 @@ export default function PlayerCard({ player, status }: PlayerCardProps) {
                     {player.categories.name}
                   </span>
                 )}
-                {player.jersey_number && (
-                  <span className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-sm font-medium">
-                    <Hash size={14} />
-                    {player.jersey_number}
+                {player.player_uid && (
+                  <span className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 text-sm font-medium">
+                    {player.player_uid}
                   </span>
                 )}
               </div>
@@ -140,8 +143,7 @@ export default function PlayerCard({ player, status }: PlayerCardProps) {
                 <div className="relative bg-slate-800/50 rounded-xl p-4 border border-amber-500/30">
                   <p className="text-amber-400/80 text-xs uppercase tracking-widest mb-1">Base Price</p>
                   <p className="text-4xl font-black text-white">
-                    {formatIndianNumber(player.base_price)}
-                    <span className="text-lg text-slate-400 font-medium ml-2">pts</span>
+                    {formatAmount(player.base_price, usePoints)}
                   </p>
                 </div>
               </div>

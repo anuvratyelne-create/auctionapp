@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
-import { formatIndianNumber } from '../../../utils/formatters';
+import { formatAmount } from '../../../utils/formatters';
 import { soundManager } from '../../../utils/soundManager';
 import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
@@ -252,7 +252,8 @@ export default function FireBroadcastLayout({
   timerSeconds = 15,
   timerKey = 0,
 }: FireBroadcastLayoutProps) {
-  const { showSponsors, sponsorRotationInterval } = useUIStore();
+  const { showSponsors, sponsorRotationInterval, displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
 
@@ -356,52 +357,35 @@ export default function FireBroadcastLayout({
               {status === 'bidding' ? '🔥 LIVE BIDDING' : status === 'sold' ? '✓ SOLD' : status.toUpperCase()}
             </div>
 
-            {/* Sponsor - Powered By Box (Fire themed) */}
+            {/* Sponsor - Large Logo (Fire themed, no border) */}
             {showSponsors && (
-              <div
-                className="px-6 py-4 rounded-xl flex flex-col items-center relative overflow-hidden"
-                style={{
-                  background: `linear-gradient(135deg, rgba(15, 5, 5, 0.95), rgba(30, 10, 10, 0.95))`,
-                  border: `2px solid ${FIRE_COLORS.orange}40`,
-                  boxShadow: `0 0 25px ${FIRE_COLORS.red}30, inset 0 0 30px ${FIRE_COLORS.orange}10`,
-                }}
-              >
-                {/* Ember accents */}
-                <div
-                  className="absolute top-2 right-3 w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: FIRE_COLORS.orange, boxShadow: `0 0 6px ${FIRE_COLORS.orange}` }}
-                />
-                <div
-                  className="absolute bottom-2 left-3 w-1 h-1 rounded-full animate-pulse"
-                  style={{ background: FIRE_COLORS.yellow, boxShadow: `0 0 4px ${FIRE_COLORS.yellow}`, animationDelay: '0.5s' }}
-                />
-
+              <div className="flex flex-col items-center">
                 <p
-                  className="text-[10px] uppercase tracking-[0.2em] mb-2"
-                  style={{ color: `${FIRE_COLORS.ember}90` }}
+                  className="text-xs uppercase tracking-[0.3em] mb-3 font-semibold"
+                  style={{ color: FIRE_COLORS.ember }}
                 >
                   Powered By
                 </p>
 
-                <div className="h-16 flex items-center justify-center min-w-[120px]">
+                <div className="flex items-center justify-center">
                   {currentSponsor?.logo_url ? (
                     <img
                       src={currentSponsor.logo_url}
                       alt={currentSponsor.name || 'Sponsor'}
-                      className="max-h-full max-w-[180px] object-contain transition-all duration-500"
-                      style={{ filter: `drop-shadow(0 0 12px ${FIRE_COLORS.orange}60)` }}
+                      className="h-24 md:h-32 max-w-[280px] object-contain transition-all duration-500"
+                      style={{ filter: `drop-shadow(0 0 20px ${FIRE_COLORS.orange}80)` }}
                     />
                   ) : (
-                    <span style={{ color: FIRE_COLORS.ember }} className="text-sm">Your Sponsor</span>
+                    <span style={{ color: FIRE_COLORS.ember }} className="text-lg">Your Sponsor</span>
                   )}
                 </div>
 
                 {currentSponsor?.name && (
                   <p
-                    className="mt-1 text-xs font-bold uppercase tracking-wider"
+                    className="mt-2 text-sm font-bold uppercase tracking-wider"
                     style={{
                       color: FIRE_COLORS.yellow,
-                      textShadow: `0 0 10px ${FIRE_COLORS.orange}80`,
+                      textShadow: `0 0 15px ${FIRE_COLORS.orange}`,
                     }}
                   >
                     {currentSponsor.name}
@@ -409,14 +393,14 @@ export default function FireBroadcastLayout({
                 )}
 
                 {sponsors.length > 1 && (
-                  <div className="flex items-center justify-center gap-1.5 mt-2">
+                  <div className="flex items-center justify-center gap-2 mt-3">
                     {sponsors.map((_, idx) => (
                       <div
                         key={idx}
-                        className="w-1.5 h-1.5 rounded-full transition-all"
+                        className="w-2 h-2 rounded-full transition-all"
                         style={{
                           background: idx === currentSponsorIndex ? FIRE_COLORS.orange : `${FIRE_COLORS.ember}40`,
-                          boxShadow: idx === currentSponsorIndex ? `0 0 6px ${FIRE_COLORS.orange}` : 'none',
+                          boxShadow: idx === currentSponsorIndex ? `0 0 8px ${FIRE_COLORS.orange}` : 'none',
                         }}
                       />
                     ))}
@@ -468,12 +452,12 @@ export default function FireBroadcastLayout({
                       {currentPlayer.categories.name}
                     </span>
                   )}
-                  {currentPlayer.jersey_number && (
+                  {currentPlayer.player_uid && (
                     <span
                       className="px-3 py-1 rounded-full font-black text-white text-sm"
                       style={{ background: `linear-gradient(135deg, ${FIRE_COLORS.orange}, ${FIRE_COLORS.red})` }}
                     >
-                      #{currentPlayer.jersey_number}
+                      {currentPlayer.player_uid}
                     </span>
                   )}
                 </div>
@@ -505,7 +489,7 @@ export default function FireBroadcastLayout({
 
                 {/* Base Price */}
                 <p className="mt-3 text-base" style={{ color: FIRE_COLORS.ember }}>
-                  Base: <span className="font-bold text-lg" style={{ color: FIRE_COLORS.yellow }}>{formatIndianNumber(currentPlayer.base_price)}</span>
+                  Base: <span className="font-bold text-lg" style={{ color: FIRE_COLORS.yellow }}>{formatAmount(currentPlayer.base_price, usePoints)}</span>
                 </p>
               </div>
             </div>
@@ -520,11 +504,25 @@ export default function FireBroadcastLayout({
             </div>
           )}
 
-          {/* Center - Timer and Bid */}
+          {/* Center - Timer/Stamp and Bid */}
           <div className="flex flex-col items-center gap-4">
-            {/* Timer */}
+            {/* Timer - only when bidding */}
             {status === 'bidding' && (
               <FireTimer duration={timerSeconds} isActive={status === 'bidding'} resetKey={timerKey} />
+            )}
+
+            {/* Fire SOLD stamp - appears when status is sold */}
+            {status === 'sold' && (
+              <div className="mb-4">
+                <img
+                  src="/images/fire-sold-stamp.png"
+                  alt="SOLD"
+                  className="w-80 md:w-[420px] h-auto object-contain animate-stamp-slam"
+                  style={{
+                    filter: `drop-shadow(0 0 25px ${FIRE_COLORS.orange}) drop-shadow(0 0 50px ${FIRE_COLORS.red}80)`,
+                  }}
+                />
+              </div>
             )}
 
             {/* Current Bid - with pulsing glow */}
@@ -550,7 +548,7 @@ export default function FireBroadcastLayout({
                     WebkitTextFillColor: 'transparent',
                   }}
                 >
-                  {formatIndianNumber(currentBid)}
+                  {formatAmount(currentBid, usePoints)}
                 </p>
               </div>
             </div>
@@ -584,7 +582,7 @@ export default function FireBroadcastLayout({
                 {/* Team Stats - Compact */}
                 <div className="flex items-center justify-center gap-3 mt-3">
                   <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
-                    <span style={{ color: `${FIRE_COLORS.ember}80` }}>Budget:</span> {formatIndianNumber(currentTeam.remaining_budget || 0)}
+                    <span style={{ color: `${FIRE_COLORS.ember}80` }}>Budget:</span> {formatAmount(currentTeam.remaining_budget || 0, usePoints)}
                   </span>
                   <span style={{ color: `${FIRE_COLORS.orange}50` }}>•</span>
                   <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
@@ -660,6 +658,12 @@ export default function FireBroadcastLayout({
           0%, 100% { opacity: 0.4; transform: scale(1.3); }
           50% { opacity: 0.8; transform: scale(1.6); }
         }
+        @keyframes stamp-slam {
+          0% { transform: scale(3) rotate(-15deg); opacity: 0; }
+          50% { transform: scale(1.1) rotate(-12deg); opacity: 1; }
+          70% { transform: scale(0.95) rotate(-10deg); }
+          100% { transform: scale(1) rotate(-12deg); opacity: 1; }
+        }
         .animate-ember-rise { animation: ember-rise linear infinite; }
         .animate-flame-back { animation: flame-back ease-in-out infinite; }
         .animate-flame-front { animation: flame-front ease-in-out infinite; }
@@ -668,6 +672,7 @@ export default function FireBroadcastLayout({
         .animate-bid-glow { animation: bid-glow 2s ease-in-out infinite; }
         .animate-heat-shimmer { animation: heat-shimmer 3s ease-in-out infinite; }
         .animate-fire-flicker { animation: fire-flicker 0.5s ease-in-out infinite; }
+        .animate-stamp-slam { animation: stamp-slam 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
       `}</style>
     </div>
   );

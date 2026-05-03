@@ -68,6 +68,7 @@ class ApiClient {
 
   // Auth
   async register(data: {
+    email: string;
     mobile: string;
     password: string;
     tournamentName: string;
@@ -81,10 +82,24 @@ class ApiClient {
     });
   }
 
-  async login(mobile: string, password: string) {
+  async login(identifier: string, password: string) {
     return this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ mobile, password }),
+      body: JSON.stringify({ identifier, password }),
+    });
+  }
+
+  async signup(data: {
+    name: string;
+    email: string;
+    mobile: string;
+    password: string;
+    state: string;
+    city: string;
+  }) {
+    return this.request('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 
@@ -108,6 +123,12 @@ class ApiClient {
     bid_increment?: number;
     min_players?: number;
     max_players?: number;
+    category_prices?: {
+      platinum: number;
+      gold: number;
+      silver: number;
+      bronze: number;
+    };
   }) {
     return this.request<{ tournament: any; token: string; message: string }>('/tournaments', {
       method: 'POST',
@@ -129,6 +150,33 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  async deleteTournament() {
+    return this.request<{ success: boolean; message: string }>('/tournaments/current', {
+      method: 'DELETE',
+    });
+  }
+
+  async getMyTournaments() {
+    return this.request<any[]>('/tournaments/my');
+  }
+
+  async selectTournament(tournamentId: string) {
+    return this.request<{ tournament: any; token: string; message: string }>(`/tournaments/${tournamentId}/select`, {
+      method: 'POST',
+    });
+  }
+
+  async getDemoTournament() {
+    return this.request<{
+      tournament: any;
+      teams: any[];
+      players: any[];
+      categories: any[];
+      token: string;
+      isDemo: boolean;
+    }>('/tournaments/demo');
   }
 
   async getTournamentByShareCode(shareCode: string) {
@@ -224,9 +272,15 @@ class ApiClient {
     });
   }
 
-  async updateStandardCategoryPrices() {
+  async updateStandardCategoryPrices(categoryPrices?: {
+    platinum: number;
+    gold: number;
+    silver: number;
+    bronze: number;
+  }) {
     return this.request('/categories/update-standard-prices', {
       method: 'POST',
+      body: JSON.stringify({ category_prices: categoryPrices }),
     });
   }
 
@@ -235,11 +289,12 @@ class ApiClient {
   }
 
   // Players
-  async getPlayers(status?: string, category_id?: string) {
+  async getPlayers(status?: string, category_id?: string, role_category?: string) {
     let query = '';
     const params: string[] = [];
     if (status) params.push(`status=${status}`);
     if (category_id) params.push(`category_id=${category_id}`);
+    if (role_category) params.push(`role_category=${role_category}`);
     if (params.length) query = `?${params.join('&')}`;
     return this.request(`/players${query}`);
   }
@@ -311,9 +366,16 @@ class ApiClient {
     return this.request(`/players/search/number/${number}`);
   }
 
+  async searchPlayerByUID(uid: string) {
+    return this.request(`/players/search/uid/${uid}`);
+  }
+
   // Auction
-  async getNextPlayer(category_id?: string) {
-    const query = category_id && category_id !== 'all' ? `?category_id=${category_id}` : '';
+  async getNextPlayer(category_id?: string, role_category?: string) {
+    const params: string[] = [];
+    if (category_id && category_id !== 'all') params.push(`category_id=${category_id}`);
+    if (role_category) params.push(`role_category=${role_category}`);
+    const query = params.length ? `?${params.join('&')}` : '';
     return this.request(`/auction/next-player${query}`);
   }
 

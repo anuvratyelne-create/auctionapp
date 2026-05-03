@@ -15,6 +15,7 @@ import RetentionPanel from '../components/retention/RetentionPanel';
 import TeamComparisonModal from '../components/comparison/TeamComparisonModal';
 import { auctionTemplates } from '../config/auctionTemplates';
 import { PLAYER_CATEGORIES } from '../config/playerRoles';
+import { budgetPresets, formatBudgetLabel } from '../config/budgetPresets';
 import AnimatedBackground from '../components/auction/AnimatedBackground';
 import ImageUpload from '../components/common/ImageUpload';
 import {
@@ -79,7 +80,7 @@ const getInitialPanel = (): SidebarPanel => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { tournament, user, logout } = useAuthStore();
+  const { tournament, user, token, logout } = useAuthStore();
   const socket = useSocket();
 
   const [activePanel, setActivePanelState] = useState<SidebarPanel>(getInitialPanel);
@@ -97,8 +98,12 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    // Ensure token is set before making API calls
+    if (token) {
+      api.setToken(token);
+      loadData();
+    }
+  }, [token]);
 
   useEffect(() => {
     socket.onTeamsUpdated(() => loadData());
@@ -117,9 +122,9 @@ export default function Dashboard() {
       setCategories(categoriesData as Category[]);
     } catch (error: any) {
       console.error('Failed to load data:', error);
-      // If token is invalid/expired, logout and redirect to login
-      if (error?.message?.includes('Invalid or expired token') ||
-          error?.message?.includes('Access token required')) {
+      // Only logout if explicitly told token is invalid (not on network errors)
+      const errorMsg = error?.message?.toLowerCase() || '';
+      if (errorMsg.includes('invalid') && errorMsg.includes('token')) {
         logout();
         navigate('/login');
       }
@@ -157,7 +162,7 @@ export default function Dashboard() {
       case 'new-auction':
         return <NewAuctionPanel onNavigate={setActivePanel} onTournamentCreated={loadData} />;
       case 'my-auctions':
-        return <MyAuctionsPanel tournament={tournament} onNavigate={setActivePanel} />;
+        return <MyAuctionsPanel tournament={tournament} onNavigate={setActivePanel} onRefresh={loadData} />;
       case 'auction-detail':
         return <AuctionDetailPanel tournament={tournament} teams={teams} players={players} categories={categories} onNavigate={setActivePanel} />;
       case 'teams':
@@ -175,7 +180,7 @@ export default function Dashboard() {
       case 'customize-theme':
         return <CustomizeThemePanel tournament={tournament} onNavigate={setActivePanel} />;
       case 'auction-panel':
-        return <ProAuctionLayout />;
+        return <AuctionPanelWrapper tournament={tournament} />;
       case 'profile':
         return <ProfilePanel user={user} tournament={tournament} />;
       default:
@@ -500,6 +505,7 @@ function ActionCard({ icon, title, subtitle, onClick, color }: ActionCardProps) 
 // New Auction Panel with Form
 function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (panel: SidebarPanel) => void; onTournamentCreated: () => void }) {
   const { user, setAuth } = useAuthStore();
+  const [selectedPresetId, setSelectedPresetId] = useState('standard');
   const [formData, setFormData] = useState({
     logo: null as File | null,
     logoPreview: '',
@@ -511,9 +517,34 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
     bidIncreaseBy: 5000,
     maxPlayersPerTeam: 18,
     minPlayersPerTeam: 15,
+    // Category prices
+    platinumPrice: 50000,
+    goldPrice: 30000,
+    silverPrice: 20000,
+    bronzePrice: 10000,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showCategoryPrices, setShowCategoryPrices] = useState(false);
+  const { displayMode, setDisplayMode } = useUIStore();
+
+  // Handle preset change
+  const handlePresetChange = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    const preset = budgetPresets.find(p => p.id === presetId);
+    if (preset) {
+      setFormData(prev => ({
+        ...prev,
+        pointsPerTeam: preset.teamBudget,
+        baseBid: preset.baseBid,
+        bidIncreaseBy: preset.bidIncrements.tier4.increment, // Use highest tier as default display
+        platinumPrice: preset.categories.platinum,
+        goldPrice: preset.categories.gold,
+        silverPrice: preset.categories.silver,
+        bronzePrice: preset.categories.bronze,
+      }));
+    }
+  };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -559,7 +590,7 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
         logoUrl = await uploadLogo(formData.logo);
       }
 
-      // Create tournament
+      // Create tournament with category prices
       const response = await api.createTournament({
         name: formData.auctionName,
         logo_url: logoUrl,
@@ -571,6 +602,13 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
         bid_increment: formData.bidIncreaseBy,
         min_players: formData.minPlayersPerTeam,
         max_players: formData.maxPlayersPerTeam,
+        // Category prices from preset
+        category_prices: {
+          platinum: formData.platinumPrice,
+          gold: formData.goldPrice,
+          silver: formData.silverPrice,
+          bronze: formData.bronzePrice,
+        },
       });
 
       // Update auth store with new token and tournament
@@ -679,19 +717,89 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
           </div>
         </div>
 
-        {/* Points Per Team */}
+        {/* Display Mode Toggle (Rupees/Points) */}
+        <div className="flex items-center gap-8">
+          <label className="text-slate-400 w-40 flex-shrink-0">Display Mode</label>
+          <div className="flex items-center gap-2 bg-slate-800/50 rounded-xl p-1">
+            <button
+              type="button"
+              onClick={() => setDisplayMode('rupees')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                displayMode === 'rupees'
+                  ? 'bg-amber-500 text-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              ₹ Rupees
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisplayMode('points')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                displayMode === 'points'
+                  ? 'bg-cyan-500 text-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Points
+            </button>
+          </div>
+        </div>
+
+        {/* Budget Preset Selector */}
+        <div className="flex items-start gap-8">
+          <label className="text-slate-400 w-40 flex-shrink-0 pt-3">Budget Preset*</label>
+          <div className="flex-1">
+            <div className="grid grid-cols-2 gap-3">
+              {budgetPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handlePresetChange(preset.id)}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    selectedPresetId === preset.id
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`font-bold ${selectedPresetId === preset.id ? 'text-cyan-400' : 'text-white'}`}>
+                      {preset.name}
+                    </span>
+                    {selectedPresetId === preset.id && (
+                      <div className="w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
+                        <Check size={12} className="text-black" />
+                      </div>
+                    )}
+                  </div>
+                  <p className={`text-sm ${selectedPresetId === preset.id ? 'text-cyan-300' : 'text-amber-400'}`}>
+                    {formatBudgetLabel(preset.teamBudget, displayMode === 'points')}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">{preset.description.split(' - ')[1]}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Points Per Team (editable) */}
         <div className="flex items-center gap-8">
           <label className="text-slate-400 w-40 flex-shrink-0">Points Per Team*</label>
           <div className="flex-1">
             <input
               type="number"
               value={formData.pointsPerTeam}
-              onChange={(e) => setFormData(prev => ({ ...prev, pointsPerTeam: parseInt(e.target.value) || 0 }))}
+              onChange={(e) => {
+                setFormData(prev => ({ ...prev, pointsPerTeam: parseInt(e.target.value) || 0 }));
+                setSelectedPresetId('custom');
+              }}
               placeholder="Points"
               className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
               required
             />
-            <p className="text-xs text-slate-500 mt-1">Default: ₹10,00,000</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Current: {formatBudgetLabel(formData.pointsPerTeam, displayMode === 'points')}
+            </p>
           </div>
         </div>
 
@@ -723,7 +831,88 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
               className="w-full bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
               required
             />
-            <p className="text-xs text-slate-500 mt-1">Default: ₹5,000</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Current: {formatBudgetLabel(formData.bidIncreaseBy, displayMode === 'points')}
+            </p>
+          </div>
+        </div>
+
+        {/* Category Prices Section */}
+        <div className="flex items-start gap-8">
+          <label className="text-slate-400 w-40 flex-shrink-0 pt-3">Category Prices</label>
+          <div className="flex-1">
+            <button
+              type="button"
+              onClick={() => setShowCategoryPrices(!showCategoryPrices)}
+              className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors mb-3"
+            >
+              <ChevronRight size={18} className={`transition-transform ${showCategoryPrices ? 'rotate-90' : ''}`} />
+              <span className="text-sm font-medium">{showCategoryPrices ? 'Hide' : 'Show'} Category Prices</span>
+            </button>
+
+            {showCategoryPrices && (
+              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-800/30 rounded-xl border border-slate-700">
+                {/* Platinum */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-slate-300 to-slate-100"></span>
+                    Platinum
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.platinumPrice}
+                    onChange={(e) => setFormData(prev => ({ ...prev, platinumPrice: parseInt(e.target.value) || 0 }))}
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500/50"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{formatBudgetLabel(formData.platinumPrice, displayMode === 'points')}</p>
+                </div>
+
+                {/* Gold */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-yellow-500 to-amber-400"></span>
+                    Gold
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.goldPrice}
+                    onChange={(e) => setFormData(prev => ({ ...prev, goldPrice: parseInt(e.target.value) || 0 }))}
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500/50"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{formatBudgetLabel(formData.goldPrice, displayMode === 'points')}</p>
+                </div>
+
+                {/* Silver */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-slate-400 to-slate-300"></span>
+                    Silver
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.silverPrice}
+                    onChange={(e) => setFormData(prev => ({ ...prev, silverPrice: parseInt(e.target.value) || 0 }))}
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500/50"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{formatBudgetLabel(formData.silverPrice, displayMode === 'points')}</p>
+                </div>
+
+                {/* Bronze */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-orange-700 to-orange-500"></span>
+                    Bronze
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.bronzePrice}
+                    onChange={(e) => setFormData(prev => ({ ...prev, bronzePrice: parseInt(e.target.value) || 0 }))}
+                    className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-500/50"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{formatBudgetLabel(formData.bronzePrice, displayMode === 'points')}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -797,54 +986,198 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
 }
 
 // My Auctions Panel
-function MyAuctionsPanel({ tournament, onNavigate }: { tournament: any; onNavigate: (panel: SidebarPanel) => void }) {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-white mb-4">Your Auctions</h3>
+function MyAuctionsPanel({ tournament, onNavigate, onRefresh }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onRefresh: () => void }) {
+  const [allTournaments, setAllTournaments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [switching, setSwitching] = useState<string | null>(null);
+  const { setAuth, user } = useAuthStore();
 
-      {tournament ? (
-        <div
-          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 cursor-pointer hover:border-amber-500/50 transition-all"
-          onClick={() => onNavigate('auction-detail')}
+  useEffect(() => {
+    loadAllTournaments();
+  }, []);
+
+  const loadAllTournaments = async () => {
+    try {
+      const tournaments = await api.getMyTournaments();
+      setAllTournaments(tournaments);
+    } catch (err) {
+      console.error('Failed to load tournaments:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSwitch = async (tournamentId: string) => {
+    if (tournament?.id === tournamentId) {
+      onNavigate('auction-detail');
+      return;
+    }
+
+    setSwitching(tournamentId);
+    try {
+      const response = await api.selectTournament(tournamentId);
+      api.setToken(response.token);
+      if (user) {
+        setAuth(user, response.tournament, response.token);
+      }
+      onRefresh();
+      onNavigate('auction-detail');
+    } catch (err) {
+      alert('Failed to switch tournament');
+      console.error(err);
+    } finally {
+      setSwitching(null);
+    }
+  };
+
+  const handleDelete = async (tournamentToDelete: any) => {
+    if (!confirm(`Are you sure you want to delete "${tournamentToDelete.name}"?\n\nThis will permanently delete:\n• All teams\n• All players\n• All categories\n• All auction data\n\nThis action cannot be undone!`)) {
+      return;
+    }
+
+    if (!confirm('This is your FINAL warning. Delete this auction permanently?')) {
+      return;
+    }
+
+    // If deleting the current tournament, switch to it first
+    if (tournament?.id !== tournamentToDelete.id) {
+      try {
+        const response = await api.selectTournament(tournamentToDelete.id);
+        api.setToken(response.token);
+      } catch (err) {
+        alert('Failed to access tournament for deletion');
+        return;
+      }
+    }
+
+    setDeleting(tournamentToDelete.id);
+    try {
+      await api.deleteTournament();
+      alert('Auction deleted successfully!');
+      // Reload tournaments list
+      await loadAllTournaments();
+      // If we deleted the current one, refresh to clear state
+      if (tournament?.id === tournamentToDelete.id) {
+        onRefresh();
+      }
+    } catch (err) {
+      alert('Failed to delete auction');
+      console.error(err);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="animate-spin w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-semibold text-white">Your Auctions ({allTournaments.length})</h3>
+        <button
+          onClick={() => onNavigate('new-auction')}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 rounded-xl text-white font-semibold transition-colors"
         >
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-amber-500/20 to-amber-600/10 rounded-xl flex items-center justify-center border border-amber-500/30">
-              <Trophy size={28} className="text-amber-400" />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-xl font-bold text-white">{tournament.name}</h4>
-              <p className="text-slate-400">Share Code: {tournament.share_code}</p>
-            </div>
-            <span className={`px-4 py-2 rounded-xl text-sm font-medium ${
-              tournament.status === 'live'
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                : tournament.status === 'completed'
-                ? 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
-                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-            }`}>
-              {tournament.status?.toUpperCase() || 'SETUP'}
-            </span>
-            <ArrowRight size={20} className="text-slate-500" />
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-2xl font-bold text-white">₹{tournament.total_points?.toLocaleString('en-IN')}</p>
-              <p className="text-sm text-slate-500">Budget per Team</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">{tournament.min_players}-{tournament.max_players}</p>
-              <p className="text-sm text-slate-500">Players Range</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">₹{tournament.bid_increment?.toLocaleString('en-IN')}</p>
-              <p className="text-sm text-slate-500">Bid Increment</p>
-            </div>
-          </div>
+          <Plus size={18} />
+          New Auction
+        </button>
+      </div>
+
+      {allTournaments.length > 0 ? (
+        <div className="space-y-4">
+          {allTournaments.map((t) => {
+            const isActive = tournament?.id === t.id;
+            return (
+              <div
+                key={t.id}
+                className={`bg-slate-900/50 border rounded-2xl p-5 transition-all ${
+                  isActive ? 'border-amber-500/50 ring-1 ring-amber-500/30' : 'border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-4">
+                  <div
+                    className="flex-1 flex items-center gap-4 cursor-pointer"
+                    onClick={() => handleSwitch(t.id)}
+                  >
+                    <div className={`w-14 h-14 rounded-xl flex items-center justify-center border ${
+                      isActive
+                        ? 'bg-gradient-to-br from-amber-500/30 to-amber-600/20 border-amber-500/50'
+                        : 'bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-slate-700'
+                    }`}>
+                      {t.logo_url ? (
+                        <img src={t.logo_url} alt={t.name} className="w-10 h-10 object-contain" />
+                      ) : (
+                        <Trophy size={24} className={isActive ? 'text-amber-400' : 'text-slate-500'} />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-lg font-bold text-white">{t.name}</h4>
+                        {isActive && (
+                          <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-400 text-sm">
+                        Code: {t.share_code} • Budget: ₹{t.total_points?.toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                    t.status === 'live'
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : t.status === 'completed'
+                      ? 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  }`}>
+                    {t.status?.toUpperCase() || 'SETUP'}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSwitch(t.id)}
+                      disabled={switching === t.id}
+                      className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                        isActive
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          : 'bg-slate-700/50 text-white hover:bg-slate-700 border border-slate-600'
+                      }`}
+                    >
+                      {switching === t.id ? '...' : isActive ? 'Open' : 'Switch'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t)}
+                      disabled={deleting === t.id}
+                      className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
+                      title="Delete Auction"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8 text-center">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center">
           <History size={48} className="text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">No auctions found</p>
+          <p className="text-slate-400 mb-4">No auctions found</p>
+          <button
+            onClick={() => onNavigate('new-auction')}
+            className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 rounded-xl text-white font-semibold transition-colors"
+          >
+            Create Your First Auction
+          </button>
         </div>
       )}
     </div>
@@ -1343,6 +1676,77 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
   );
 }
 
+// Auction Panel Wrapper - handles demo mode when no tournament exists
+function AuctionPanelWrapper({ tournament }: { tournament: any }) {
+  const [demoMode, setDemoMode] = useState(false);
+  const [loading, setLoading] = useState(!tournament);
+  const { setAuth, user } = useAuthStore();
+
+  useEffect(() => {
+    // If user has a tournament, use normal mode
+    if (tournament) {
+      setDemoMode(false);
+      setLoading(false);
+      return;
+    }
+
+    // No tournament - load demo data
+    const loadDemo = async () => {
+      try {
+        const data = await api.getDemoTournament();
+        setDemoMode(true);
+
+        // Use the demo token so ProAuctionLayout can call APIs
+        if (data.tournament && data.token) {
+          api.setToken(data.token);
+          // Set demo tournament in auth store
+          const demoUser = user || { id: 'demo', name: 'Demo User', email: 'demo@example.com' };
+          setAuth(demoUser as any, data.tournament, data.token);
+        }
+      } catch (err) {
+        console.error('Failed to load demo:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDemo();
+  }, [tournament, user, setAuth]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-slate-400">Loading Auction Panel...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Demo Mode Banner */}
+      {demoMode && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-purple-600 via-pink-500 to-amber-500 text-white py-2 px-4 text-center shadow-lg">
+          <div className="flex items-center justify-center gap-3">
+            <span className="text-lg">🎮</span>
+            <span className="font-semibold">DEMO MODE</span>
+            <span className="text-white/80">- Explore layouts, themes & features</span>
+            <span className="mx-2">|</span>
+            <span className="text-white/80">Create your own auction to start bidding for real!</span>
+          </div>
+        </div>
+      )}
+
+      {/* Add padding when demo banner is shown */}
+      <div className={demoMode ? 'pt-10' : ''}>
+        <ProAuctionLayout />
+      </div>
+    </div>
+  );
+}
+
 // Profile Panel
 function ProfilePanel({ user, tournament }: { user: any; tournament: any }) {
   return (
@@ -1767,6 +2171,20 @@ function CategoriesListPanel({ tournament, categories, onNavigate, onRefresh }: 
   const [deleting, setDeleting] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
+  // Calculate category prices based on tournament budget
+  const budget = tournament?.total_points || 1000000;
+  const preset = budgetPresets.find(p => p.teamBudget === budget) ||
+    budgetPresets.reduce((closest, p) =>
+      Math.abs(p.teamBudget - budget) < Math.abs(closest.teamBudget - budget) ? p : closest
+    );
+
+  const categoryPrices = preset ? preset.categories : {
+    platinum: Math.round(budget * 0.05),
+    gold: Math.round(budget * 0.03),
+    silver: Math.round(budget * 0.02),
+    bronze: Math.round(budget * 0.01),
+  };
+
   const handleDelete = async (categoryId: string) => {
     if (!confirm('Are you sure you want to delete this category?')) return;
     setDeleting(categoryId);
@@ -1781,10 +2199,12 @@ function CategoriesListPanel({ tournament, categories, onNavigate, onRefresh }: 
   };
 
   const handleUpdateStandardPrices = async () => {
-    if (!confirm('Update all categories to standard prices?\n\nPlatinum: 50,000\nGold: 30,000\nSilver: 20,000\nBronze: 10,000')) return;
+    const confirmMsg = `Update all categories to budget-appropriate prices?\n\nBudget: ${formatBudgetLabel(budget)}\n\nPlatinum: ${formatBudgetLabel(categoryPrices.platinum)}\nGold: ${formatBudgetLabel(categoryPrices.gold)}\nSilver: ${formatBudgetLabel(categoryPrices.silver)}\nBronze: ${formatBudgetLabel(categoryPrices.bronze)}`;
+
+    if (!confirm(confirmMsg)) return;
     setUpdating(true);
     try {
-      await api.updateStandardCategoryPrices();
+      await api.updateStandardCategoryPrices(categoryPrices);
       onRefresh();
       alert('Categories updated successfully!');
     } catch (err) {
@@ -2073,7 +2493,7 @@ function PlayersListPanel({ tournament, players, categories, onNavigate, onRefre
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-bold text-white truncate">{player.name}</h3>
-                  <p className="text-sm text-slate-400">{getCategoryName(player.category_id)} • #{player.jersey_number || '-'}</p>
+                  <p className="text-sm text-slate-400">{getCategoryName(player.category_id)} • <span className="text-cyan-400">{player.player_uid || '-'}</span></p>
                   <p className="text-sm text-green-400">₹{player.base_price?.toLocaleString('en-IN')}</p>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -2114,11 +2534,11 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
   const [formData, setFormData] = useState({
     photo: null as File | null,
     photoPreview: '',
-    formNo: '',
     name: '',
     fatherName: '',
     age: '',
     mobileNo: '',
+    city: '',
     roleCategory: '',
     role: '',
     categoryId: categories[0]?.id || '',
@@ -2210,10 +2630,10 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
         category_id: formData.categoryId,
         base_price: formData.basePrice,
         stats: {
-          formNo: formData.formNo,
           fatherName: formData.fatherName,
           age: formData.age,
           mobileNo: formData.mobileNo,
+          city: formData.city,
           role: formData.role,
           jerseyName: formData.jerseyName,
           tshirtSize: formData.tshirtSize,
@@ -2229,11 +2649,11 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
           ...prev,
           photo: null,
           photoPreview: '',
-          formNo: '',
           name: '',
           fatherName: '',
           age: '',
           mobileNo: '',
+          city: '',
           role: '',
           jerseyNumber: '',
           jerseyName: '',
@@ -2287,14 +2707,11 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
               </div>
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Form No</label>
-                  <input
-                    type="text"
-                    value={formData.formNo}
-                    onChange={(e) => setFormData(prev => ({ ...prev, formNo: e.target.value }))}
-                    placeholder="Enter Form Number"
-                    className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50 text-sm"
-                  />
+                  <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Player ID</label>
+                  <div className="flex-1 bg-slate-800/30 border border-slate-700/50 rounded-xl px-4 py-2.5 text-cyan-400 text-sm flex items-center gap-2">
+                    <span className="text-slate-500">Auto-generated</span>
+                    <span className="text-xs text-slate-600">(P001, P002...)</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Age</label>
@@ -2334,7 +2751,7 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
               </div>
             </div>
 
-            {/* Row 3: Mobile + Category */}
+            {/* Row 3: Mobile + City */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex items-center gap-4">
                 <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Mobile No</label>
@@ -2346,6 +2763,20 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
                   className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50 text-sm"
                 />
               </div>
+              <div className="flex items-center gap-4">
+                <label className="text-slate-400 w-24 flex-shrink-0 text-sm">City</label>
+                <input
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                  placeholder="Enter City"
+                  className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-green-500/50 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Row 4: Category */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex items-center gap-4">
                 <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Category *</label>
                 <select

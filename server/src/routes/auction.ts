@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { getAuctionState, updateAuctionState } from '../socket/handlers';
+import { getRolesByFilterCategory } from '../config/roleMapping';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ function getBidIncrement(currentBid: number): number {
 // Get next available player (random or sequential)
 router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { category_id } = req.query;
+    const { category_id, role_category } = req.query;
 
     // Reset any stuck 'bidding' players back to 'available' first
     // This handles cases where the auction was abandoned mid-bid
@@ -52,14 +53,26 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
 
     const { data: players, error } = await query;
 
-    console.log('Next player query - found:', players?.length, 'players with status=available');
+    // Filter by role category if specified
+    let filteredPlayers = players || [];
+    if (role_category && typeof role_category === 'string') {
+      const validRoles = getRolesByFilterCategory(role_category);
+      if (validRoles.length > 0) {
+        filteredPlayers = filteredPlayers.filter((player: any) => {
+          const playerRole = player.stats?.role?.toLowerCase();
+          return playerRole && validRoles.some(r => r.toLowerCase() === playerRole);
+        });
+      }
+    }
+
+    console.log('Next player query - found:', filteredPlayers.length, 'players with status=available after role filter');
 
     if (error) {
       console.error('Next player query error:', error);
       return res.status(500).json({ error: 'Database error' });
     }
 
-    if (!players || players.length === 0) {
+    if (filteredPlayers.length === 0) {
       // Debug: Check all player statuses
       const { data: allPlayers } = await supabase
         .from('players')
@@ -73,11 +86,11 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
 
     if (tournament?.player_display_mode === 'sequential') {
       // Get player with lowest sequence number
-      selectedPlayer = players.sort((a, b) => a.sequence_num - b.sequence_num)[0];
+      selectedPlayer = filteredPlayers.sort((a: any, b: any) => a.sequence_num - b.sequence_num)[0];
     } else {
       // Random selection
-      const randomIndex = Math.floor(Math.random() * players.length);
-      selectedPlayer = players[randomIndex];
+      const randomIndex = Math.floor(Math.random() * filteredPlayers.length);
+      selectedPlayer = filteredPlayers[randomIndex];
     }
 
     // Update player status to bidding

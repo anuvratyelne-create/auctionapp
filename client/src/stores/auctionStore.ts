@@ -3,6 +3,7 @@ import { AuctionState, Player, Team } from '../types';
 
 interface AuctionStore extends AuctionState {
   selectedCategoryId: string | null;
+  selectedRoleCategory: string | null;
   setAuctionState: (state: Partial<AuctionState>) => void;
   setCurrentPlayer: (player: Player | null) => void;
   setCurrentBid: (amount: number) => void;
@@ -10,6 +11,7 @@ interface AuctionStore extends AuctionState {
   addBidToHistory: (teamId: string, amount: number) => void;
   setStatus: (status: AuctionState['status']) => void;
   setSelectedCategory: (categoryId: string | null) => void;
+  setSelectedRoleCategory: (roleCategory: string | null) => void;
   reset: () => void;
 }
 
@@ -24,6 +26,7 @@ const initialState: AuctionState = {
 export const useAuctionStore = create<AuctionStore>((set) => ({
   ...initialState,
   selectedCategoryId: null,
+  selectedRoleCategory: null,
 
   setAuctionState: (state) => {
     set((prev) => ({ ...prev, ...state }));
@@ -62,6 +65,10 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
 
   setSelectedCategory: (categoryId) => {
     set({ selectedCategoryId: categoryId });
+  },
+
+  setSelectedRoleCategory: (roleCategory) => {
+    set({ selectedRoleCategory: roleCategory });
   },
 
   reset: () => {

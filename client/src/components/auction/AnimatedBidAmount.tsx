@@ -5,12 +5,14 @@ interface AnimatedBidAmountProps {
   value: number;
   duration?: number;
   className?: string;
+  usePoints?: boolean; // When true, shows "pts" suffix instead of "₹" prefix
 }
 
 export default function AnimatedBidAmount({
   value,
   duration = 500,
-  className = ''
+  className = '',
+  usePoints = false
 }: AnimatedBidAmountProps) {
   const [displayValue, setDisplayValue] = useState(value);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -56,6 +58,10 @@ export default function AnimatedBidAmount({
     };
   }, [value, duration]);
 
+  const formattedValue = usePoints
+    ? `${formatIndianNumber(displayValue)} pts`
+    : `₹${formatIndianNumber(displayValue)}`;
+
   return (
     <span
       className={`
@@ -64,7 +70,7 @@ export default function AnimatedBidAmount({
         transition-transform duration-200
       `}
     >
-      {formatIndianNumber(displayValue)}
+      {formattedValue}
     </span>
   );
 }

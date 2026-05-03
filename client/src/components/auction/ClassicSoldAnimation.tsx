@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Player, Team } from '../../types';
 import { User } from 'lucide-react';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatAmount } from '../../utils/formatters';
+import { useUIStore } from '../../stores/uiStore';
 
 interface ClassicSoldAnimationProps {
   player: Player;
@@ -20,18 +21,27 @@ export default function ClassicSoldAnimation({
 }: ClassicSoldAnimationProps) {
   const [phase, setPhase] = useState<'spotlight' | 'reveal' | 'merge' | 'price' | 'exit'>('spotlight');
   const [displayPrice, setDisplayPrice] = useState(0);
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
 
-  // Animation phases
+  // Animation phases - run only once on mount
   useEffect(() => {
+    let cancelled = false;
     const timers = [
-      setTimeout(() => setPhase('reveal'), 500),
-      setTimeout(() => setPhase('merge'), 1300),
-      setTimeout(() => setPhase('price'), 2100),
-      setTimeout(() => setPhase('exit'), 4800),
-      setTimeout(() => onComplete(), 5300),
+      setTimeout(() => !cancelled && setPhase('reveal'), 500),
+      setTimeout(() => !cancelled && setPhase('merge'), 1300),
+      setTimeout(() => !cancelled && setPhase('price'), 2100),
+      setTimeout(() => !cancelled && setPhase('exit'), 4800),
+      setTimeout(() => {
+        if (!cancelled) onComplete();
+      }, 5300),
     ];
-    return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
 
   // Price counter
   useEffect(() => {
@@ -135,8 +145,8 @@ export default function ClassicSoldAnimation({
               )}
             </div>
 
-            {/* Jersey badge */}
-            {player.jersey_number && (
+            {/* Player UID badge */}
+            {player.player_uid && (
               <div
                 className={`absolute -top-1 -right-1 w-14 h-14 rounded-full flex items-center justify-center
                   text-white font-black text-xl shadow-2xl transition-all duration-500
@@ -146,7 +156,7 @@ export default function ClassicSoldAnimation({
                   boxShadow: `0 0 25px ${teamColor}80`,
                 }}
               >
-                #{player.jersey_number}
+                {player.player_uid}
               </div>
             )}
           </div>
@@ -236,13 +246,13 @@ export default function ClassicSoldAnimation({
             textShadow: `0 0 50px ${teamColor}80, 0 0 100px ${teamColor}50`,
           }}
         >
-          {formatIndianNumber(displayPrice)}
+          {formatAmount(displayPrice, usePoints)}
         </p>
 
         {/* Base and multiplier */}
         <div className="flex items-center justify-center gap-4 mt-4">
           <span className="text-white/50 text-lg">
-            Base: {formatIndianNumber(player.base_price)}
+            Base: {formatAmount(player.base_price, usePoints)}
           </span>
           {parseFloat(multiplier) > 1 && (
             <span

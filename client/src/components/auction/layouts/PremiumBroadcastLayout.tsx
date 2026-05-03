@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
-import { formatIndianNumber } from '../../../utils/formatters';
-import { soundManager } from '../../../utils/soundManager';
+import { formatAmount } from '../../../utils/formatters';
 import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
-import { Wallet, Users, TrendingUp, Zap, Trophy } from 'lucide-react';
+import { getPremiumBackground } from '../../../config/premiumBackgrounds';
+import { Wallet, Users, Zap, Trophy } from 'lucide-react';
 
 interface PremiumBroadcastLayoutProps {
   tournament: any;
@@ -18,13 +18,124 @@ interface PremiumBroadcastLayoutProps {
   timerKey?: number;
 }
 
-// Animated bid display component
-function AnimatedBid({ value, className }: { value: number; className?: string }) {
+// ═══════════════════════════════════════════════════════════════════════════
+// GOLD PARTICLES - Floating champagne/gold particles
+// ═══════════════════════════════════════════════════════════════════════════
+function GoldParticles() {
+  const particles = Array.from({ length: 30 }, (_, i) => ({
+    id: i,
+    left: `${Math.random() * 100}%`,
+    size: Math.random() * 4 + 2,
+    delay: Math.random() * 8,
+    duration: Math.random() * 10 + 12,
+    opacity: Math.random() * 0.4 + 0.2,
+    type: Math.random() > 0.7 ? 'diamond' : 'circle',
+    color: ['#FFD700', '#F5C518', '#D4AF37', '#F7E7CE', '#CD7F32'][Math.floor(Math.random() * 5)],
+  }));
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className="absolute animate-champagne-float"
+          style={{
+            left: p.left,
+            bottom: '-20px',
+            width: p.size,
+            height: p.size,
+            backgroundColor: p.type === 'circle' ? p.color : 'transparent',
+            borderRadius: p.type === 'circle' ? '50%' : '0',
+            transform: p.type === 'diamond' ? 'rotate(45deg)' : 'none',
+            border: p.type === 'diamond' ? `2px solid ${p.color}` : 'none',
+            opacity: p.opacity,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.duration}s`,
+            boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GOLD FRAME - Ornate frame for photos
+// ═══════════════════════════════════════════════════════════════════════════
+function GoldFrame({
+  children,
+  size = 'medium',
+  className = '',
+}: {
+  children: React.ReactNode;
+  size?: 'small' | 'medium' | 'large' | 'xlarge';
+  className?: string;
+}) {
+  const sizeClasses = {
+    small: 'w-14 h-14',
+    medium: 'w-24 h-24',
+    large: 'w-56 h-56',
+    xlarge: 'w-72 h-72',
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      {/* Outer rotating gold ring */}
+      <div
+        className="absolute -inset-3 rounded-2xl opacity-30 animate-gold-ring-rotate"
+        style={{
+          background: 'conic-gradient(from 0deg, transparent, #FFD700, transparent, #D4AF37, transparent)',
+        }}
+      />
+
+      {/* Multi-layer gold glow */}
+      <div
+        className="absolute -inset-4 rounded-2xl animate-luxury-glow"
+        style={{
+          background: 'radial-gradient(circle, rgba(255,215,0,0.15) 0%, transparent 70%)',
+          filter: 'blur(12px)',
+        }}
+      />
+      <div
+        className="absolute -inset-2 rounded-2xl"
+        style={{
+          background: 'radial-gradient(circle, rgba(212,175,55,0.2) 0%, transparent 60%)',
+          filter: 'blur(6px)',
+        }}
+      />
+
+      {/* Gold gradient border */}
+      <div
+        className={`relative ${sizeClasses[size]} rounded-2xl p-[3px] overflow-hidden`}
+        style={{
+          background: 'linear-gradient(135deg, #FFD700 0%, #D4AF37 25%, #F5C518 50%, #CD7F32 75%, #FFD700 100%)',
+        }}
+      >
+        {/* Inner content with dark background */}
+        <div className="w-full h-full rounded-xl overflow-hidden bg-slate-900/90">
+          {children}
+        </div>
+      </div>
+
+      {/* Corner ornaments */}
+      <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-amber-400 rounded-tl-lg" />
+      <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-amber-400 rounded-tr-lg" />
+      <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-amber-400 rounded-bl-lg" />
+      <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-amber-400 rounded-br-lg" />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANIMATED BID - Smooth counting bid display with gold shimmer
+// ═══════════════════════════════════════════════════════════════════════════
+function AnimatedBid({ value, className, usePoints = false }: { value: number; className?: string; usePoints?: boolean }) {
   const [displayValue, setDisplayValue] = useState(value);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
     if (value === displayValue) return;
-
+    setIsAnimating(true);
     const duration = 400;
     const steps = 15;
     const stepDuration = duration / steps;
@@ -37,6 +148,7 @@ function AnimatedBid({ value, className }: { value: number; className?: string }
       current += increment;
       if (step >= steps) {
         setDisplayValue(value);
+        setIsAnimating(false);
         clearInterval(timer);
       } else {
         setDisplayValue(Math.round(current));
@@ -46,105 +158,56 @@ function AnimatedBid({ value, className }: { value: number; className?: string }
     return () => clearInterval(timer);
   }, [value, displayValue]);
 
-  return <span className={className}>{formatIndianNumber(displayValue)}</span>;
+  return (
+    <span className={`relative ${className} ${isAnimating ? 'animate-gold-shimmer' : ''}`}>
+      {formatAmount(displayValue, usePoints)}
+      {isAnimating && (
+        <span
+          className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-400/30 to-transparent animate-shimmer-pass"
+          style={{ backgroundSize: '200% 100%' }}
+        />
+      )}
+    </span>
+  );
 }
 
-// Big circular timer component for broadcast view - with reset and sounds
-function BroadcastTimer({
-  duration = 15,
-  isActive = true,
-  resetKey = 0
+// ═══════════════════════════════════════════════════════════════════════════
+// GLASS CARD - Glassmorphism card with optional gold accent
+// ═══════════════════════════════════════════════════════════════════════════
+function GlassCard({
+  children,
+  className = '',
+  intensity = 'medium',
+  goldAccent = false,
 }: {
-  duration?: number;
-  isActive?: boolean;
-  resetKey?: number;
+  children: React.ReactNode;
+  className?: string;
+  intensity?: 'low' | 'medium' | 'high';
+  goldAccent?: boolean;
 }) {
-  const [timeLeft, setTimeLeft] = useState(duration);
-  const hasPlayedBuzzer = useRef(false);
-
-  // Reset timer when resetKey changes (new bid placed)
-  useEffect(() => {
-    setTimeLeft(duration);
-    hasPlayedBuzzer.current = false;
-  }, [resetKey, duration]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (!isActive || timeLeft <= 0) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        const newTime = Math.max(0, prev - 1);
-
-        // Play tick sound in last 5 seconds
-        if (newTime <= 5 && newTime > 0) {
-          soundManager.play('tick');
-        }
-
-        // Play buzzer when time runs out
-        if (newTime === 0 && !hasPlayedBuzzer.current) {
-          hasPlayedBuzzer.current = true;
-          soundManager.play('buzzer');
-        }
-
-        return newTime;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isActive, resetKey]);
-
-  const progress = (timeLeft / duration) * 100;
-  const isLow = timeLeft <= 5;
-  const radius = 54;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
+  const bgOpacity = intensity === 'low' ? 'bg-white/[0.02]' : intensity === 'high' ? 'bg-white/[0.08]' : 'bg-white/[0.04]';
+  const borderColor = goldAccent
+    ? 'border-amber-500/20'
+    : intensity === 'low' ? 'border-white/[0.05]' : intensity === 'high' ? 'border-white/[0.15]' : 'border-white/[0.08]';
 
   return (
-    <div className="relative w-36 h-36">
-      {/* Glow effect */}
-      <div className={`absolute inset-0 rounded-full blur-xl transition-colors duration-300 ${
-        isLow ? 'bg-red-500/40' : 'bg-amber-500/30'
-      }`} />
-
-      {/* Background circle */}
-      <svg className="absolute inset-0 w-full h-full -rotate-90">
-        <circle
-          cx="72"
-          cy="72"
-          r={radius}
-          fill="none"
-          stroke="rgba(255,255,255,0.1)"
-          strokeWidth="8"
-        />
-        <circle
-          cx="72"
-          cy="72"
-          r={radius}
-          fill="none"
-          stroke={isLow ? '#ef4444' : '#f59e0b'}
-          strokeWidth="8"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          className="transition-all duration-300 ease-linear"
+    <div className={`${bgOpacity} backdrop-blur-xl border ${borderColor} ${className}`}>
+      {goldAccent && (
+        <div
+          className="absolute inset-0 pointer-events-none opacity-30"
           style={{
-            filter: `drop-shadow(0 0 10px ${isLow ? '#ef4444' : '#f59e0b'})`
+            background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, transparent 50%, rgba(212,175,55,0.03) 100%)',
           }}
         />
-      </svg>
-
-      {/* Timer text */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-5xl font-black transition-colors ${isLow ? 'text-red-400 animate-pulse' : 'text-white'}`}>
-          {timeLeft}
-        </span>
-        <span className="text-xs text-slate-400 uppercase tracking-widest mt-1">seconds</span>
-      </div>
+      )}
+      {children}
     </div>
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN LAYOUT
+// ═══════════════════════════════════════════════════════════════════════════
 export default function PremiumBroadcastLayout({
   tournament,
   currentPlayer,
@@ -152,15 +215,14 @@ export default function PremiumBroadcastLayout({
   currentTeam,
   teams,
   status,
-  timerSeconds = 15,
-  timerKey = 0,
 }: PremiumBroadcastLayoutProps) {
-  const { showSponsors, sponsorRotationInterval } = useUIStore();
-  const [time, setTime] = useState(new Date());
+  const { showSponsors, sponsorRotationInterval, premiumBackgroundId, displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
   const [sponsors, setSponsors] = useState<Array<{ id: string; name?: string; logo_url: string }>>([]);
   const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
 
-  // Load sponsors
+  const background = getPremiumBackground(premiumBackgroundId) || getPremiumBackground('dark-velvet');
+
   useEffect(() => {
     const loadSponsors = async () => {
       try {
@@ -173,7 +235,6 @@ export default function PremiumBroadcastLayout({
     loadSponsors();
   }, []);
 
-  // Rotate sponsors
   useEffect(() => {
     if (sponsors.length <= 1) return;
     const interval = setInterval(() => {
@@ -184,410 +245,482 @@ export default function PremiumBroadcastLayout({
 
   const currentSponsor = sponsors[currentSponsorIndex];
 
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const sortedTeams = [...teams].sort((a, b) => b.spent_points - a.spent_points);
 
   return (
-    <div className="relative w-full h-full bg-[#050510] overflow-hidden">
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
-      {/* ANIMATED BACKGROUND */}
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
-      <div className="absolute inset-0">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.08)_0%,transparent_40%)]" />
-        <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[200px]" />
-        <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-amber-500/8 rounded-full blur-[180px]" />
-        <div className="absolute top-1/3 right-1/4 w-[300px] h-[300px] bg-purple-500/5 rounded-full blur-[100px]" />
-      </div>
+    <div className="relative w-full h-full overflow-hidden" style={{ background: '#0a0a0f' }}>
+      {/* Background */}
+      <div
+        className="absolute inset-0"
+        style={{ background: background?.value || '#0a0a0f' }}
+      />
 
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
-      {/* TOP BROADCAST BAR - LARGER */}
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
+      {/* Gold Particles */}
+      <GoldParticles />
+
+      {/* Subtle grid pattern with gold tint */}
+      <div
+        className="absolute inset-0 opacity-[0.02]"
+        style={{
+          backgroundImage: `linear-gradient(rgba(255,215,0,0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,215,0,0.2) 1px, transparent 1px)`,
+          backgroundSize: '100px 100px'
+        }}
+      />
+
+      {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
+      {/* TOP BAR - Gold accented */}
+      {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
       <div className="absolute top-0 left-0 right-0 z-30">
-        <div className="relative h-24 bg-gradient-to-r from-slate-900/98 via-slate-800/95 to-slate-900/98 border-b-2 border-amber-500/50 backdrop-blur-md">
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent blur-sm" />
+        <GlassCard className="mx-6 mt-4 rounded-2xl relative overflow-hidden" intensity="medium" goldAccent>
+          {/* Top gold line */}
+          <div
+            className="absolute top-0 left-0 right-0 h-[3px]"
+            style={{ background: 'linear-gradient(90deg, transparent, #FFD700, #D4AF37, #FFD700, transparent)' }}
+          />
 
-          <div className="flex items-center justify-between h-full px-10">
-            {/* Left: Tournament Logo (EXTRA LARGE) + LIVE + Name */}
-            <div className="flex items-center gap-8">
-              {/* Tournament Logo */}
+          <div className="flex items-center h-28 px-8">
+            {/* Left: Big Logo */}
+            <div className="flex items-center gap-4">
               {tournament?.logo_url ? (
-                <div className="relative">
-                  <div className="absolute -inset-3 bg-amber-500/25 rounded-2xl blur-xl" />
-                  <img
-                    src={tournament.logo_url}
-                    alt={tournament.name}
-                    className="relative h-16 w-auto object-contain drop-shadow-2xl"
-                  />
-                </div>
+                <img
+                  src={tournament.logo_url}
+                  alt={tournament.name}
+                  className="h-20 w-auto object-contain"
+                />
               ) : (
-                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-500/40 to-amber-600/20 border-2 border-amber-500/50 flex items-center justify-center">
-                  <Trophy size={36} className="text-amber-400" />
+                <div
+                  className="h-20 w-20 rounded-2xl flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(212,175,55,0.1) 100%)' }}
+                >
+                  <Trophy size={40} className="text-amber-400" />
                 </div>
               )}
 
-              {/* LIVE Badge - Larger */}
-              <div className="flex items-center gap-3 px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-700 rounded-xl shadow-lg shadow-red-500/50">
-                <span className="relative flex h-3.5 w-3.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-white"></span>
+              {/* LIVE indicator */}
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/20 border border-red-500/30">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                 </span>
-                <span className="text-white font-black text-lg tracking-wider">LIVE</span>
-              </div>
-
-              {/* Tournament Name */}
-              <div>
-                <h1 className="text-3xl font-black text-white tracking-wide uppercase">
-                  {tournament?.name || 'PLAYER AUCTION'}
-                </h1>
-                <p className="text-base text-amber-400/90 font-semibold tracking-widest uppercase">
-                  Players Auction {new Date().getFullYear()}
-                </p>
+                <span className="text-red-400 font-bold text-sm tracking-wide">LIVE</span>
               </div>
             </div>
 
-            {/* Center: Stats - Larger */}
-            <div className="flex items-center gap-12">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-xl bg-blue-500/25 flex items-center justify-center border border-blue-500/30">
-                  <Users size={28} className="text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 uppercase tracking-wider font-medium">Players Sold</p>
-                  <p className="text-3xl font-black text-white">{teams.reduce((acc, t) => acc + (t.player_count || 0), 0)}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-xl bg-emerald-500/25 flex items-center justify-center border border-emerald-500/30">
-                  <Wallet size={28} className="text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 uppercase tracking-wider font-medium">Total Spent</p>
-                  <p className="text-3xl font-black text-white">{formatIndianNumber(teams.reduce((acc, t) => acc + (t.spent_points || 0), 0))}</p>
-                </div>
-              </div>
+            {/* Center: Tournament Name - Big & Centered */}
+            <div className="flex-1 text-center">
+              <h1
+                className="text-4xl font-bold tracking-wide"
+                style={{
+                  background: 'linear-gradient(135deg, #FFFFFF 0%, #FFD700 50%, #D4AF37 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                {tournament?.name || 'Player Auction'}
+              </h1>
+              <p className="text-sm text-amber-500/60 tracking-[0.3em] uppercase mt-1">
+                Season {new Date().getFullYear()}
+              </p>
             </div>
 
-            {/* Right: Sponsor + Time */}
+            {/* Right: Stats & Time */}
             <div className="flex items-center gap-8">
-              {/* Sponsor - Powered By Box */}
-              {showSponsors && (
-                <div className="px-8 py-3 rounded-xl bg-slate-800/60 border border-slate-700/50 flex flex-col items-center">
-                  <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Powered By</p>
-                  <div className="h-10 flex items-center justify-center min-w-[100px]">
-                    {currentSponsor?.logo_url ? (
-                      <img
-                        src={currentSponsor.logo_url}
-                        alt={currentSponsor.name || 'Sponsor'}
-                        className="max-h-full max-w-[160px] object-contain transition-all duration-500"
-                        style={{ filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.4))' }}
-                      />
-                    ) : (
-                      <span className="text-slate-400 text-sm font-semibold">Your Sponsor</span>
-                    )}
-                  </div>
-                  {currentSponsor?.name && (
-                    <p className="mt-1 text-xs font-semibold text-blue-400 uppercase tracking-wider">
-                      {currentSponsor.name}
-                    </p>
-                  )}
-                  {sponsors.length > 1 && (
-                    <div className="flex items-center gap-1 mt-1">
-                      {sponsors.map((_, idx) => (
-                        <div
-                          key={idx}
-                          className={`w-1.5 h-1.5 rounded-full transition-all ${
-                            idx === currentSponsorIndex ? 'bg-blue-400' : 'bg-slate-600'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  )}
+              <div className="flex items-center gap-3">
+                <Users size={20} className="text-amber-500/50" />
+                <div>
+                  <p className="text-3xl font-bold text-white">{teams.reduce((acc, t) => acc + (t.player_count || 0), 0)}</p>
+                  <p className="text-xs text-amber-500/50 uppercase tracking-wider">Sold</p>
                 </div>
-              )}
-
-              {/* Time */}
-              <div className="text-right">
-                <p className="text-4xl font-mono font-black text-white tracking-wider">
-                  {time.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                </p>
-                <p className="text-sm text-slate-400 uppercase tracking-wider">
-                  {time.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </p>
               </div>
+
+              <div className="h-12 w-px bg-amber-500/20" />
+
+              <div className="flex items-center gap-3">
+                <Wallet size={20} className="text-amber-500/50" />
+                <div>
+                  <p className="text-3xl font-bold text-amber-400">{formatAmount(teams.reduce((acc, t) => acc + (t.spent_points || 0), 0), usePoints)}</p>
+                  <p className="text-xs text-amber-500/50 uppercase tracking-wider">Spent</p>
+                </div>
+              </div>
+
             </div>
           </div>
-        </div>
+        </GlassCard>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
       {/* MAIN CONTENT */}
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
-      <div className="absolute top-24 left-0 right-0 bottom-0 flex px-8 py-6 gap-6">
+      {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
+      <div className="absolute top-28 left-0 right-0 bottom-0 flex px-6 py-4 gap-5">
 
-        {/* LEFT: Team Standings - Larger */}
+        {/* LEFT: Team Standings */}
         <div className="w-72 flex-shrink-0">
-          <div className="h-full bg-slate-900/70 rounded-2xl border border-slate-700/50 backdrop-blur-sm overflow-hidden">
-            <div className="px-5 py-4 bg-gradient-to-r from-slate-800/90 to-slate-900/90 border-b border-slate-700/50">
-              <h3 className="text-base font-bold text-white uppercase tracking-wider">Team Standings</h3>
+          <GlassCard className="h-full rounded-2xl overflow-hidden" intensity="low" goldAccent>
+            <div className="px-5 py-4 border-b border-amber-500/10">
+              <h3 className="text-sm font-medium text-amber-400/80 uppercase tracking-wider">Team Standings</h3>
             </div>
 
-            <div className="p-4 space-y-3 overflow-y-auto" style={{ maxHeight: 'calc(100% - 60px)' }}>
+            <div className="p-3 space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100% - 56px)' }}>
               {sortedTeams.map((team, index) => (
                 <div
                   key={team.id}
-                  className={`relative p-4 rounded-xl transition-all ${
+                  className={`relative p-3 rounded-xl transition-all duration-300 ${
                     currentTeam?.id === team.id
-                      ? 'bg-amber-500/20 border-2 border-amber-500/50 ring-2 ring-amber-500/20'
-                      : 'bg-slate-800/50 border border-slate-700/40 hover:bg-slate-800/70'
+                      ? 'bg-amber-500/10 ring-1 ring-amber-500/30'
+                      : 'bg-white/[0.02] hover:bg-white/[0.04]'
                   }`}
                 >
                   {/* Rank Badge */}
-                  <div className={`absolute -top-2 -left-2 w-8 h-8 rounded-full flex items-center justify-center text-sm font-black shadow-lg ${
+                  <div className={`absolute -top-1.5 -left-1.5 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                     index === 0 ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-black' :
                     index === 1 ? 'bg-gradient-to-br from-slate-300 to-slate-500 text-black' :
                     index === 2 ? 'bg-gradient-to-br from-amber-600 to-amber-800 text-white' :
-                    'bg-slate-700 text-slate-300'
+                    'bg-white/10 text-white/60'
                   }`}>
                     {index + 1}
                   </div>
 
-                  <div className="flex items-center gap-4 pl-5">
-                    {/* Team Logo - LARGER */}
-                    <div className="w-14 h-14 rounded-xl bg-slate-700/70 flex items-center justify-center overflow-hidden flex-shrink-0 border border-slate-600/50">
+                  <div className="flex items-center gap-3 pl-4">
+                    <div className="w-11 h-11 rounded-lg bg-white/5 flex items-center justify-center overflow-hidden flex-shrink-0 border border-amber-500/10">
                       {team.logo_url ? (
-                        <img src={team.logo_url} alt={team.short_name} className="w-12 h-12 object-contain" />
+                        <img src={team.logo_url} alt={team.short_name} className="w-9 h-9 object-contain" />
                       ) : (
-                        <span className="text-white font-black text-lg">{team.short_name}</span>
+                        <span className="text-amber-400/60 font-bold text-sm">{team.short_name}</span>
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-bold text-base truncate">{team.short_name}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-emerald-400 font-bold">{formatIndianNumber(team.remaining_budget)}</span>
-                        <span className="text-slate-600">•</span>
-                        <span className="text-slate-400">{team.player_count || 0}P</span>
+                      <p className="text-white/90 font-medium text-sm truncate">{team.short_name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-amber-400 text-xs font-medium">{formatAmount(team.remaining_budget, usePoints)}</span>
+                        <span className="text-amber-500/30">•</span>
+                        <span className="text-white/40 text-xs">{team.player_count || 0} players</span>
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </GlassCard>
         </div>
 
-        {/* CENTER: Player Display - Larger */}
+        {/* CENTER: Player Display */}
         <div className="flex-1 flex flex-col items-center justify-center">
           {currentPlayer ? (
             <div className="w-full max-w-5xl">
-              {/* Timer - Above Player Card */}
-              {status === 'bidding' && (
-                <div className="flex justify-center mb-6">
-                  <BroadcastTimer duration={timerSeconds} isActive={status === 'bidding'} resetKey={timerKey} />
-                </div>
-              )}
-
               {/* Player Card */}
-              <div className="relative bg-gradient-to-br from-slate-900/95 to-slate-950/95 rounded-3xl border border-slate-700/60 overflow-hidden backdrop-blur-sm shadow-2xl">
-                <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-amber-500" />
+              <GlassCard className="rounded-3xl overflow-hidden relative" intensity="medium" goldAccent>
+                {/* Status accent line */}
+                <div className={`h-1.5 ${
+                  status === 'sold' ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500' :
+                  status === 'unsold' ? 'bg-gradient-to-r from-red-500 via-red-400 to-red-500' :
+                  'bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600'
+                }`} />
 
-                <div className="flex">
-                  {/* Player Photo - LARGER */}
-                  <div className="relative w-[400px] flex-shrink-0 p-10">
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-600/15 via-transparent to-amber-500/15" />
-
-                    {/* Jersey Badge - Larger */}
-                    <div className="absolute top-8 left-8 z-20">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-red-500 blur-xl opacity-70" />
-                        <div className="relative px-6 py-3 bg-gradient-to-br from-red-500 to-red-700 rounded-xl border border-red-400/50 shadow-2xl">
-                          <span className="text-white font-black text-4xl">#{currentPlayer.jersey_number || '00'}</span>
-                        </div>
-                      </div>
+                <div className="flex p-10 gap-10">
+                  {/* Player Photo with Gold Frame */}
+                  <div className="relative flex-shrink-0">
+                    {/* Jersey number */}
+                    <div
+                      className="absolute -top-3 -left-3 z-20 px-4 py-2 rounded-xl border"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(212,175,55,0.1) 100%)',
+                        borderColor: 'rgba(255,215,0,0.3)',
+                      }}
+                    >
+                      <span className="text-amber-400 font-bold text-2xl">{currentPlayer.player_uid || 'P000'}</span>
                     </div>
 
-                    {/* Photo - LARGER */}
-                    <div className="flex items-center justify-center h-full pt-10">
+                    {/* Photo with Gold Frame */}
+                    <GoldFrame size="xlarge">
                       {currentPlayer.photo_url ? (
-                        <div className="relative">
-                          <div className="absolute -inset-5 bg-gradient-to-r from-blue-500 via-purple-500 to-amber-500 rounded-full opacity-30 blur-2xl animate-pulse" />
-                          <img
-                            src={currentPlayer.photo_url}
-                            alt={currentPlayer.name}
-                            className="relative w-64 h-64 rounded-full object-cover border-4 border-white/25 shadow-2xl"
-                          />
-                        </div>
+                        <img
+                          src={currentPlayer.photo_url}
+                          alt={currentPlayer.name}
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
-                        <div className="w-64 h-64 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center border-4 border-slate-600/50">
-                          <span className="text-9xl text-slate-500">👤</span>
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-900/20 to-slate-900">
+                          <span className="text-8xl text-amber-500/30">👤</span>
                         </div>
                       )}
-                    </div>
+                    </GoldFrame>
+
+                    {/* SOLD Stamp */}
+                    {status === 'sold' && (
+                      <img
+                        src="/images/premium-sold-stamp.png"
+                        alt="SOLD"
+                        className="absolute -bottom-8 -right-8 w-40 h-40 object-contain animate-stamp-slam z-30"
+                        style={{ transform: 'rotate(-12deg)' }}
+                      />
+                    )}
+
+                    {/* UNSOLD Stamp */}
+                    {status === 'unsold' && (
+                      <img
+                        src="/images/premium-unsold-stamp.png"
+                        alt="UNSOLD"
+                        className="absolute -bottom-8 -right-8 w-40 h-40 object-contain animate-stamp-slam z-30"
+                        style={{ transform: 'rotate(-12deg)' }}
+                      />
+                    )}
                   </div>
 
-                  {/* Player Info - Larger text */}
-                  <div className="flex-1 p-10 border-l border-slate-700/50 flex flex-col justify-center">
-                    <h2 className="text-6xl font-black text-white uppercase tracking-tight mb-5" style={{ textShadow: '0 0 50px rgba(255,255,255,0.15)' }}>
+                  {/* Player Info */}
+                  <div className="flex-1 flex flex-col justify-center">
+                    <h2
+                      className="text-6xl font-bold tracking-tight mb-5"
+                      style={{
+                        background: 'linear-gradient(135deg, #FFFFFF 0%, #FFD700 50%, #D4AF37 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                      }}
+                    >
                       {currentPlayer.name}
                     </h2>
 
-                    {/* Role + Category - Larger */}
-                    <div className="flex flex-wrap items-center gap-4 mb-8">
-                      <div className="px-6 py-3 bg-gradient-to-r from-amber-500/25 to-amber-600/15 rounded-full border border-amber-500/50">
-                        <span className="text-amber-400 font-bold text-lg uppercase tracking-wider">
-                          {getRoleLabel(currentPlayer.stats?.role || currentPlayer.role) || 'Player'}
-                        </span>
-                      </div>
+                    {/* Tags */}
+                    <div className="flex flex-wrap items-center gap-3 mb-8">
+                      <span
+                        className="px-5 py-2 rounded-full text-amber-300 text-base font-medium border"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(212,175,55,0.05) 100%)',
+                          borderColor: 'rgba(255,215,0,0.2)',
+                        }}
+                      >
+                        {getRoleLabel(currentPlayer.stats?.role || currentPlayer.role) || 'Player'}
+                      </span>
                       {currentPlayer.categories?.name && (
-                        <div className="px-5 py-2.5 bg-blue-500/15 rounded-full border border-blue-500/40">
-                          <span className="text-blue-400 font-semibold uppercase tracking-wider">
-                            {currentPlayer.categories.name}
-                          </span>
+                        <span
+                          className="px-5 py-2 rounded-full text-amber-200 text-base font-medium border"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(205,127,50,0.1) 100%)',
+                            borderColor: 'rgba(212,175,55,0.3)',
+                          }}
+                        >
+                          {currentPlayer.categories.name}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Stats Row */}
+                    <div className="flex flex-wrap gap-4 mb-8">
+                      {currentPlayer.stats?.battingStyle && (
+                        <div
+                          className="px-5 py-3 rounded-xl border"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                            borderColor: 'rgba(255,215,0,0.1)',
+                          }}
+                        >
+                          <p className="text-xs text-amber-500/60 uppercase tracking-wider">Batting</p>
+                          <p className="text-white/90 font-medium text-base">{currentPlayer.stats.battingStyle}</p>
+                        </div>
+                      )}
+                      {currentPlayer.stats?.bowlingStyle && (
+                        <div
+                          className="px-5 py-3 rounded-xl border"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                            borderColor: 'rgba(255,215,0,0.1)',
+                          }}
+                        >
+                          <p className="text-xs text-amber-500/60 uppercase tracking-wider">Bowling</p>
+                          <p className="text-white/90 font-medium text-base">{currentPlayer.stats.bowlingStyle}</p>
+                        </div>
+                      )}
+                      {currentPlayer.stats?.age && (
+                        <div
+                          className="px-5 py-3 rounded-xl border"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                            borderColor: 'rgba(255,215,0,0.1)',
+                          }}
+                        >
+                          <p className="text-xs text-amber-500/60 uppercase tracking-wider">Age</p>
+                          <p className="text-white/90 font-medium text-base">{currentPlayer.stats.age} yrs</p>
                         </div>
                       )}
                     </div>
 
-                    {/* Stats - Larger */}
-                    <div className="grid grid-cols-2 gap-4">
-                      {currentPlayer.stats?.battingStyle && (
-                        <div className="p-5 bg-slate-800/60 rounded-xl border border-slate-700/50">
-                          <p className="text-sm text-slate-400 uppercase tracking-wider mb-1">Batting</p>
-                          <p className="text-white font-semibold text-lg">{currentPlayer.stats.battingStyle}</p>
+                    {/* ═══════════════════════════════════════════════════════════════ */}
+                    {/* CURRENT BID - Clean, simple display */}
+                    {/* ═══════════════════════════════════════════════════════════════ */}
+                    <div className="flex items-end gap-8">
+                      {/* Base Price */}
+                      <div>
+                        <p className="text-xs text-amber-500/50 uppercase tracking-wider mb-1">Base</p>
+                        <p className="text-2xl font-semibold text-amber-400/60">{formatAmount(currentPlayer.base_price, usePoints)}</p>
+                      </div>
+
+                      {/* Current Bid - Large & Prominent */}
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium uppercase tracking-[0.15em] mb-1 ${
+                          status === 'sold' ? 'text-emerald-400/80' :
+                          status === 'unsold' ? 'text-red-400/80' :
+                          'text-amber-400/80'
+                        }`}>
+                          {status === 'sold' ? 'Sold For' : status === 'unsold' ? 'Unsold' : 'Current Bid'}
+                        </p>
+                        <div className="flex items-baseline gap-4">
+                          <AnimatedBid
+                            value={currentBid}
+                            usePoints={usePoints}
+                            className={`text-7xl font-bold tracking-tight ${
+                              status === 'sold' ? 'text-emerald-400' :
+                              status === 'unsold' ? 'text-red-400' :
+                              'text-amber-400'
+                            }`}
+                          />
+                          {status === 'bidding' && (
+                            <span className="text-amber-500/50 text-lg font-medium">
+                              +{formatAmount(currentBid >= 50000 ? 5000 : currentBid >= 30000 ? 3000 : currentBid >= 20000 ? 2000 : 1000, usePoints)}
+                            </span>
+                          )}
                         </div>
-                      )}
-                      {currentPlayer.stats?.bowlingStyle && (
-                        <div className="p-5 bg-slate-800/60 rounded-xl border border-slate-700/50">
-                          <p className="text-sm text-slate-400 uppercase tracking-wider mb-1">Bowling</p>
-                          <p className="text-white font-semibold text-lg">{currentPlayer.stats.bowlingStyle}</p>
-                        </div>
-                      )}
-                      {currentPlayer.stats?.age && (
-                        <div className="p-5 bg-slate-800/60 rounded-xl border border-slate-700/50">
-                          <p className="text-sm text-slate-400 uppercase tracking-wider mb-1">Age</p>
-                          <p className="text-white font-semibold text-lg">{currentPlayer.stats.age} Years</p>
-                        </div>
-                      )}
-                      <div className="p-5 bg-slate-800/60 rounded-xl border border-slate-700/50">
-                        <p className="text-sm text-slate-400 uppercase tracking-wider mb-1">Base Price</p>
-                        <p className="text-emerald-400 font-bold text-xl">{formatIndianNumber(currentPlayer.base_price)}</p>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </GlassCard>
             </div>
           ) : (
             /* No Player State */
             <div className="text-center">
-              <div className="relative mb-10">
-                <div className="absolute inset-0 bg-blue-500/25 rounded-full blur-3xl" />
-                <div className="relative w-52 h-52 mx-auto rounded-full bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-700/60 flex items-center justify-center shadow-2xl">
-                  <span className="text-9xl text-slate-600">👤</span>
-                </div>
+              <div
+                className="w-40 h-40 mx-auto rounded-full flex items-center justify-center mb-6 border"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                  borderColor: 'rgba(255,215,0,0.15)',
+                }}
+              >
+                <span className="text-6xl text-amber-500/30">👤</span>
               </div>
-              <h2 className="text-5xl font-black text-white mb-4">Ready for Auction</h2>
-              <p className="text-slate-400 text-xl">Click "New Player" to bring up the next player</p>
+              <h2
+                className="text-3xl font-light mb-2"
+                style={{
+                  background: 'linear-gradient(135deg, #FFFFFF 0%, #FFD700 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                Ready for Auction
+              </h2>
+              <p className="text-amber-500/50">Select a player to begin bidding</p>
             </div>
           )}
         </div>
 
-        {/* RIGHT: Bid Panel - Larger */}
-        <div className="w-96 flex-shrink-0 flex flex-col gap-5">
-          {/* Current Bid - Larger */}
-          <div className="relative bg-gradient-to-br from-slate-900/95 to-slate-950/95 rounded-2xl border-2 border-amber-500/40 overflow-hidden backdrop-blur-sm">
-            <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-amber-500/10" />
-
-            <div className="relative p-8 text-center">
-              <p className="text-base text-amber-400 font-bold uppercase tracking-widest mb-4">
-                {status === 'sold' ? 'SOLD FOR' : status === 'unsold' ? 'UNSOLD' : 'CURRENT BID'}
-              </p>
-
-              <div className="relative py-4">
-                <AnimatedBid
-                  value={currentBid}
-                  className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400"
-                />
-              </div>
-
-              {status === 'bidding' && (
-                <div className="flex items-center justify-center gap-3 mt-4 text-slate-400">
-                  <TrendingUp size={20} />
-                  <span className="text-lg">+{formatIndianNumber(currentBid >= 50000 ? 5000 : currentBid >= 30000 ? 3000 : currentBid >= 20000 ? 2000 : 1000)}</span>
+        {/* RIGHT: Team & Sponsor Panel */}
+        <div className="w-80 flex-shrink-0 flex flex-col gap-4">
+          {/* Sponsor */}
+          {showSponsors && currentSponsor?.logo_url && (
+            <div className="flex flex-col items-center py-4">
+              <p className="text-[10px] text-amber-500/40 uppercase tracking-[0.25em] mb-2">Powered By</p>
+              <img
+                src={currentSponsor.logo_url}
+                alt={currentSponsor.name || 'Sponsor'}
+                className="h-20 max-w-[220px] object-contain opacity-80"
+              />
+              {sponsors.length > 1 && (
+                <div className="flex items-center gap-2 mt-3">
+                  {sponsors.map((_, idx) => (
+                    <div
+                      key={idx}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        idx === currentSponsorIndex ? 'bg-amber-400/60' : 'bg-amber-500/20'
+                      }`}
+                    />
+                  ))}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Bidding Team - Larger */}
-          <div className="flex-1 relative bg-gradient-to-br from-slate-900/90 to-slate-950/90 rounded-2xl border border-slate-700/50 overflow-hidden backdrop-blur-sm">
+          {/* Bidding Team */}
+          <GlassCard className="flex-1 rounded-2xl overflow-hidden" intensity="low" goldAccent>
             {currentTeam ? (
-              <>
-                <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500" />
+              <div className="h-full flex flex-col items-center justify-center p-8">
+                <div className="flex items-center gap-2 mb-5">
+                  <Zap size={18} className="text-amber-400" />
+                  <span className="text-sm text-amber-500/60 uppercase tracking-wider font-medium">Highest Bidder</span>
+                </div>
 
-                <div className="h-full flex flex-col items-center justify-center p-8">
-                  <div className="flex items-center gap-2 mb-5">
-                    <Zap size={20} className="text-amber-400" />
-                    <span className="text-base text-amber-400 font-bold uppercase tracking-wider">Highest Bidder</span>
+                {/* Team Logo with Gold Frame */}
+                <GoldFrame size="large" className="mb-5">
+                  {currentTeam.logo_url ? (
+                    <img src={currentTeam.logo_url} alt={currentTeam.name} className="w-full h-full object-contain p-3" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <span className="text-3xl font-bold text-amber-400">{currentTeam.short_name}</span>
+                    </div>
+                  )}
+                </GoldFrame>
+
+                <h3 className="text-2xl font-semibold text-white text-center mb-5">
+                  {currentTeam.name}
+                </h3>
+
+                <div className="w-full space-y-3">
+                  <div
+                    className="flex items-center justify-between px-5 py-3 rounded-xl"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                    }}
+                  >
+                    <span className="text-amber-500/60 text-base">Remaining</span>
+                    <span className="text-amber-400 font-bold text-lg">{formatAmount(currentTeam.remaining_budget, usePoints)}</span>
                   </div>
-
-                  {/* Team Logo - EXTRA LARGE */}
-                  <div className="relative mb-5">
-                    <div className="absolute -inset-5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl opacity-25 blur-2xl animate-pulse" />
-                    <div className="relative w-32 h-32 rounded-2xl bg-slate-800/90 border-2 border-slate-600/60 flex items-center justify-center p-3 shadow-2xl">
-                      {currentTeam.logo_url ? (
-                        <img src={currentTeam.logo_url} alt={currentTeam.name} className="w-full h-full object-contain" />
-                      ) : (
-                        <span className="text-4xl font-black text-white">{currentTeam.short_name}</span>
-                      )}
-                    </div>
+                  <div
+                    className="flex items-center justify-between px-5 py-3 rounded-xl"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                    }}
+                  >
+                    <span className="text-amber-500/60 text-base">Max Bid</span>
+                    <span className="text-amber-300 font-bold text-lg">{formatAmount(currentTeam.max_bid, usePoints)}</span>
                   </div>
-
-                  <h3 className="text-2xl font-black text-white uppercase tracking-wide text-center mb-5">
-                    {currentTeam.name}
-                  </h3>
-
-                  <div className="w-full space-y-3">
-                    <div className="flex items-center justify-between px-5 py-3 bg-slate-800/60 rounded-xl">
-                      <span className="text-slate-400">Remaining</span>
-                      <span className="text-emerald-400 font-bold text-lg">{formatIndianNumber(currentTeam.remaining_budget)}</span>
-                    </div>
-                    <div className="flex items-center justify-between px-5 py-3 bg-slate-800/60 rounded-xl">
-                      <span className="text-slate-400">Max Bid</span>
-                      <span className="text-amber-400 font-bold text-lg">{formatIndianNumber(currentTeam.max_bid)}</span>
-                    </div>
-                    <div className="flex items-center justify-between px-5 py-3 bg-slate-800/60 rounded-xl">
-                      <span className="text-slate-400">Squad</span>
-                      <span className="text-cyan-400 font-bold text-lg">{currentTeam.player_count || 0} Players</span>
-                    </div>
+                  <div
+                    className="flex items-center justify-between px-5 py-3 rounded-xl"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
+                    }}
+                  >
+                    <span className="text-amber-500/60 text-base">Squad</span>
+                    <span className="text-white/80 font-bold text-lg">{currentTeam.player_count || 0} Players</span>
                   </div>
                 </div>
-              </>
+              </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-                <div className="w-28 h-28 rounded-2xl bg-slate-800/60 border-2 border-dashed border-slate-600/50 flex items-center justify-center mb-5">
-                  <span className="text-5xl text-slate-600">🏆</span>
+                <div
+                  className="w-28 h-28 rounded-2xl border border-dashed flex items-center justify-center mb-5"
+                  style={{ borderColor: 'rgba(255,215,0,0.2)' }}
+                >
+                  <Trophy size={48} className="text-amber-500/30" />
                 </div>
-                <p className="text-slate-400 font-medium text-lg">Awaiting First Bid</p>
-                <p className="text-slate-500 mt-2">Team will appear here</p>
+                <p className="text-amber-500/60 font-medium text-lg">Awaiting Bid</p>
+                <p className="text-amber-500/40 text-base mt-2">Team will appear here</p>
               </div>
             )}
-          </div>
+          </GlassCard>
 
-          {/* Status Badge - Larger */}
-          <div className={`px-8 py-4 rounded-xl font-black text-lg text-center uppercase tracking-wider ${
-            status === 'bidding' ? 'bg-blue-500/25 text-blue-400 border-2 border-blue-500/40' :
-            status === 'sold' ? 'bg-emerald-500/25 text-emerald-400 border-2 border-emerald-500/40' :
-            status === 'unsold' ? 'bg-red-500/25 text-red-400 border-2 border-red-500/40' :
-            'bg-slate-700/60 text-slate-400 border-2 border-slate-600/40'
-          }`}>
-            {status === 'bidding' ? 'BIDDING IN PROGRESS' :
-             status === 'sold' ? 'PLAYER SOLD!' :
-             status === 'unsold' ? 'PLAYER UNSOLD' :
-             'READY'}
+          {/* Status Badge */}
+          <div
+            className={`py-4 rounded-xl text-center font-bold text-base uppercase tracking-wider border ${
+              status === 'bidding' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+              status === 'sold' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
+              status === 'unsold' ? 'bg-red-500/20 text-red-300 border-red-500/30' :
+              'bg-white/5 text-amber-500/50 border-amber-500/10'
+            }`}
+          >
+            {status === 'bidding' ? 'Bidding Active' :
+             status === 'sold' ? 'Player Sold' :
+             status === 'unsold' ? 'Unsold' :
+             'Ready'}
           </div>
         </div>
       </div>

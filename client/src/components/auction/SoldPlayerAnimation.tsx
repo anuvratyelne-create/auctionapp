@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Player, Team } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatAmount } from '../../utils/formatters';
+import { useUIStore } from '../../stores/uiStore';
 
 interface SoldPlayerAnimationProps {
   player: Player;
@@ -21,19 +22,28 @@ export default function SoldPlayerAnimation({
   const [displayPrice, setDisplayPrice] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const firedRef = useRef(false);
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
 
-  // Animation phases
+  // Animation phases - run only once on mount
   useEffect(() => {
+    let cancelled = false;
     const timers = [
-      setTimeout(() => setPhase('reveal'), 400),
-      setTimeout(() => setPhase('merge'), 1200),
-      setTimeout(() => setPhase('price'), 2000),
-      setTimeout(() => setPhase('celebrate'), 3000),
-      setTimeout(() => setPhase('exit'), 5500),
-      setTimeout(() => onComplete(), 6000),
+      setTimeout(() => !cancelled && setPhase('reveal'), 400),
+      setTimeout(() => !cancelled && setPhase('merge'), 1200),
+      setTimeout(() => !cancelled && setPhase('price'), 2000),
+      setTimeout(() => !cancelled && setPhase('celebrate'), 3000),
+      setTimeout(() => !cancelled && setPhase('exit'), 5500),
+      setTimeout(() => {
+        if (!cancelled) onComplete();
+      }, 6000),
     ];
-    return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
 
   // Price counter
   useEffect(() => {
@@ -244,8 +254,8 @@ export default function SoldPlayerAnimation({
                 )}
               </div>
 
-              {/* Jersey badge */}
-              {player.jersey_number && (
+              {/* Player UID badge */}
+              {player.player_uid && (
                 <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 transition-all duration-500 ${
                   phase === 'merge' || phase === 'price' || phase === 'celebrate' || phase === 'exit'
                     ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
@@ -257,7 +267,7 @@ export default function SoldPlayerAnimation({
                       boxShadow: `0 0 30px ${teamColor}80`,
                     }}
                   >
-                    <span className="text-white font-black text-2xl">#{player.jersey_number}</span>
+                    <span className="text-white font-black text-2xl">{player.player_uid}</span>
                   </div>
                 </div>
               )}
@@ -397,7 +407,7 @@ export default function SoldPlayerAnimation({
                 filter: `drop-shadow(0 0 20px ${teamColor}60)`,
               }}
             >
-              {formatIndianNumber(displayPrice)}
+              {formatAmount(displayPrice, usePoints)}
             </p>
 
             {/* Stats row */}
@@ -406,7 +416,7 @@ export default function SoldPlayerAnimation({
             }`}>
               <div>
                 <p className="text-white/40 text-xs uppercase tracking-wider">Base</p>
-                <p className="text-white/70 text-lg font-bold">{formatIndianNumber(player.base_price)}</p>
+                <p className="text-white/70 text-lg font-bold">{formatAmount(player.base_price, usePoints)}</p>
               </div>
               {parseFloat(multiplier) > 1 && (
                 <div

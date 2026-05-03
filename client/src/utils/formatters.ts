@@ -59,6 +59,18 @@ export function formatPoints(num: number | undefined | null, showSuffix = true):
 }
 
 /**
+ * Format amount with currency symbol or points suffix based on display mode
+ * Examples (usePoints = false):
+ * 100000 -> ₹1,00,000
+ * Examples (usePoints = true):
+ * 100000 -> 1,00,000 pts
+ */
+export function formatAmount(num: number | undefined | null, usePoints: boolean = false): string {
+  const formatted = formatIndianNumber(num);
+  return usePoints ? `${formatted} pts` : `₹${formatted}`;
+}
+
+/**
  * Format large numbers with Indian suffix (L for Lakhs, Cr for Crores)
  * Examples:
  * 50000 -> 50K

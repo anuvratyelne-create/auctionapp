@@ -153,3 +153,74 @@ export function convertLegacyRole(legacyRole: string | undefined): string | unde
   if (!legacyRole) return undefined;
   return LEGACY_ROLE_MAP[legacyRole] || legacyRole;
 }
+
+// ============================================
+// ROLE FILTER CATEGORIES (for auction filtering)
+// ============================================
+
+export interface RoleFilterCategory {
+  id: string;
+  name: string;
+  icon: string;
+  roles: string[]; // Specific role values that belong to this category
+}
+
+// Role filter categories for player filtering in auction
+export const ROLE_FILTER_CATEGORIES: RoleFilterCategory[] = [
+  {
+    id: 'batsman',
+    name: 'Batsman',
+    icon: '🏏',
+    roles: ['bat-rh', 'bat-lh', 'batsman', 'batter'],
+  },
+  {
+    id: 'bowler',
+    name: 'Bowler',
+    icon: '💨',
+    roles: ['bowl-rf', 'bowl-lf', 'bowl-rfm', 'bowl-lfm', 'bowl-rmf', 'bowl-lmf', 'bowl-rm', 'bowl-lm', 'bowl-ob', 'bowl-sla', 'bowl-lb', 'bowl-lc', 'bowler', 'pacer', 'fast-bowler'],
+  },
+  {
+    id: 'spinner',
+    name: 'Spinner',
+    icon: '🔄',
+    roles: ['bowl-ob', 'bowl-sla', 'bowl-lb', 'bowl-lc', 'spinner', 'spin-bowler'],
+  },
+  {
+    id: 'all-rounder',
+    name: 'All-Rounder',
+    icon: '⭐',
+    roles: [
+      'ar-bat-rf', 'ar-bat-lf', 'ar-bat-rm', 'ar-bat-ob', 'ar-bat-lb', 'ar-bat-sla',
+      'ar-bowl-rf', 'ar-bowl-lf', 'ar-bowl-rm', 'ar-bowl-ob', 'ar-bowl-lb', 'ar-bowl-sla',
+      'ar-bat', 'ar-bowl', 'ar-rh', 'ar-lh', 'all-rounder', 'allrounder'
+    ],
+  },
+  {
+    id: 'wicketkeeper',
+    name: 'Wicketkeeper',
+    icon: '🧤',
+    roles: ['wk-rh', 'wk-lh', 'wicketkeeper', 'wicket-keeper', 'keeper', 'wk'],
+  },
+];
+
+// Map of filter category ID to role values for quick lookup
+export const ROLE_FILTER_MAPPING: Record<string, string[]> = ROLE_FILTER_CATEGORIES.reduce(
+  (acc, category) => {
+    acc[category.id] = category.roles;
+    return acc;
+  },
+  {} as Record<string, string[]>
+);
+
+// Helper function to get roles for a filter category
+export function getRolesByFilterCategory(categoryId: string): string[] {
+  return ROLE_FILTER_MAPPING[categoryId] || [];
+}
+
+// Helper function to get filter category for a role
+export function getFilterCategoryForRole(role: string): RoleFilterCategory | undefined {
+  const lowerRole = role.toLowerCase();
+  return ROLE_FILTER_CATEGORIES.find((category) =>
+    category.roles.some((r) => r.toLowerCase() === lowerRole)
+  );
+}

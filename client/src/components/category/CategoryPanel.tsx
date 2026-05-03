@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
 import { Category } from '../../types';
 import { useAuctionStore } from '../../stores/auctionStore';
+import { ROLE_FILTER_CATEGORIES } from '../../config/playerRoles';
 import { Tag, Users, TrendingUp, Check } from 'lucide-react';
 
 export default function CategoryPanel() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const { selectedCategoryId, setSelectedCategory } = useAuctionStore();
+  const { selectedCategoryId, setSelectedCategory, selectedRoleCategory, setSelectedRoleCategory } = useAuctionStore();
 
   useEffect(() => {
     loadCategories();
@@ -166,6 +167,74 @@ export default function CategoryPanel() {
             </p>
           </div>
         )}
+
+        {/* Role Filter Section */}
+        <div className="mt-8 pt-8 border-t border-slate-700">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-white">Filter by Role</h2>
+            <p className="text-slate-400 text-sm">
+              Select a role to filter players
+            </p>
+          </div>
+
+          {/* All Roles Option */}
+          <button
+            onClick={() => setSelectedRoleCategory(null)}
+            className={`w-full mb-4 bg-auction-card border rounded-xl p-4 text-left transition-all ${
+              selectedRoleCategory === null
+                ? 'border-primary-500 ring-2 ring-primary-500/50'
+                : 'border-auction-border hover:border-slate-600'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-primary-600/20 rounded-lg flex items-center justify-center">
+                  <Users size={20} className="text-primary-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">All Roles</h3>
+                  <p className="text-slate-400 text-sm">
+                    Include all player roles
+                  </p>
+                </div>
+              </div>
+              {selectedRoleCategory === null && (
+                <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center">
+                  <Check size={18} className="text-white" />
+                </div>
+              )}
+            </div>
+          </button>
+
+          {/* Role Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            {ROLE_FILTER_CATEGORIES.map((role) => {
+              const isSelected = selectedRoleCategory === role.id;
+
+              return (
+                <button
+                  key={role.id}
+                  onClick={() => setSelectedRoleCategory(role.id)}
+                  className={`bg-auction-card border rounded-xl p-4 text-center transition-all ${
+                    isSelected
+                      ? 'border-primary-500 ring-2 ring-primary-500/50 bg-primary-500/10'
+                      : 'border-auction-border hover:border-slate-600'
+                  }`}
+                >
+                  <div className="text-3xl mb-2">{role.icon}</div>
+                  <h3 className={`font-semibold ${isSelected ? 'text-primary-400' : 'text-white'}`}>
+                    {role.name}
+                  </h3>
+                  {isSelected && (
+                    <div className="mt-2">
+                      <Check size={16} className="text-primary-400 mx-auto" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
