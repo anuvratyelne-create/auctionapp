@@ -58,19 +58,22 @@ export default function OverlayView() {
   }, [tournament?.id, socket]);
 
   // Local countdown when timer is running
+  // Note: localTimeLeft removed from dependencies to prevent interval recreation every second
   useEffect(() => {
     if (!timerState.isRunning) return;
-    if (localTimeLeft <= 0) return;
 
     const interval = setInterval(() => {
       setLocalTimeLeft((prev) => {
-        if (prev <= 1) return 0;
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timerState.isRunning, localTimeLeft]);
+  }, [timerState.isRunning]);
 
   // Animate bid changes
   useEffect(() => {
@@ -183,7 +186,8 @@ export default function OverlayView() {
                 <div className="flex-1">
                   <p className="text-xl font-bold text-white">{currentPlayer.name}</p>
                   <p className="text-sm text-slate-400">
-                    {currentPlayer.jersey_number && `#${currentPlayer.jersey_number} • `}
+                    {currentPlayer.player_uid && <span className="text-cyan-400">{currentPlayer.player_uid}</span>}
+                    {currentPlayer.player_uid && ' • '}
                     Base: {currentPlayer.base_price.toLocaleString('en-IN')}
                   </p>
                 </div>
@@ -315,12 +319,12 @@ export default function OverlayView() {
                 </div>
               )}
 
-              {currentPlayer.jersey_number && (
+              {currentPlayer.player_uid && (
                 <div
                   className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-lg font-black text-white"
                   style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)` }}
                 >
-                  #{currentPlayer.jersey_number}
+                  {currentPlayer.player_uid}
                 </div>
               )}
             </div>
@@ -489,13 +493,13 @@ export default function OverlayView() {
                       <User size={48} className="text-white/30" />
                     </div>
                   )}
-                  {/* Jersey Number Badge */}
-                  {currentPlayer.jersey_number && (
+                  {/* Player UID Badge */}
+                  {currentPlayer.player_uid && (
                     <div
                       className="absolute -bottom-2 -right-2 w-14 h-14 rounded-full flex items-center justify-center text-lg font-black text-white"
                       style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`, boxShadow: `0 0 20px ${accentColor}80` }}
                     >
-                      #{currentPlayer.jersey_number}
+                      {currentPlayer.player_uid}
                     </div>
                   )}
                   {/* Gradient overlay */}
@@ -575,13 +579,13 @@ export default function OverlayView() {
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
 
-                {/* Jersey Number Badge */}
-                {currentPlayer.jersey_number && (
+                {/* Player UID Badge */}
+                {currentPlayer.player_uid && (
                   <div
                     className="absolute top-4 right-4 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black text-white"
                     style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}99)`, boxShadow: `0 0 30px ${accentColor}80` }}
                   >
-                    #{currentPlayer.jersey_number}
+                    {currentPlayer.player_uid}
                   </div>
                 )}
 

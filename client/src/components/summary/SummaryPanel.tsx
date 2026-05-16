@@ -1,12 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../utils/api';
 import { Team, Player } from '../../types';
 import { useSocket } from '../../hooks/useSocket';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import { Users, Wallet, Shield, TrendingUp, X, ArrowLeft, GitCompare, Check, Crown, Eye, Trophy } from 'lucide-react';
 import TeamComparisonModal from '../comparison/TeamComparisonModal';
 import TeamPreviewModal from './TeamPreviewModal';
+
+// Helper to calculate spent from players
+const calculateSpentFromPlayers = (players: Player[]): number => {
+  return players.reduce((sum, p) => sum + (p.sold_price || p.retention_price || 0), 0);
+};
 
 export default function SummaryPanel() {
   const navigate = useNavigate();
@@ -22,20 +27,35 @@ export default function SummaryPanel() {
   const [showPreview, setShowPreview] = useState(false);
   const socket = useSocket();
 
+  // Keep selectedTeam ref for use in socket handler
+  const selectedTeamRef = useRef(selectedTeam);
+  selectedTeamRef.current = selectedTeam;
+
   useEffect(() => {
     loadTeams();
+  }, []);
 
-    socket.onTeamsUpdated(() => {
-      loadTeams();
-      if (selectedTeam) {
-        loadTeamPlayers(selectedTeam.id);
-      }
-    });
+  useEffect(() => {
+    // Debounced handler for teams updates
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleTeamsUpdated = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadTeams();
+        if (selectedTeamRef.current) {
+          loadTeamPlayers(selectedTeamRef.current.id);
+        }
+      }, 500);
+    };
+
+    socket.onTeamsUpdated(handleTeamsUpdated);
 
     return () => {
       socket.off('teams:updated');
+      if (debounceTimer) clearTimeout(debounceTimer);
     };
-  }, [socket, selectedTeam]);
+  }, [socket]);
 
   const loadTeams = async () => {
     try {
@@ -157,7 +177,7 @@ export default function SummaryPanel() {
                 <div>
                   <h2 className="text-3xl font-bold text-white">{selectedTeam.name}</h2>
                   <p className="text-slate-400">
-                    {teamPlayers.length} players • {formatIndianNumber(selectedTeam.spent_points)} pts spent
+                    {teamPlayers.length} players • {formatCompactIndian(selectedTeam.spent_points || calculateSpentFromPlayers(teamPlayers))} pts spent
                   </p>
                 </div>
               </div>
@@ -218,10 +238,10 @@ export default function SummaryPanel() {
                       <div className="flex items-center gap-4">
                         <div className="text-right">
                           <p className="text-xl font-bold text-emerald-400">
-                            {formatIndianNumber(player.sold_price)}
+                            {formatCompactIndian(player.sold_price)}
                           </p>
                           <p className="text-xs text-slate-500">
-                            Base: {formatIndianNumber(player.base_price)}
+                            Base: {formatCompactIndian(player.base_price)}
                           </p>
                         </div>
                         <button
@@ -355,7 +375,7 @@ export default function SummaryPanel() {
                         Balance
                       </div>
                       <p className="text-2xl font-bold text-white">
-                        {formatIndianNumber(team.remaining_budget)}
+                        {formatCompactIndian(team.remaining_budget)}
                       </p>
                     </div>
                     <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700/30">
@@ -364,7 +384,7 @@ export default function SummaryPanel() {
                         Reserve
                       </div>
                       <p className="text-2xl font-bold text-amber-400">
-                        {formatIndianNumber(team.reserve_points)}
+                        {formatCompactIndian(team.reserve_points)}
                       </p>
                     </div>
                     <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700/30">
@@ -373,7 +393,7 @@ export default function SummaryPanel() {
                         Max Bid
                       </div>
                       <p className="text-2xl font-bold text-emerald-400">
-                        {formatIndianNumber(team.max_bid)}
+                        {formatCompactIndian(team.max_bid)}
                       </p>
                     </div>
                   </div>

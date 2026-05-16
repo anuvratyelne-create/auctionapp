@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { getAuctionState, updateAuctionState } from '../socket/handlers';
+import { getAuctionState, getAuctionStateAsync, updateAuctionState } from '../socket/handlers';
 import { getRolesByFilterCategory } from '../config/roleMapping';
 
 const router = Router();
@@ -65,20 +65,11 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
       }
     }
 
-    console.log('Next player query - found:', filteredPlayers.length, 'players with status=available after role filter');
-
     if (error) {
-      console.error('Next player query error:', error);
       return res.status(500).json({ error: 'Database error' });
     }
 
     if (filteredPlayers.length === 0) {
-      // Debug: Check all player statuses
-      const { data: allPlayers } = await supabase
-        .from('players')
-        .select('id, name, status')
-        .eq('tournament_id', req.tournamentId);
-      console.log('All players statuses:', allPlayers?.map(p => ({ name: p.name, status: p.status })));
       return res.status(404).json({ error: 'No available players' });
     }
 
@@ -222,7 +213,6 @@ router.post('/bid', authenticateToken, async (req: AuthRequest, res: Response) =
 
     // Check if same team is trying to bid again
     // Only block if NOT the first bid AND currentTeam matches the bidding team
-    console.log('Bid check - isFirstBid:', isFirstBid, 'currentTeam:', state.currentTeam?.id, 'incoming team_id:', team_id);
     if (!isFirstBid && state.currentTeam?.id === team_id) {
       return res.status(400).json({ error: 'Same team cannot bid again. Wait for another team to bid.' });
     }
@@ -353,13 +343,15 @@ router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) 
       status: 'sold'
     });
 
-    io.to(`tournament:${req.tournamentId}`).emit('auction:state', newState);
-    io.to(`live:${req.tournamentId}`).emit('auction:state', newState);
-    io.to(`overlay:${req.tournamentId}`).emit('auction:state', newState);
-    io.to(`summary:${req.tournamentId}`).emit('teams:updated');
+    // Broadcast auction state to all relevant rooms
+    const rooms = [`tournament:${req.tournamentId}`, `live:${req.tournamentId}`, `overlay:${req.tournamentId}`];
+    rooms.forEach(room => io.to(room).emit('auction:state', newState));
+
+    // Broadcast data updates - combine into fewer emissions
     io.to(`tournament:${req.tournamentId}`).emit('teams:updated');
-    io.to(`live:${req.tournamentId}`).emit('teams:updated');
     io.to(`tournament:${req.tournamentId}`).emit('players:updated');
+    io.to(`live:${req.tournamentId}`).emit('teams:updated');
+    io.to(`summary:${req.tournamentId}`).emit('teams:updated');
 
     res.json({ success: true, player });
   } catch (error) {
@@ -485,7 +477,7 @@ router.post('/reset', authenticateToken, async (req: AuthRequest, res: Response)
 // Get current auction state
 router.get('/state', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const state = getAuctionState(req.tournamentId!);
+    const state = await getAuctionStateAsync(req.tournamentId!);
     res.json(state);
   } catch (error) {
     res.status(500).json({ error: 'Failed to get auction state' });

@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import supabase from '../config/supabase';
 
 interface AuctionState {
   currentPlayer: any | null;
@@ -26,20 +27,124 @@ interface ChatMessage {
   isSystem?: boolean;
 }
 
-// Store chat messages per tournament
-const chatMessages: Map<string, ChatMessage[]> = new Map();
+// Store chat messages per tournament with timestamps for cleanup
+interface ChatStorage {
+  messages: ChatMessage[];
+  lastAccess: number;
+}
+const chatMessages: Map<string, ChatStorage> = new Map();
 
-// Store auction states per tournament
-const auctionStates: Map<string, AuctionState> = new Map();
+// Store auction states per tournament with timestamps for cleanup
+interface AuctionStateStorage {
+  state: AuctionState;
+  lastAccess: number;
+}
+const auctionStates: Map<string, AuctionStateStorage> = new Map();
 
-export const getAuctionState = (tournamentId: string): AuctionState => {
-  if (!auctionStates.has(tournamentId)) {
-    auctionStates.set(tournamentId, {
-      currentPlayer: null,
-      currentBid: 0,
-      currentTeam: null,
+// Track which tournaments have been initialized from DB
+const initializedTournaments: Set<string> = new Set();
+
+// Cleanup stale entries every 30 minutes (entries not accessed in 2 hours)
+const STATE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+setInterval(() => {
+  const now = Date.now();
+  const expiry = now - STATE_TTL_MS;
+
+  // Cleanup stale auction states
+  for (const [tournamentId, storage] of auctionStates.entries()) {
+    if (storage.lastAccess < expiry) {
+      auctionStates.delete(tournamentId);
+      initializedTournaments.delete(tournamentId);
+    }
+  }
+
+  // Cleanup stale chat messages
+  for (const [tournamentId, storage] of chatMessages.entries()) {
+    if (storage.lastAccess < expiry) {
+      chatMessages.delete(tournamentId);
+    }
+  }
+}, CLEANUP_INTERVAL_MS);
+
+// Restore auction state from database (for server restart scenarios)
+async function restoreAuctionStateFromDB(tournamentId: string): Promise<AuctionState | null> {
+  try {
+    // Check for any player with status='bidding' in this tournament
+    const { data: biddingPlayer, error } = await supabase
+      .from('players')
+      .select(`
+        *,
+        categories(id, name, base_price)
+      `)
+      .eq('tournament_id', tournamentId)
+      .eq('status', 'bidding')
+      .single();
+
+    if (error || !biddingPlayer) {
+      return null; // No player currently being auctioned
+    }
+
+    // Get the latest bid for this player
+    const { data: latestBid } = await supabase
+      .from('bids')
+      .select(`
+        amount,
+        team_id,
+        teams(id, name, short_name, logo_url, total_budget)
+      `)
+      .eq('player_id', biddingPlayer.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    // Get team stats if there's a current bidder
+    let currentTeamWithStats = null;
+    if (latestBid?.teams) {
+      const team = latestBid.teams as any;
+
+      // Get team's full data including retention_spent
+      const { data: teamData } = await supabase
+        .from('teams')
+        .select('retention_spent, total_budget')
+        .eq('id', team.id)
+        .single();
+
+      // Get team's sold AND retained players to calculate stats
+      const { data: players } = await supabase
+        .from('players')
+        .select('sold_price, retention_price, status')
+        .eq('team_id', team.id)
+        .in('status', ['sold', 'retained']);
+
+      const soldPlayers = players?.filter(p => p.status === 'sold') || [];
+      const retainedPlayers = players?.filter(p => p.status === 'retained') || [];
+
+      const soldSpentPoints = soldPlayers.reduce((sum, p) => sum + (p.sold_price || 0), 0);
+      const retentionSpent = teamData?.retention_spent || 0;
+      const totalSpentPoints = soldSpentPoints + retentionSpent;
+
+      const playerCount = soldPlayers.length + retainedPlayers.length;
+      const totalBudget = teamData?.total_budget || team.total_budget || 100000;
+
+      currentTeamWithStats = {
+        ...team,
+        spent_points: totalSpentPoints,
+        remaining_budget: totalBudget - totalSpentPoints,
+        player_count: playerCount,
+        retained_count: retainedPlayers.length,
+      };
+    }
+
+    console.log(`Restored auction state for tournament ${tournamentId}: Player ${biddingPlayer.name}, Bid: ${latestBid?.amount || biddingPlayer.base_price}`);
+
+    return {
+      currentPlayer: biddingPlayer,
+      currentBid: latestBid?.amount || biddingPlayer.base_price,
+      currentTeam: currentTeamWithStats,
       bidHistory: [],
-      status: 'idle',
+      status: 'bidding',
       timer: {
         timeLeft: 30,
         isRunning: false,
@@ -47,31 +152,103 @@ export const getAuctionState = (tournamentId: string): AuctionState => {
       },
       rtmEnabled: false,
       rtmTeam: null
+    };
+  } catch (error) {
+    console.error('Error restoring auction state:', error);
+    return null;
+  }
+}
+
+export const getAuctionState = (tournamentId: string): AuctionState => {
+  const storage = auctionStates.get(tournamentId);
+  if (storage) {
+    storage.lastAccess = Date.now();
+    return storage.state;
+  }
+
+  const defaultState: AuctionState = {
+    currentPlayer: null,
+    currentBid: 0,
+    currentTeam: null,
+    bidHistory: [],
+    status: 'idle',
+    timer: {
+      timeLeft: 30,
+      isRunning: false,
+      duration: 30
+    },
+    rtmEnabled: false,
+    rtmTeam: null
+  };
+
+  auctionStates.set(tournamentId, {
+    state: defaultState,
+    lastAccess: Date.now()
+  });
+
+  return defaultState;
+};
+
+// Async version that restores from DB if needed
+export const getAuctionStateAsync = async (tournamentId: string): Promise<AuctionState> => {
+  // If already initialized, return current state
+  if (initializedTournaments.has(tournamentId)) {
+    return getAuctionState(tournamentId);
+  }
+
+  // Try to restore from database
+  const restoredState = await restoreAuctionStateFromDB(tournamentId);
+  if (restoredState) {
+    auctionStates.set(tournamentId, {
+      state: restoredState,
+      lastAccess: Date.now()
     });
   }
-  return auctionStates.get(tournamentId)!;
+
+  initializedTournaments.add(tournamentId);
+  return getAuctionState(tournamentId);
 };
 
 export const getChatMessages = (tournamentId: string): ChatMessage[] => {
-  if (!chatMessages.has(tournamentId)) {
-    chatMessages.set(tournamentId, []);
+  const storage = chatMessages.get(tournamentId);
+  if (storage) {
+    storage.lastAccess = Date.now();
+    return storage.messages;
   }
-  return chatMessages.get(tournamentId)!;
+
+  chatMessages.set(tournamentId, {
+    messages: [],
+    lastAccess: Date.now()
+  });
+
+  return [];
 };
 
 export const addChatMessage = (tournamentId: string, message: ChatMessage): void => {
-  const messages = getChatMessages(tournamentId);
-  messages.push(message);
-  // Keep only last 100 messages
-  if (messages.length > 100) {
-    messages.shift();
+  const storage = chatMessages.get(tournamentId);
+  if (storage) {
+    storage.messages.push(message);
+    storage.lastAccess = Date.now();
+    // Keep only last 100 messages
+    if (storage.messages.length > 100) {
+      storage.messages.shift();
+    }
+  } else {
+    chatMessages.set(tournamentId, {
+      messages: [message],
+      lastAccess: Date.now()
+    });
   }
 };
 
-export const updateAuctionState = (tournamentId: string, updates: Partial<AuctionState>) => {
+export const updateAuctionState = (tournamentId: string, updates: Partial<AuctionState>): AuctionState => {
   const current = getAuctionState(tournamentId);
-  auctionStates.set(tournamentId, { ...current, ...updates });
-  return auctionStates.get(tournamentId)!;
+  const newState = { ...current, ...updates };
+  auctionStates.set(tournamentId, {
+    state: newState,
+    lastAccess: Date.now()
+  });
+  return newState;
 };
 
 export const setupSocketHandlers = (io: Server) => {
@@ -79,19 +256,19 @@ export const setupSocketHandlers = (io: Server) => {
     console.log(`Client connected: ${socket.id}`);
 
     // Join tournament room
-    socket.on('join:tournament', (tournamentId: string) => {
+    socket.on('join:tournament', async (tournamentId: string) => {
       socket.join(`tournament:${tournamentId}`);
       console.log(`Socket ${socket.id} joined tournament:${tournamentId}`);
 
-      // Send current auction state
-      const state = getAuctionState(tournamentId);
+      // Send current auction state (with DB restoration if needed)
+      const state = await getAuctionStateAsync(tournamentId);
       socket.emit('auction:state', state);
     });
 
     // Join specific view rooms
-    socket.on('join:live', (tournamentId: string) => {
+    socket.on('join:live', async (tournamentId: string) => {
       socket.join(`live:${tournamentId}`);
-      const state = getAuctionState(tournamentId);
+      const state = await getAuctionStateAsync(tournamentId);
       socket.emit('auction:state', state);
       // Also emit timer state for views that listen separately
       socket.emit('timer:sync', state.timer);
@@ -101,9 +278,9 @@ export const setupSocketHandlers = (io: Server) => {
       socket.join(`summary:${tournamentId}`);
     });
 
-    socket.on('join:overlay', (tournamentId: string) => {
+    socket.on('join:overlay', async (tournamentId: string) => {
       socket.join(`overlay:${tournamentId}`);
-      const state = getAuctionState(tournamentId);
+      const state = await getAuctionStateAsync(tournamentId);
       socket.emit('auction:state', state);
       // Also emit timer state for views that listen separately
       socket.emit('timer:sync', state.timer);

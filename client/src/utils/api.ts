@@ -1,35 +1,90 @@
 const API_URL = '/api';
 
+// TTL-based cache for API responses
+interface CacheEntry<T> {
+  data: T;
+  expiry: number;
+}
+
+class ApiCache {
+  private cache = new Map<string, CacheEntry<any>>();
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (entry && Date.now() < entry.expiry) {
+      return entry.data;
+    }
+    if (entry) {
+      this.cache.delete(key);
+    }
+    return null;
+  }
+
+  set<T>(key: string, data: T, ttlMs: number): void {
+    this.cache.set(key, { data, expiry: Date.now() + ttlMs });
+  }
+
+  invalidate(pattern?: string): void {
+    if (!pattern) {
+      this.cache.clear();
+      return;
+    }
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
+const apiCache = new ApiCache();
+
+// Cache TTL constants (in milliseconds)
+const CACHE_TTL = {
+  TEAMS: 30 * 1000,      // 30 seconds
+  PLAYERS: 30 * 1000,    // 30 seconds
+  CATEGORIES: 5 * 60 * 1000,  // 5 minutes
+};
+
 class ApiClient {
   private token: string | null = null;
 
+  // Request deduplication for getTeams
+  private teamsPromise: Promise<any> | null = null;
+  private teamsPromiseTime: number = 0;
+
   setToken(token: string | null) {
     this.token = token;
+    // Invalidate cache when token changes (different user/tournament)
+    if (!token) {
+      apiCache.invalidate();
+    }
+  }
+
+  // Expose cache invalidation for components that need to force refresh
+  invalidateCache(pattern?: string): void {
+    apiCache.invalidate(pattern);
   }
 
   private getToken(): string | null {
     // Try instance token first
     if (this.token) {
-      console.log('[API] Using instance token');
       return this.token;
     }
 
     // Fall back to reading from localStorage (zustand persist)
     try {
       const stored = localStorage.getItem('auction-auth');
-      console.log('[API] localStorage auction-auth:', stored ? 'found' : 'not found');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed?.state?.token) {
           this.token = parsed.state.token;
-          console.log('[API] Got token from localStorage');
           return this.token;
         }
       }
     } catch (e) {
-      console.error('[API] Error reading token from localStorage:', e);
+      // Silently fail - no token available
     }
-    console.log('[API] No token found');
     return null;
   }
 
@@ -152,8 +207,16 @@ class ApiClient {
     });
   }
 
+  // DEPRECATED: Use deleteTournamentById instead
   async deleteTournament() {
     return this.request<{ success: boolean; message: string }>('/tournaments/current', {
+      method: 'DELETE',
+    });
+  }
+
+  // Delete tournament by explicit ID (preferred method)
+  async deleteTournamentById(tournamentId: string) {
+    return this.request<{ success: boolean; message: string; deletedId: string }>(`/tournaments/${tournamentId}`, {
       method: 'DELETE',
     });
   }
@@ -198,9 +261,34 @@ class ApiClient {
     return this.request(`/tournaments/sponsors/${id}`, { method: 'DELETE' });
   }
 
-  // Teams
+  // Teams (with caching + request deduplication)
   async getTeams() {
-    return this.request('/teams');
+    const cacheKey = 'teams';
+    const cached = apiCache.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const now = Date.now();
+    // Return existing promise if called within 200ms (deduplication)
+    if (this.teamsPromise && (now - this.teamsPromiseTime) < 200) {
+      return this.teamsPromise;
+    }
+
+    this.teamsPromiseTime = now;
+    this.teamsPromise = this.request('/teams').then((data) => {
+      apiCache.set(cacheKey, data, CACHE_TTL.TEAMS);
+      return data;
+    });
+
+    // Clear promise after it resolves
+    this.teamsPromise.finally(() => {
+      setTimeout(() => {
+        this.teamsPromise = null;
+      }, 200);
+    });
+
+    return this.teamsPromise;
   }
 
   async getTeamsPublic(tournamentId: string) {
@@ -220,6 +308,7 @@ class ApiClient {
     owner_photo?: string;
     total_budget?: number;
   }) {
+    apiCache.invalidate('teams');
     return this.request('/teams', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -235,6 +324,7 @@ class ApiClient {
     owner_photo: string;
     total_budget: number;
   }>) {
+    apiCache.invalidate('teams');
     return this.request(`/teams/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -242,6 +332,7 @@ class ApiClient {
   }
 
   async deleteTeam(id: string) {
+    apiCache.invalidate('teams');
     return this.request(`/teams/${id}`, { method: 'DELETE' });
   }
 
@@ -249,9 +340,18 @@ class ApiClient {
     return this.request(`/teams/${teamId}/players/${playerId}`, { method: 'DELETE' });
   }
 
-  // Categories
+  // Categories (cached for 5 minutes - rarely change during auction)
   async getCategories() {
-    return this.request('/categories');
+    const cacheKey = 'categories';
+    const cached = apiCache.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    return this.request('/categories').then((data) => {
+      apiCache.set(cacheKey, data, CACHE_TTL.CATEGORIES);
+      return data;
+    });
   }
 
   async getCategoriesPublic(tournamentId: string) {
@@ -259,6 +359,7 @@ class ApiClient {
   }
 
   async createCategory(data: { name: string; base_price: number; display_order?: number }) {
+    apiCache.invalidate('categories');
     return this.request('/categories', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -266,6 +367,7 @@ class ApiClient {
   }
 
   async updateCategory(id: string, data: Partial<{ name: string; base_price: number; display_order: number }>) {
+    apiCache.invalidate('categories');
     return this.request(`/categories/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -278,6 +380,7 @@ class ApiClient {
     silver: number;
     bronze: number;
   }) {
+    apiCache.invalidate('categories');
     return this.request('/categories/update-standard-prices', {
       method: 'POST',
       body: JSON.stringify({ category_prices: categoryPrices }),
@@ -285,10 +388,11 @@ class ApiClient {
   }
 
   async deleteCategory(id: string) {
+    apiCache.invalidate('categories');
     return this.request(`/categories/${id}`, { method: 'DELETE' });
   }
 
-  // Players
+  // Players (cached for 30 seconds)
   async getPlayers(status?: string, category_id?: string, role_category?: string) {
     let query = '';
     const params: string[] = [];
@@ -296,7 +400,17 @@ class ApiClient {
     if (category_id) params.push(`category_id=${category_id}`);
     if (role_category) params.push(`role_category=${role_category}`);
     if (params.length) query = `?${params.join('&')}`;
-    return this.request(`/players${query}`);
+
+    const cacheKey = `players${query}`;
+    const cached = apiCache.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    return this.request(`/players${query}`).then((data) => {
+      apiCache.set(cacheKey, data, CACHE_TTL.PLAYERS);
+      return data;
+    });
   }
 
   async getPlayersPublic(tournamentId: string, status?: string) {
@@ -316,6 +430,7 @@ class ApiClient {
     base_price?: number;
     stats?: Record<string, any>;
   }) {
+    apiCache.invalidate('players');
     return this.request('/players', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -336,6 +451,25 @@ class ApiClient {
     });
   }
 
+  async createPlayersBulkUpsert(players: Array<{
+    name: string;
+    photo_url?: string;
+    jersey_number?: string;
+    category_id: string;
+    base_price?: number;
+    stats?: Record<string, any>;
+    rowNumber?: number;
+  }>) {
+    return this.request<{
+      created: any[];
+      updated: any[];
+      errors: Array<{ row: number; name: string; error: string }>;
+    }>('/players/bulk-upsert', {
+      method: 'POST',
+      body: JSON.stringify({ players }),
+    });
+  }
+
   async updatePlayer(id: string, data: Partial<{
     name: string;
     photo_url: string;
@@ -344,6 +478,7 @@ class ApiClient {
     base_price: number;
     stats: Record<string, any>;
   }>) {
+    apiCache.invalidate('players');
     return this.request(`/players/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -351,10 +486,13 @@ class ApiClient {
   }
 
   async deletePlayer(id: string) {
+    apiCache.invalidate('players');
     return this.request(`/players/${id}`, { method: 'DELETE' });
   }
 
   async resetPlayer(id: string) {
+    apiCache.invalidate('players');
+    apiCache.invalidate('teams');
     return this.request(`/players/${id}/reset`, { method: 'POST' });
   }
 
@@ -368,6 +506,23 @@ class ApiClient {
 
   async searchPlayerByUID(uid: string) {
     return this.request(`/players/search/uid/${uid}`);
+  }
+
+  // Upload
+  async uploadImageFromUrl(url: string, filename?: string) {
+    return this.request<{ success: boolean; url: string; path: string }>('/upload/from-url', {
+      method: 'POST',
+      body: JSON.stringify({ url, filename }),
+    });
+  }
+
+  async uploadImagesFromUrls(images: Array<{ url: string; filename?: string }>) {
+    return this.request<{
+      results: Array<{ originalUrl: string; newUrl: string | null; error?: string }>;
+    }>('/upload/bulk-from-url', {
+      method: 'POST',
+      body: JSON.stringify({ images }),
+    });
   }
 
   // Auction
@@ -398,6 +553,9 @@ class ApiClient {
   }
 
   async markSold(player_id?: string, team_id?: string, amount?: number) {
+    // Invalidate caches as player/team data changes
+    apiCache.invalidate('players');
+    apiCache.invalidate('teams');
     return this.request('/auction/sold', {
       method: 'POST',
       body: JSON.stringify({ player_id, team_id, amount }),
@@ -405,14 +563,18 @@ class ApiClient {
   }
 
   async markUnsold() {
+    apiCache.invalidate('players');
     return this.request('/auction/unsold', { method: 'POST' });
   }
 
   async reauctionUnsold() {
+    apiCache.invalidate('players');
     return this.request('/auction/reauction-unsold', { method: 'POST' });
   }
 
   async resetAuction() {
+    apiCache.invalidate('players');
+    apiCache.invalidate('teams');
     return this.request('/auction/reset', { method: 'POST' });
   }
 

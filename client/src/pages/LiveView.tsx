@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { socketClient } from '../socket/client';
 import { useAuctionStore } from '../stores/auctionStore';
 import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
 import { Team, Player } from '../types';
-import { User, Hash, Timer } from 'lucide-react';
+import { User, Timer } from 'lucide-react';
 
 export default function LiveView() {
   const { shareCode } = useParams<{ shareCode: string }>();
@@ -27,6 +27,10 @@ export default function LiveView() {
     loadTournament();
   }, [shareCode]);
 
+  // Keep tournamentId ref for debounced handlers
+  const tournamentIdRef = useRef(tournamentId);
+  tournamentIdRef.current = tournamentId;
+
   useEffect(() => {
     if (!tournamentId) return;
 
@@ -36,12 +40,22 @@ export default function LiveView() {
       setAuctionState(state);
     });
 
+    // Debounced handlers to prevent rapid duplicate calls
+    let teamsDebounce: ReturnType<typeof setTimeout> | null = null;
+    let playersDebounce: ReturnType<typeof setTimeout> | null = null;
+
     socketClient.onTeamsUpdated(() => {
-      loadTeams();
+      if (teamsDebounce) clearTimeout(teamsDebounce);
+      teamsDebounce = setTimeout(() => {
+        if (tournamentIdRef.current) loadTeams();
+      }, 500);
     });
 
     socketClient.onPlayersUpdated(() => {
-      loadPlayers();
+      if (playersDebounce) clearTimeout(playersDebounce);
+      playersDebounce = setTimeout(() => {
+        if (tournamentIdRef.current) loadPlayers();
+      }, 500);
     });
 
     // Listen for timer sync
@@ -53,6 +67,8 @@ export default function LiveView() {
     return () => {
       socketClient.removeAllListeners();
       socket.off('timer:sync', handleTimerSync);
+      if (teamsDebounce) clearTimeout(teamsDebounce);
+      if (playersDebounce) clearTimeout(playersDebounce);
     };
   }, [tournamentId, socket]);
 
@@ -87,11 +103,16 @@ export default function LiveView() {
     }
   };
 
+  // Debounce player filter changes
   useEffect(() => {
-    if (tournamentId) {
+    if (!tournamentId) return;
+
+    const debounceTimer = setTimeout(() => {
       loadPlayers();
-    }
-  }, [playerFilter]);
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [playerFilter, tournamentId]);
 
   if (loading) {
     return (
@@ -183,10 +204,9 @@ export default function LiveView() {
                         {currentPlayer.name}
                       </h2>
                       <div className="flex items-center gap-3 mb-4">
-                        {currentPlayer.jersey_number && (
-                          <span className="flex items-center gap-1 text-slate-400">
-                            <Hash size={16} />
-                            {currentPlayer.jersey_number}
+                        {currentPlayer.player_uid && (
+                          <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-sm font-medium rounded">
+                            {currentPlayer.player_uid}
                           </span>
                         )}
                         {currentPlayer.categories && (

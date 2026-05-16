@@ -1,18 +1,20 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../utils/api';
 import { Team, Player, Category } from '../types';
-import ProAuctionLayout from '../components/auction/ProAuctionLayout';
-import ManagePanel from '../components/manage/ManagePanel';
-import SummaryPanel from '../components/summary/SummaryPanel';
-import PlayersPanel from '../components/players/PlayersPanel';
-import CategoryPanel from '../components/category/CategoryPanel';
-import StatsPanel from '../components/stats/StatsPanel';
-import RetentionPanel from '../components/retention/RetentionPanel';
-import TeamComparisonModal from '../components/comparison/TeamComparisonModal';
+
+// Lazy load heavy components for better initial load performance
+const ProAuctionLayout = lazy(() => import('../components/auction/ProAuctionLayout'));
+const ManagePanel = lazy(() => import('../components/manage/ManagePanel'));
+const SummaryPanel = lazy(() => import('../components/summary/SummaryPanel'));
+const PlayersPanel = lazy(() => import('../components/players/PlayersPanel'));
+const CategoryPanel = lazy(() => import('../components/category/CategoryPanel'));
+const StatsPanel = lazy(() => import('../components/stats/StatsPanel'));
+const RetentionPanel = lazy(() => import('../components/retention/RetentionPanel'));
+const TeamComparisonModal = lazy(() => import('../components/comparison/TeamComparisonModal'));
 import { auctionTemplates } from '../config/auctionTemplates';
 import { PLAYER_CATEGORIES } from '../config/playerRoles';
 import { budgetPresets, formatBudgetLabel } from '../config/budgetPresets';
@@ -63,54 +65,130 @@ import {
   BarChart3,
   Maximize,
   GitCompare,
+  Palette,
+  Download,
 } from 'lucide-react';
 
-type SidebarPanel = 'dashboard' | 'new-auction' | 'my-auctions' | 'auction-detail' | 'auction-panel' | 'profile' | 'teams' | 'create-team' | 'categories' | 'create-category' | 'players-list' | 'create-player' | 'customize-theme';
+// Panel types - Account level and Auction level
+type AccountPanel = 'account-dashboard' | 'my-auctions' | 'new-auction' | 'profile';
+type AuctionPanel = 'auction-overview' | 'teams' | 'create-team' | 'categories' | 'create-category' | 'players-list' | 'create-player' | 'auction-panel' | 'customize-theme';
+type SidebarPanel = AccountPanel | AuctionPanel | 'dashboard' | 'auction-detail'; // Keep old ones for compatibility
 
-// Get initial panel from localStorage or default to 'dashboard'
-const getInitialPanel = (): SidebarPanel => {
+// View mode - account level or inside an auction
+type ViewMode = 'account' | 'auction';
+
+// Determine if panel is account-level
+const isAccountPanel = (panel: SidebarPanel): boolean => {
+  return ['account-dashboard', 'my-auctions', 'new-auction', 'profile', 'dashboard'].includes(panel);
+};
+
+// Get initial state from localStorage
+const getInitialState = (): { panel: SidebarPanel; viewMode: ViewMode } => {
   try {
-    const saved = localStorage.getItem('dashboard-panel');
-    if (saved && ['dashboard', 'new-auction', 'my-auctions', 'auction-detail', 'auction-panel', 'profile', 'teams', 'create-team', 'categories', 'create-category', 'players-list', 'create-player', 'customize-theme'].includes(saved)) {
-      return saved as SidebarPanel;
+    const savedPanel = localStorage.getItem('dashboard-panel') as SidebarPanel | null;
+    const savedViewMode = localStorage.getItem('dashboard-viewmode') as ViewMode | null;
+
+    // If we have saved state, use it
+    if (savedPanel && savedViewMode) {
+      return { panel: savedPanel, viewMode: savedViewMode };
     }
-  } catch {}
-  return 'dashboard';
+
+    // Default to account dashboard
+    return { panel: 'account-dashboard', viewMode: 'account' };
+  } catch {
+    return { panel: 'account-dashboard', viewMode: 'account' };
+  }
 };
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { tournament, user, token, logout } = useAuthStore();
+  const { tournament, user, token, logout, updateTournament } = useAuthStore();
   const socket = useSocket();
 
-  const [activePanel, setActivePanelState] = useState<SidebarPanel>(getInitialPanel);
+  const initialState = getInitialState();
+  const [activePanel, setActivePanelState] = useState<SidebarPanel>(initialState.panel);
+  const [viewMode, setViewModeState] = useState<ViewMode>(initialState.viewMode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [allTournaments, setAllTournaments] = useState<any[]>([]);
 
-  // Persist panel state
+  // On mount, validate saved state against actual tournament
+  useEffect(() => {
+    // If viewMode is 'auction' but no tournament exists, reset to account mode
+    if (viewMode === 'auction' && !tournament?.id) {
+      setViewModeState('account');
+      setActivePanelState('account-dashboard');
+      try {
+        localStorage.setItem('dashboard-panel', 'account-dashboard');
+        localStorage.setItem('dashboard-viewmode', 'account');
+      } catch {}
+    }
+  }, []);
+
+  // Helper to set view mode with persistence
+  const setViewMode = (mode: ViewMode) => {
+    setViewModeState(mode);
+    try {
+      localStorage.setItem('dashboard-viewmode', mode);
+    } catch {}
+  };
+
+  // Persist panel state and update view mode
   const setActivePanel = (panel: SidebarPanel) => {
     setActivePanelState(panel);
+    const newMode = isAccountPanel(panel) ? 'account' : 'auction';
+    setViewMode(newMode);
     try {
       localStorage.setItem('dashboard-panel', panel);
     } catch {}
   };
 
-  useEffect(() => {
-    // Ensure token is set before making API calls
-    if (token) {
-      api.setToken(token);
-      loadData();
+  // Enter auction mode - select a tournament and go to its overview
+  const enterAuction = (tournamentData: any) => {
+    // Validate tournament data before entering
+    if (!tournamentData?.id) {
+      console.error('Invalid tournament data - cannot enter auction');
+      return;
     }
-  }, [token]);
+    updateTournament(tournamentData);
+    setViewMode('auction');
+    setActivePanel('auction-overview');
+  };
 
-  useEffect(() => {
-    socket.onTeamsUpdated(() => loadData());
-    socket.onPlayersUpdated(() => loadData());
-  }, [socket]);
+  // Exit to account mode
+  const exitToAccount = () => {
+    setViewMode('account');
+    setActivePanel('account-dashboard');
+    // Clear auction-specific state
+    setTeams([]);
+    setPlayers([]);
+    setCategories([]);
+  };
 
-  const loadData = async () => {
+  // Load all tournaments for account dashboard
+  const loadAllTournaments = async () => {
+    try {
+      const tournaments = await api.getMyTournaments();
+      setAllTournaments(tournaments || []);
+
+      // Only clear stale tournament if we're in account mode and tournament isn't in the list
+      // Don't clear if we're in auction mode (might have just created/entered an auction)
+      if (viewMode === 'account' && tournament?.id && tournaments) {
+        const tournamentExists = tournaments.some((t: any) => t.id === tournament.id);
+        if (!tournamentExists) {
+          updateTournament(null);
+        }
+      }
+    } catch (error) {
+      // Silently handle error
+    }
+  };
+
+  // Load data for current auction
+  const loadAuctionData = async () => {
+    if (!tournament?.id) return;
     try {
       const [teamsData, playersData, categoriesData] = await Promise.all([
         api.getTeams(),
@@ -121,7 +199,7 @@ export default function Dashboard() {
       setPlayers(playersData as Player[]);
       setCategories(categoriesData as Category[]);
     } catch (error: any) {
-      console.error('Failed to load data:', error);
+      console.error('Failed to load auction data:', error);
       // Only logout if explicitly told token is invalid (not on network errors)
       const errorMsg = error?.message?.toLowerCase() || '';
       if (errorMsg.includes('invalid') && errorMsg.includes('token')) {
@@ -131,40 +209,136 @@ export default function Dashboard() {
     }
   };
 
+  // Alias for backwards compatibility
+  const loadData = loadAuctionData;
+
+  // Ref for debounced loadAuctionData to avoid stale closure
+  const loadAuctionDataRef = useRef(loadAuctionData);
+  loadAuctionDataRef.current = loadAuctionData;
+
+  // Debounce timer ref for socket events
+  const debouncedLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Ensure token is set before making API calls
+    if (token) {
+      api.setToken(token);
+      loadAllTournaments();
+      // Only load auction data if we have a tournament selected
+      if (tournament?.id) {
+        loadAuctionData();
+      }
+    }
+  }, [token]);
+
+  useEffect(() => {
+    // Reload auction data when tournament changes
+    if (tournament?.id && token) {
+      loadAuctionData();
+    }
+  }, [tournament?.id]);
+
+  useEffect(() => {
+    // Only listen for updates if we have a tournament selected
+    if (!tournament?.id) return;
+
+    const handleDataUpdate = () => {
+      // Invalidate cache to ensure fresh data
+      api.invalidateCache('teams');
+      api.invalidateCache('players');
+
+      // Debounce the actual load call
+      if (debouncedLoadTimer.current) {
+        clearTimeout(debouncedLoadTimer.current);
+      }
+      debouncedLoadTimer.current = setTimeout(() => {
+        loadAuctionDataRef.current();
+      }, 500);
+    };
+
+    socket.onTeamsUpdated(handleDataUpdate);
+    socket.onPlayersUpdated(handleDataUpdate);
+
+    // Cleanup: remove listeners when unmounting or tournament changes
+    return () => {
+      socket.off('teams:updated');
+      socket.off('players:updated');
+      if (debouncedLoadTimer.current) {
+        clearTimeout(debouncedLoadTimer.current);
+      }
+    };
+  }, [socket, tournament?.id]);
+
+  // Handle tournament deletion - clears state and navigates to account
+  const handleTournamentDeleted = () => {
+    // Clear tournament from auth store (this also clears localStorage via persist)
+    updateTournament(null);
+    // Reload tournaments list
+    loadAllTournaments();
+    // Navigate to account dashboard (this also clears local state)
+    exitToAccount();
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const menuItems = [
-    { id: 'dashboard' as SidebarPanel, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'new-auction' as SidebarPanel, label: 'New Auction', icon: Plus },
+  // Account-level menu items
+  const accountMenuItems = [
+    { id: 'account-dashboard' as SidebarPanel, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'my-auctions' as SidebarPanel, label: 'My Auctions', icon: History },
-    { id: 'auction-panel' as SidebarPanel, label: 'Auction Panel', icon: Gavel },
+    { id: 'new-auction' as SidebarPanel, label: 'New Auction', icon: Plus },
     { id: 'profile' as SidebarPanel, label: 'My Profile', icon: User },
   ];
 
-  // Stats for dashboard
-  const soldPlayers = players.filter(p => p.status === 'sold').length;
-  const totalSpent = players.filter(p => p.status === 'sold').reduce((sum, p) => sum + (p.sold_price || 0), 0);
+  // Auction-level menu items (when inside a specific auction)
+  const auctionMenuItems = [
+    { id: 'auction-overview' as SidebarPanel, label: 'Overview', icon: LayoutDashboard },
+    { id: 'teams' as SidebarPanel, label: 'Teams', icon: Users },
+    { id: 'players-list' as SidebarPanel, label: 'Players', icon: UserPlus },
+    { id: 'categories' as SidebarPanel, label: 'Categories', icon: Tags },
+    { id: 'auction-panel' as SidebarPanel, label: 'Auction Panel', icon: Gavel },
+    { id: 'customize-theme' as SidebarPanel, label: 'Customize', icon: Palette },
+  ];
+
+  // Choose menu based on view mode
+  const menuItems = viewMode === 'account' ? accountMenuItems : auctionMenuItems;
 
   const renderContent = () => {
     switch (activePanel) {
-      case 'dashboard':
-        return <DashboardHome
+      // Account-level panels
+      case 'account-dashboard':
+      case 'dashboard': // backwards compatibility
+        return <AccountDashboard
+          user={user}
+          tournaments={allTournaments}
+          currentTournament={tournament}
+          onNavigate={setActivePanel}
+          onEnterAuction={enterAuction}
+          onRefresh={loadAllTournaments}
+          onTournamentDeleted={handleTournamentDeleted}
+        />;
+      case 'new-auction':
+        return <NewAuctionPanel onNavigate={setActivePanel} onTournamentCreated={() => { loadAllTournaments(); loadData(); }} />;
+      case 'my-auctions':
+        return <MyAuctionsPanel tournament={tournament} onNavigate={setActivePanel} onRefresh={loadData} onTournamentDeleted={handleTournamentDeleted} onEnterAuction={enterAuction} />;
+      case 'profile':
+        return <ProfilePanel user={user} tournament={tournament} viewMode={viewMode} />;
+
+      // Auction-level panels
+      case 'auction-overview':
+        return <AuctionOverview
           tournament={tournament}
           teams={teams}
           players={players}
-          soldPlayers={soldPlayers}
-          totalSpent={totalSpent}
+          categories={categories}
           onNavigate={setActivePanel}
+          onRefresh={loadAuctionData}
+          onTournamentDeleted={handleTournamentDeleted}
         />;
-      case 'new-auction':
-        return <NewAuctionPanel onNavigate={setActivePanel} onTournamentCreated={loadData} />;
-      case 'my-auctions':
-        return <MyAuctionsPanel tournament={tournament} onNavigate={setActivePanel} onRefresh={loadData} />;
-      case 'auction-detail':
-        return <AuctionDetailPanel tournament={tournament} teams={teams} players={players} categories={categories} onNavigate={setActivePanel} />;
+      case 'auction-detail': // backwards compatibility
+        return <AuctionDetailPanel tournament={tournament} teams={teams} players={players} categories={categories} onNavigate={setActivePanel} onRefresh={loadData} onTournamentDeleted={handleTournamentDeleted} />;
       case 'teams':
         return <TeamsListPanel tournament={tournament} teams={teams} onNavigate={setActivePanel} onRefresh={loadData} />;
       case 'create-team':
@@ -180,24 +354,24 @@ export default function Dashboard() {
       case 'customize-theme':
         return <CustomizeThemePanel tournament={tournament} onNavigate={setActivePanel} />;
       case 'auction-panel':
-        return <AuctionPanelWrapper tournament={tournament} />;
-      case 'profile':
-        return <ProfilePanel user={user} tournament={tournament} />;
+        return <AuctionPanelWrapper tournament={tournament} onClose={() => setActivePanel('auction-overview')} />;
+
       default:
-        return <DashboardHome
-          tournament={tournament}
-          teams={teams}
-          players={players}
-          soldPlayers={soldPlayers}
-          totalSpent={totalSpent}
+        return <AccountDashboard
+          user={user}
+          tournaments={allTournaments}
+          currentTournament={tournament}
           onNavigate={setActivePanel}
+          onEnterAuction={enterAuction}
+          onRefresh={loadAllTournaments}
+          onTournamentDeleted={handleTournamentDeleted}
         />;
     }
   };
 
   // Full screen mode for auction panel - with all features
   if (activePanel === 'auction-panel') {
-    return <FullAuctionLayout onBack={() => setActivePanel('dashboard')} />;
+    return <FullAuctionLayout onBack={() => setActivePanel('auction-overview')} />;
   }
 
   return (
@@ -208,26 +382,65 @@ export default function Dashboard() {
           sidebarCollapsed ? 'w-20' : 'w-64'
         }`}
       >
-        {/* Logo */}
+        {/* Logo / Auction Header */}
         <div className="p-4 border-b border-slate-800">
-          <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Gavel size={20} className="text-white" />
-            </div>
-            {!sidebarCollapsed && (
-              <div>
-                <h1 className="font-bold text-white text-lg">Auction Pro</h1>
-                <p className="text-xs text-slate-500">Management System</p>
+          {viewMode === 'auction' && tournament ? (
+            // Auction mode - show current auction info
+            <div className={`${sidebarCollapsed ? 'text-center' : ''}`}>
+              <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+                <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {tournament.logo_url ? (
+                    <img src={tournament.logo_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Trophy size={20} className="text-white" />
+                  )}
+                </div>
+                {!sidebarCollapsed && (
+                  <div className="flex-1 min-w-0">
+                    <h1 className="font-bold text-white text-sm truncate">{tournament.name}</h1>
+                    <p className="text-xs text-amber-400">{tournament.share_code}</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            // Account mode - show app logo
+            <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+              <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Gavel size={20} className="text-white" />
+              </div>
+              {!sidebarCollapsed && (
+                <div>
+                  <h1 className="font-bold text-white text-lg">Auction Pro</h1>
+                  <p className="text-xs text-slate-500">Management System</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
+        {/* Back to Account button (only in auction mode) */}
+        {viewMode === 'auction' && (
+          <div className="p-3 border-b border-slate-800">
+            <button
+              onClick={exitToAccount}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all ${
+                sidebarCollapsed ? 'justify-center px-3' : ''
+              }`}
+              title={sidebarCollapsed ? 'Back to Account' : undefined}
+            >
+              <ArrowLeft size={18} />
+              {!sidebarCollapsed && <span className="text-sm">Back to Account</span>}
+            </button>
+          </div>
+        )}
+
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activePanel === item.id;
+            const isActive = activePanel === item.id ||
+              (item.id === 'auction-overview' && activePanel === 'auction-detail');
             return (
               <button
                 key={item.id}
@@ -285,11 +498,14 @@ export default function Dashboard() {
                 {menuItems.find(m => m.id === activePanel)?.label || 'Dashboard'}
               </p>
               <h2 className="text-2xl font-bold text-white">
-                {tournament?.name || 'Player Auction'}
+                {viewMode === 'auction' && tournament?.name
+                  ? tournament.name
+                  : 'My Account'}
               </h2>
             </div>
             <div className="flex items-center gap-4">
-              {tournament?.share_code && (
+              {/* Only show share code when inside an auction */}
+              {viewMode === 'auction' && tournament?.share_code && (
                 <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 rounded-xl border border-slate-700">
                   <span className="text-sm text-slate-400">Share Code:</span>
                   <span className="font-mono font-bold text-amber-400">{tournament.share_code}</span>
@@ -319,123 +535,452 @@ export default function Dashboard() {
   );
 }
 
-// Dashboard Home Component
-interface DashboardHomeProps {
+// Account Dashboard - Shows all auctions for the account
+interface AccountDashboardProps {
+  user: any;
+  tournaments: any[];
+  currentTournament: any;
+  onNavigate: (panel: SidebarPanel) => void;
+  onEnterAuction: (tournament: any) => void;
+  onRefresh: () => void;
+  onTournamentDeleted: () => void;
+}
+
+function AccountDashboard({ user, tournaments, currentTournament, onNavigate, onEnterAuction, onRefresh, onTournamentDeleted }: AccountDashboardProps) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const { setAuth } = useAuthStore();
+
+  const handleEnterAuction = async (tournament: any) => {
+    try {
+      const response = await api.selectTournament(tournament.id);
+      api.setToken(response.token);
+      if (user) {
+        setAuth(user, response.tournament, response.token);
+      }
+      onEnterAuction(response.tournament);
+    } catch (err) {
+      alert('Failed to open auction');
+      console.error(err);
+    }
+  };
+
+  const handleDelete = async (tournament: any) => {
+    if (!confirm(`Are you sure you want to delete "${tournament.name}"?\n\nThis will permanently delete:\n• All teams\n• All players\n• All categories\n• All auction data\n\nThis action cannot be undone!`)) {
+      return;
+    }
+
+    if (!confirm('This is your FINAL warning. Delete this auction permanently?')) {
+      return;
+    }
+
+    setDeleting(tournament.id);
+    try {
+      await api.deleteTournamentById(tournament.id);
+      onRefresh();
+      if (currentTournament?.id === tournament.id) {
+        onTournamentDeleted();
+      }
+    } catch (err) {
+      alert('Failed to delete auction');
+      console.error(err);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  // Calculate account-wide stats
+  const totalPlayers = tournaments.reduce((sum, t) => sum + (t.player_count || 0), 0);
+  const totalTeams = tournaments.reduce((sum, t) => sum + (t.team_count || 0), 0);
+
+  return (
+    <div className="space-y-8">
+      {/* Welcome Header */}
+      <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-2xl p-6">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center">
+            <User size={32} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Welcome back, {user?.name || 'Admin'}!</h1>
+            <p className="text-slate-400">Manage your auctions from one place</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Account Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
+              <Trophy className="text-blue-400" size={20} />
+            </div>
+            <span className="text-slate-400">Total Auctions</span>
+          </div>
+          <p className="text-3xl font-bold text-white">{tournaments.length}</p>
+        </div>
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
+              <Users className="text-green-400" size={20} />
+            </div>
+            <span className="text-slate-400">Total Teams</span>
+          </div>
+          <p className="text-3xl font-bold text-white">{totalTeams}</p>
+        </div>
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
+              <UserPlus className="text-purple-400" size={20} />
+            </div>
+            <span className="text-slate-400">Total Players</span>
+          </div>
+          <p className="text-3xl font-bold text-white">{totalPlayers}</p>
+        </div>
+      </div>
+
+      {/* My Auctions */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white">My Auctions</h2>
+          <button
+            onClick={() => onNavigate('new-auction')}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-medium rounded-xl transition-all"
+          >
+            <Plus size={18} />
+            New Auction
+          </button>
+        </div>
+
+        {tournaments.length === 0 ? (
+          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center">
+            <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Trophy size={40} className="text-slate-600" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">No auctions yet</h3>
+            <p className="text-slate-400 mb-6">Create your first auction to get started</p>
+            <button
+              onClick={() => onNavigate('new-auction')}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold rounded-xl transition-all"
+            >
+              <Plus size={20} />
+              Create Your First Auction
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {tournaments.map((t) => (
+              <div
+                key={t.id}
+                className="bg-slate-900/50 border border-slate-800 hover:border-amber-500/30 rounded-2xl p-5 transition-all group"
+              >
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {t.logo_url ? (
+                      <img src={t.logo_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Trophy size={24} className="text-amber-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-white truncate">{t.name}</h3>
+                    <p className="text-sm text-amber-400">{t.share_code}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {t.team_count || 0} teams • {t.player_count || 0} players
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    t.status === 'live'
+                      ? 'bg-green-500/20 text-green-400'
+                      : t.status === 'completed'
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {t.status?.toUpperCase() || 'SETUP'}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleEnterAuction(t)}
+                      className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-medium rounded-lg transition-all text-sm"
+                    >
+                      Manage
+                    </button>
+                    <button
+                      onClick={() => handleDelete(t)}
+                      disabled={deleting === t.id}
+                      className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Create New Card */}
+            <button
+              onClick={() => onNavigate('new-auction')}
+              className="bg-slate-900/30 border-2 border-dashed border-slate-700 hover:border-amber-500/50 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 transition-all group min-h-[180px]"
+            >
+              <div className="w-14 h-14 bg-slate-800 group-hover:bg-amber-500/20 rounded-xl flex items-center justify-center transition-all">
+                <Plus size={28} className="text-slate-500 group-hover:text-amber-400 transition-colors" />
+              </div>
+              <span className="text-slate-500 group-hover:text-white font-medium transition-colors">Create New Auction</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Auction Overview - Shows overview when inside a specific auction
+interface AuctionOverviewProps {
   tournament: any;
   teams: Team[];
   players: Player[];
-  soldPlayers: number;
-  totalSpent: number;
+  categories: Category[];
   onNavigate: (panel: SidebarPanel) => void;
+  onRefresh: () => void;
+  onTournamentDeleted: () => void;
 }
 
-function DashboardHome({ tournament, teams, players, soldPlayers, totalSpent, onNavigate }: DashboardHomeProps) {
+function AuctionOverview({ tournament, teams, players, categories, onNavigate, onRefresh: _onRefresh, onTournamentDeleted }: AuctionOverviewProps) {
+  const [deleting, setDeleting] = useState(false);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
+
+  const soldPlayers = players.filter(p => p.status === 'sold').length;
+  const availablePlayers = players.filter(p => p.status === 'available').length;
+  const totalSpent = players.filter(p => p.status === 'sold').reduce((sum, p) => sum + (p.sold_price || 0), 0);
+
+  const baseUrl = window.location.origin;
+  const publicViewUrl = `${baseUrl}/live/${tournament?.share_code}`;
+  const overlayUrl = `${baseUrl}/overlay/${tournament?.share_code}`;
+
+  const copyToClipboard = (text: string, linkType: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedLink(linkType);
+    setTimeout(() => setCopiedLink(null), 2000);
+  };
+
+  const handleDelete = async () => {
+    if (!tournament?.id) return;
+
+    if (!confirm(`Are you sure you want to delete "${tournament.name}"?\n\nThis will permanently delete:\n• All teams\n• All players\n• All categories\n• All auction data\n\nThis action cannot be undone!`)) {
+      return;
+    }
+
+    if (!confirm('This is your FINAL warning. Delete this auction permanently?')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await api.deleteTournamentById(tournament.id);
+      alert('Auction deleted successfully!');
+      onTournamentDeleted();
+    } catch (err) {
+      alert('Failed to delete auction');
+      console.error(err);
+      setDeleting(false);
+    }
+  };
+
+  if (!tournament) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-slate-400">No auction selected</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-8">
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-6">
+      {/* Auction Header */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+          <div className="w-20 h-20 bg-gradient-to-br from-amber-500/20 to-orange-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+            {tournament.logo_url ? (
+              <img src={tournament.logo_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <Trophy size={36} className="text-amber-400" />
+            )}
+          </div>
+
+          <div className="flex-1">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-amber-400 font-medium">{tournament.share_code}</span>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    tournament.status === 'live'
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {tournament.status?.toUpperCase() || 'SETUP'}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl transition-all disabled:opacity-50"
+                title="Delete Auction"
+              >
+                <Trash2 size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           icon={<Users className="text-blue-400" />}
-          label="Total Teams"
+          label="Teams"
           value={teams.length}
           color="blue"
         />
         <StatCard
-          icon={<Trophy className="text-amber-400" />}
-          label="Players Sold"
-          value={soldPlayers}
-          subtext={`of ${players.length}`}
-          color="amber"
-        />
-        <StatCard
-          icon={<TrendingUp className="text-green-400" />}
-          label="Total Spent"
-          value={`₹${totalSpent.toLocaleString('en-IN')}`}
+          icon={<UserPlus className="text-green-400" />}
+          label="Players"
+          value={players.length}
+          subtext={`${soldPlayers} sold`}
           color="green"
         />
         <StatCard
-          icon={<Calendar className="text-purple-400" />}
-          label="Status"
-          value={tournament?.status || 'Setup'}
+          icon={<Tags className="text-purple-400" />}
+          label="Categories"
+          value={categories.length}
           color="purple"
+        />
+        <StatCard
+          icon={<TrendingUp className="text-amber-400" />}
+          label="Total Spent"
+          value={`₹${totalSpent.toLocaleString('en-IN')}`}
+          color="amber"
         />
       </div>
 
       {/* Quick Actions */}
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <ActionCard
-            icon={<Plus size={32} />}
-            title="New"
-            subtitle="Auction"
-            onClick={() => onNavigate('new-auction')}
-            color="amber"
-          />
-          <ActionCard
-            icon={<History size={32} />}
-            title="My"
-            subtitle="Auctions"
-            onClick={() => onNavigate('my-auctions')}
-            color="blue"
-          />
-          <ActionCard
-            icon={<Gavel size={32} />}
-            title="Auction"
-            subtitle="Panel"
-            onClick={() => onNavigate('auction-panel')}
-            color="green"
-          />
-          <ActionCard
-            icon={<User size={32} />}
-            title="My"
-            subtitle="Profile"
-            onClick={() => onNavigate('profile')}
-            color="purple"
-          />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <button
+          onClick={() => onNavigate('teams')}
+          className="bg-slate-900/50 border border-slate-800 hover:border-blue-500/30 rounded-xl p-4 text-left transition-all group"
+        >
+          <Users className="text-blue-400 mb-2" size={24} />
+          <h3 className="font-semibold text-white group-hover:text-blue-400 transition-colors">Manage Teams</h3>
+          <p className="text-sm text-slate-400">{teams.length} teams created</p>
+        </button>
+        <button
+          onClick={() => onNavigate('players-list')}
+          className="bg-slate-900/50 border border-slate-800 hover:border-green-500/30 rounded-xl p-4 text-left transition-all group"
+        >
+          <UserPlus className="text-green-400 mb-2" size={24} />
+          <h3 className="font-semibold text-white group-hover:text-green-400 transition-colors">Manage Players</h3>
+          <p className="text-sm text-slate-400">{availablePlayers} available</p>
+        </button>
+        <button
+          onClick={() => onNavigate('categories')}
+          className="bg-slate-900/50 border border-slate-800 hover:border-purple-500/30 rounded-xl p-4 text-left transition-all group"
+        >
+          <Tags className="text-purple-400 mb-2" size={24} />
+          <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">Categories</h3>
+          <p className="text-sm text-slate-400">{categories.length} categories</p>
+        </button>
+        <button
+          onClick={() => onNavigate('auction-panel')}
+          className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 hover:border-amber-500/50 rounded-xl p-4 text-left transition-all group"
+        >
+          <Gavel className="text-amber-400 mb-2" size={24} />
+          <h3 className="font-semibold text-amber-400">Open Auction</h3>
+          <p className="text-sm text-slate-400">Start live bidding</p>
+        </button>
+      </div>
+
+      {/* Links Section */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Sharing Links</h3>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 bg-slate-800/50 rounded-xl p-3">
+            <div className="flex-1">
+              <p className="text-xs text-slate-500 mb-1">Public View URL</p>
+              <p className="text-sm text-white font-mono truncate">{publicViewUrl}</p>
+            </div>
+            <button
+              onClick={() => copyToClipboard(publicViewUrl, 'public')}
+              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              {copiedLink === 'public' ? (
+                <Check size={18} className="text-green-400" />
+              ) : (
+                <Copy size={18} className="text-slate-400" />
+              )}
+            </button>
+            <a
+              href={publicViewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              <ExternalLink size={18} className="text-slate-400" />
+            </a>
+          </div>
+
+          <div className="flex items-center gap-3 bg-slate-800/50 rounded-xl p-3">
+            <div className="flex-1">
+              <p className="text-xs text-slate-500 mb-1">OBS/Streaming Overlay</p>
+              <p className="text-sm text-white font-mono truncate">{overlayUrl}</p>
+            </div>
+            <button
+              onClick={() => copyToClipboard(overlayUrl, 'overlay')}
+              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              {copiedLink === 'overlay' ? (
+                <Check size={18} className="text-green-400" />
+              ) : (
+                <Copy size={18} className="text-slate-400" />
+              )}
+            </button>
+            <a
+              href={overlayUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              <ExternalLink size={18} className="text-slate-400" />
+            </a>
+          </div>
         </div>
       </div>
 
-      {/* Current Auction Info */}
-      {tournament && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Current Auction</h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-              tournament.status === 'live'
-                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-            }`}>
-              {tournament.status?.toUpperCase() || 'SETUP'}
-            </span>
+      {/* Auction Settings Summary */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Auction Settings</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Team Budget</p>
+            <p className="text-white font-semibold">₹{tournament.total_points?.toLocaleString('en-IN')}</p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-slate-500">Tournament</p>
-              <p className="text-white font-medium">{tournament.name}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Team Budget</p>
-              <p className="text-white font-medium">₹{tournament.total_points?.toLocaleString('en-IN')}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Min Players</p>
-              <p className="text-white font-medium">{tournament.min_players}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Max Players</p>
-              <p className="text-white font-medium">{tournament.max_players}</p>
-            </div>
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Base Bid</p>
+            <p className="text-white font-semibold">₹{tournament.default_base_bid?.toLocaleString('en-IN')}</p>
           </div>
-          <button
-            onClick={() => onNavigate('auction-panel')}
-            className="mt-6 w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
-          >
-            <Gavel size={20} />
-            Open Auction Panel
-          </button>
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Bid Increment</p>
+            <p className="text-white font-semibold">₹{tournament.bid_increment?.toLocaleString('en-IN')}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Players per Team</p>
+            <p className="text-white font-semibold">{tournament.min_players} - {tournament.max_players}</p>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -470,35 +1015,6 @@ function StatCard({ icon, label, value, subtext, color }: StatCardProps) {
         {subtext && <span className="text-sm text-slate-500 font-normal ml-1">{subtext}</span>}
       </p>
     </div>
-  );
-}
-
-// Action Card Component
-interface ActionCardProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
-  color: 'amber' | 'blue' | 'green' | 'purple';
-}
-
-function ActionCard({ icon, title, subtitle, onClick, color }: ActionCardProps) {
-  const colorClasses = {
-    amber: 'hover:border-amber-500/50 hover:bg-amber-500/5 text-amber-400',
-    blue: 'hover:border-blue-500/50 hover:bg-blue-500/5 text-blue-400',
-    green: 'hover:border-green-500/50 hover:bg-green-500/5 text-green-400',
-    purple: 'hover:border-purple-500/50 hover:bg-purple-500/5 text-purple-400',
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={`bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-left transition-all hover:scale-[1.02] ${colorClasses[color]}`}
-    >
-      <div className="mb-4 opacity-80">{icon}</div>
-      <p className="text-2xl font-bold text-white">{title}</p>
-      <p className="text-slate-400">{subtitle}</p>
-    </button>
   );
 }
 
@@ -986,7 +1502,7 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
 }
 
 // My Auctions Panel
-function MyAuctionsPanel({ tournament, onNavigate, onRefresh }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onRefresh: () => void }) {
+function MyAuctionsPanel({ tournament, onNavigate, onRefresh, onTournamentDeleted, onEnterAuction }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onRefresh: () => void; onTournamentDeleted: () => void; onEnterAuction?: (tournament: any) => void }) {
   const [allTournaments, setAllTournaments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -1008,15 +1524,40 @@ function MyAuctionsPanel({ tournament, onNavigate, onRefresh }: { tournament: an
     }
   };
 
-  const handleSwitch = async (tournamentId: string) => {
-    if (tournament?.id === tournamentId) {
+  const handleSwitch = async (tournamentData: any) => {
+    // If onEnterAuction is provided, use the new flow
+    if (onEnterAuction) {
+      if (tournament?.id === tournamentData.id) {
+        onEnterAuction(tournamentData);
+        return;
+      }
+
+      setSwitching(tournamentData.id);
+      try {
+        const response = await api.selectTournament(tournamentData.id);
+        api.setToken(response.token);
+        if (user) {
+          setAuth(user, response.tournament, response.token);
+        }
+        onEnterAuction(response.tournament);
+      } catch (err) {
+        alert('Failed to open auction');
+        console.error(err);
+      } finally {
+        setSwitching(null);
+      }
+      return;
+    }
+
+    // Legacy flow
+    if (tournament?.id === tournamentData.id) {
       onNavigate('auction-detail');
       return;
     }
 
-    setSwitching(tournamentId);
+    setSwitching(tournamentData.id);
     try {
-      const response = await api.selectTournament(tournamentId);
+      const response = await api.selectTournament(tournamentData.id);
       api.setToken(response.token);
       if (user) {
         setAuth(user, response.tournament, response.token);
@@ -1040,26 +1581,16 @@ function MyAuctionsPanel({ tournament, onNavigate, onRefresh }: { tournament: an
       return;
     }
 
-    // If deleting the current tournament, switch to it first
-    if (tournament?.id !== tournamentToDelete.id) {
-      try {
-        const response = await api.selectTournament(tournamentToDelete.id);
-        api.setToken(response.token);
-      } catch (err) {
-        alert('Failed to access tournament for deletion');
-        return;
-      }
-    }
-
     setDeleting(tournamentToDelete.id);
     try {
-      await api.deleteTournament();
+      // Use explicit ID delete - no need to switch tournaments
+      await api.deleteTournamentById(tournamentToDelete.id);
       alert('Auction deleted successfully!');
       // Reload tournaments list
       await loadAllTournaments();
-      // If we deleted the current one, refresh to clear state
+      // If we deleted the current one, clear it from state
       if (tournament?.id === tournamentToDelete.id) {
-        onRefresh();
+        onTournamentDeleted();
       }
     } catch (err) {
       alert('Failed to delete auction');
@@ -1104,7 +1635,7 @@ function MyAuctionsPanel({ tournament, onNavigate, onRefresh }: { tournament: an
                 <div className="flex items-center gap-4">
                   <div
                     className="flex-1 flex items-center gap-4 cursor-pointer"
-                    onClick={() => handleSwitch(t.id)}
+                    onClick={() => handleSwitch(t)}
                   >
                     <div className={`w-14 h-14 rounded-xl flex items-center justify-center border ${
                       isActive
@@ -1144,7 +1675,7 @@ function MyAuctionsPanel({ tournament, onNavigate, onRefresh }: { tournament: an
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleSwitch(t.id)}
+                      onClick={() => handleSwitch(t)}
                       disabled={switching === t.id}
                       className={`px-4 py-2 rounded-xl font-medium transition-all ${
                         isActive
@@ -1191,11 +1722,14 @@ interface AuctionDetailPanelProps {
   players: Player[];
   categories: Category[];
   onNavigate: (panel: SidebarPanel) => void;
+  onRefresh: () => void;
+  onTournamentDeleted: () => void;
 }
 
-function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate }: AuctionDetailPanelProps) {
+function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate, onRefresh: _onRefresh, onTournamentDeleted }: AuctionDetailPanelProps) {
   const [selfRegistrationEnabled, setSelfRegistrationEnabled] = useState(false);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const baseUrl = window.location.origin;
   const publicViewUrl = `${baseUrl}/live/${tournament?.share_code}`;
@@ -1206,6 +1740,34 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
     navigator.clipboard.writeText(text);
     setCopiedLink(linkType);
     setTimeout(() => setCopiedLink(null), 2000);
+  };
+
+  const handleDeleteTournament = async () => {
+    if (!tournament?.id) {
+      alert('No tournament selected');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${tournament?.name}"?\n\nThis will permanently delete:\n• All teams\n• All players\n• All categories\n• All auction data\n\nThis action cannot be undone!`)) {
+      return;
+    }
+
+    if (!confirm('This is your FINAL warning. Delete this auction permanently?')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      // Use explicit ID delete
+      await api.deleteTournamentById(tournament.id);
+      alert('Auction deleted successfully!');
+      // Clear tournament from state and navigate away
+      onTournamentDeleted();
+    } catch (err) {
+      alert('Failed to delete auction');
+      console.error(err);
+      setDeleting(false);
+    }
   };
 
   const soldPlayers = players.filter(p => p.status === 'sold').length;
@@ -1315,13 +1877,16 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
               )}
             </button>
             <button
+              onClick={() => onNavigate('auction-panel')}
               className="w-12 h-12 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 rounded-xl flex items-center justify-center text-amber-400 transition-colors"
-              title="Edit"
+              title="Edit Settings"
             >
               <Edit3 size={20} />
             </button>
             <button
-              className="w-12 h-12 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl flex items-center justify-center text-red-400 transition-colors"
+              onClick={handleDeleteTournament}
+              disabled={deleting}
+              className="w-12 h-12 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl flex items-center justify-center text-red-400 transition-colors disabled:opacity-50"
               title="Delete"
             >
               <Trash2 size={20} />
@@ -1677,7 +2242,7 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
 }
 
 // Auction Panel Wrapper - handles demo mode when no tournament exists
-function AuctionPanelWrapper({ tournament }: { tournament: any }) {
+function AuctionPanelWrapper({ tournament, onClose }: { tournament: any; onClose?: () => void }) {
   const [demoMode, setDemoMode] = useState(false);
   const [loading, setLoading] = useState(!tournament);
   const { setAuth, user } = useAuthStore();
@@ -1741,14 +2306,20 @@ function AuctionPanelWrapper({ tournament }: { tournament: any }) {
 
       {/* Add padding when demo banner is shown */}
       <div className={demoMode ? 'pt-10' : ''}>
-        <ProAuctionLayout />
+        <Suspense fallback={
+          <div className="h-full flex items-center justify-center bg-slate-950">
+            <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+          </div>
+        }>
+          <ProAuctionLayout onClose={onClose} />
+        </Suspense>
       </div>
     </div>
   );
 }
 
 // Profile Panel
-function ProfilePanel({ user, tournament }: { user: any; tournament: any }) {
+function ProfilePanel({ user, tournament, viewMode }: { user: any; tournament: any; viewMode: ViewMode }) {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Profile Card */}
@@ -1759,7 +2330,7 @@ function ProfilePanel({ user, tournament }: { user: any; tournament: any }) {
           </div>
           <div>
             <h3 className="text-2xl font-bold text-white">{user?.mobile || 'User'}</h3>
-            <p className="text-slate-400">Tournament Admin</p>
+            <p className="text-slate-400">Account Admin</p>
             <span className="inline-flex items-center gap-1 mt-2 px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm border border-green-500/30">
               <Sparkles size={14} />
               Active
@@ -1779,10 +2350,10 @@ function ProfilePanel({ user, tournament }: { user: any; tournament: any }) {
         </div>
       </div>
 
-      {/* Tournament Info */}
-      {tournament && (
+      {/* Only show Tournament Info when in auction mode (actually inside an auction) */}
+      {viewMode === 'auction' && tournament && (
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
-          <h4 className="text-lg font-semibold text-white mb-4">Current Tournament</h4>
+          <h4 className="text-lg font-semibold text-white mb-4">Current Auction</h4>
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-slate-400">Name</span>
@@ -2423,9 +2994,10 @@ function CreateCategoryPanel({ tournament: _tournament, onNavigate, onCategoryCr
 // Players List Panel
 function PlayersListPanel({ tournament, players, categories, onNavigate, onRefresh }: { tournament: any; players: Player[]; categories: Category[]; onNavigate: (panel: SidebarPanel) => void; onRefresh: () => void }) {
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
   const handleDelete = async (playerId: string) => {
-    if (!confirm('Are you sure you want to delete this player?')) return;
     setDeleting(playerId);
     try {
       await api.deletePlayer(playerId);
@@ -2437,9 +3009,30 @@ function PlayersListPanel({ tournament, players, categories, onNavigate, onRefre
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    setDownloadingTemplate(true);
+    try {
+      const { downloadExcelTemplate } = await import('../components/import/ExcelTemplateGenerator');
+      await downloadExcelTemplate(categories);
+    } catch (err) {
+      console.error('Failed to download template:', err);
+      alert('Failed to download template');
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
+  const handleImportComplete = () => {
+    setShowImportModal(false);
+    onRefresh();
+  };
+
   const getCategoryName = (categoryId: string) => {
     return categories.find(c => c.id === categoryId)?.name || 'Unknown';
   };
+
+  // Dynamic import for ExcelImportModal
+  const ExcelImportModal = React.lazy(() => import('../components/import/ExcelImportModal'));
 
   return (
     <div className="space-y-6">
@@ -2447,7 +3040,7 @@ function PlayersListPanel({ tournament, players, categories, onNavigate, onRefre
       <div className="flex items-center gap-2 text-sm">
         <button onClick={() => onNavigate('dashboard')} className="text-slate-500 hover:text-white transition-colors">HOME</button>
         <span className="text-slate-600">&gt;</span>
-        <button onClick={() => onNavigate('auction-detail')} className="text-slate-500 hover:text-white transition-colors">AUCTION DETAIL</button>
+        <button onClick={() => onNavigate('auction-overview')} className="text-slate-500 hover:text-white transition-colors">AUCTION</button>
         <span className="text-slate-600">&gt;</span>
         <span className="text-amber-400">PLAYERS</span>
       </div>
@@ -2458,14 +3051,42 @@ function PlayersListPanel({ tournament, players, categories, onNavigate, onRefre
           <p className="text-sm text-amber-400 uppercase">{tournament?.name}</p>
           <h2 className="text-3xl font-bold text-white">PLAYERS</h2>
         </div>
-        <button
-          onClick={() => onNavigate('create-player')}
-          className="px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 rounded-xl text-white font-semibold transition-colors flex items-center gap-2"
-        >
-          <Plus size={18} />
-          ADD
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleDownloadTemplate}
+            disabled={downloadingTemplate}
+            className="px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-white font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            <Download size={18} />
+            {downloadingTemplate ? 'Downloading...' : 'Template'}
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-4 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-semibold transition-colors flex items-center gap-2"
+          >
+            <FileSpreadsheet size={18} />
+            Import Excel
+          </button>
+          <button
+            onClick={() => onNavigate('create-player')}
+            className="px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 rounded-xl text-white font-semibold transition-colors flex items-center gap-2"
+          >
+            <Plus size={18} />
+            ADD
+          </button>
+        </div>
       </div>
+
+      {/* Excel Import Modal */}
+      {showImportModal && (
+        <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+          <ExcelImportModal
+            categories={categories}
+            onClose={() => setShowImportModal(false)}
+            onSuccess={handleImportComplete}
+          />
+        </React.Suspense>
+      )}
 
       {/* Players Grid */}
       {players.length === 0 ? (
@@ -3546,38 +4167,62 @@ function FullAuctionLayout({ onBack }: { onBack: () => void }) {
     { key: 'manage' as const, label: 'Manage', icon: Settings },
   ];
 
+  // Loading fallback for lazy-loaded components
+  const LoadingFallback = () => (
+    <div className="h-full flex items-center justify-center bg-slate-950">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+        <p className="text-slate-400">Loading...</p>
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeTab) {
       case 'auction':
-        return <ProAuctionLayout />;
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <ProAuctionLayout onClose={onBack} />
+          </Suspense>
+        );
       case 'summary':
         return (
           <div className="h-full overflow-auto p-4 bg-slate-950">
-            <SummaryPanel />
+            <Suspense fallback={<LoadingFallback />}>
+              <SummaryPanel />
+            </Suspense>
           </div>
         );
       case 'players':
         return (
           <div className="h-full overflow-auto p-4 bg-slate-950">
-            <PlayersPanel />
+            <Suspense fallback={<LoadingFallback />}>
+              <PlayersPanel />
+            </Suspense>
           </div>
         );
       case 'category':
         return (
           <div className="h-full overflow-auto p-4 bg-slate-950">
-            <CategoryPanel />
+            <Suspense fallback={<LoadingFallback />}>
+              <CategoryPanel />
+            </Suspense>
           </div>
         );
       case 'retention':
         return (
           <div className="h-full overflow-auto p-4 bg-slate-950">
-            <RetentionPanel />
+            <Suspense fallback={<LoadingFallback />}>
+              <RetentionPanel />
+            </Suspense>
           </div>
         );
       case 'stats':
         return (
           <div className="h-full overflow-auto p-4 bg-slate-950">
-            <StatsPanel />
+            <Suspense fallback={<LoadingFallback />}>
+              <StatsPanel />
+            </Suspense>
           </div>
         );
       case 'manage':
@@ -3593,11 +4238,17 @@ function FullAuctionLayout({ onBack }: { onBack: () => void }) {
                 <span>Back to Dashboard</span>
               </button>
             </div>
-            <ManagePanel />
+            <Suspense fallback={<LoadingFallback />}>
+              <ManagePanel />
+            </Suspense>
           </div>
         );
       default:
-        return <ProAuctionLayout />;
+        return (
+          <Suspense fallback={<LoadingFallback />}>
+            <ProAuctionLayout onClose={onBack} />
+          </Suspense>
+        );
     }
   };
 
