@@ -7,6 +7,7 @@ import { z } from 'zod';
 const router = Router();
 
 const registerSchema = z.object({
+  email: z.string().email(),
   mobile: z.string().min(10).max(15),
   password: z.string().min(6),
   tournamentName: z.string().min(1),
@@ -16,8 +17,88 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  mobile: z.string().min(1),
+  identifier: z.string().min(1), // Can be email or mobile
   password: z.string().min(1)
+});
+
+const signupSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  mobile: z.string().min(10).max(15),
+  password: z.string().min(6),
+  state: z.string().min(1),
+  city: z.string().min(1),
+});
+
+// Signup - Create user only (no tournament)
+router.post('/signup', async (req: Request, res: Response) => {
+  try {
+    const data = signupSchema.parse(req.body);
+
+    // Check if email already exists
+    const { data: existingEmail } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', data.email)
+      .single();
+
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    // Check if mobile already exists
+    const { data: existingMobile } = await supabase
+      .from('users')
+      .select('id')
+      .eq('mobile', data.mobile)
+      .single();
+
+    if (existingMobile) {
+      return res.status(400).json({ error: 'Mobile number already registered' });
+    }
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(data.password, 10);
+
+    // Create user without tournament
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .insert({
+        name: data.name,
+        email: data.email,
+        mobile: data.mobile,
+        password_hash: passwordHash,
+        state: data.state,
+        city: data.city,
+        tournament_id: null
+      })
+      .select()
+      .single();
+
+    if (userError) {
+      console.error('User creation error:', userError);
+      return res.status(500).json({ error: 'Failed to create user' });
+    }
+
+    // Generate JWT
+    const token = jwt.sign(
+      { userId: user.id, tournamentId: null },
+      process.env.JWT_SECRET!,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      token,
+      user: { id: user.id, name: user.name, email: user.email, mobile: user.mobile, state: user.state, city: user.city },
+      tournament: null
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Signup failed' });
+  }
 });
 
 // Register new user and create tournament
@@ -25,14 +106,25 @@ router.post('/register', async (req: Request, res: Response) => {
   try {
     const data = registerSchema.parse(req.body);
 
+    // Check if email already exists
+    const { data: existingEmail } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', data.email)
+      .single();
+
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
     // Check if mobile already exists
-    const { data: existingUser } = await supabase
+    const { data: existingMobile } = await supabase
       .from('users')
       .select('id')
       .eq('mobile', data.mobile)
       .single();
 
-    if (existingUser) {
+    if (existingMobile) {
       return res.status(400).json({ error: 'Mobile number already registered' });
     }
 
@@ -66,6 +158,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const { data: user, error: userError } = await supabase
       .from('users')
       .insert({
+        email: data.email,
         mobile: data.mobile,
         password_hash: passwordHash,
         tournament_id: tournament.id
@@ -104,7 +197,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     res.status(201).json({
       token,
-      user: { id: user.id, mobile: user.mobile },
+      user: { id: user.id, email: user.email, mobile: user.mobile },
       tournament: tournament  // Return full tournament object
     });
   } catch (error) {
@@ -123,7 +216,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Demo credentials - only available in development
     const isDevelopment = process.env.NODE_ENV !== 'production';
-    if (isDevelopment && data.mobile === 'demo' && data.password === 'demo123') {
+    if (isDevelopment && data.identifier === 'demo' && data.password === 'demo123') {
       // Find or create demo tournament
       let { data: tournament } = await supabase
         .from('tournaments')
@@ -199,11 +292,12 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
-    // Regular login
+    // Regular login - check if identifier is email or mobile
+    const isEmail = data.identifier.includes('@');
     const { data: user, error } = await supabase
       .from('users')
-      .select('*, tournaments(*)')
-      .eq('mobile', data.mobile)
+      .select('*')
+      .eq(isEmail ? 'email' : 'mobile', data.identifier)
       .single();
 
     if (error || !user) {
@@ -215,18 +309,27 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Fetch tournament separately if user has one
+    let tournament = null;
+    if (user.tournament_id) {
+      const { data: tournamentData } = await supabase
+        .from('tournaments')
+        .select('*')
+        .eq('id', user.tournament_id)
+        .single();
+      tournament = tournamentData;
+    }
+
     const token = jwt.sign(
       { userId: user.id, tournamentId: user.tournament_id },
       process.env.JWT_SECRET!,
       { expiresIn: '7d' }
     );
 
-    // user.tournaments is a nested object from the join, not an array
-    const tournament = Array.isArray(user.tournaments) ? user.tournaments[0] : user.tournaments;
     res.json({
       token,
-      user: { id: user.id, mobile: user.mobile },
-      tournament: tournament || null  // Return full tournament object
+      user: { id: user.id, email: user.email, mobile: user.mobile },
+      tournament: tournament
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

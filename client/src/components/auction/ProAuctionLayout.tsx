@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuctionStore } from '../../stores/auctionStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
@@ -19,19 +19,24 @@ import AnimatedBackground from './AnimatedBackground';
 import FortuneWheel from './FortuneWheel';
 import PlayerEntryAnimation from './PlayerEntryAnimation';
 import BudgetAlerts from '../common/BudgetAlerts';
-import { PremiumBroadcastLayout, FireBroadcastLayout, CityBroadcastLayout } from './layouts';
+import { PremiumBroadcastLayout, FireBroadcastLayout, CityBroadcastLayout, BreakScreen } from './layouts';
 import PremiumPlayerEntry from './layouts/PremiumPlayerEntry';
 import FirePlayerEntry from './FirePlayerEntry';
 import FireSoldAnimation from './FireSoldAnimation';
 import CityPlayerEntry from './CityPlayerEntry';
 import CitySoldAnimation from './CitySoldAnimation';
+import ClassicIdleScreen from './layouts/ClassicIdleScreen';
 import { getBidIncrement } from '../../config/budgetPresets';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout, Undo2 } from 'lucide-react';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout, Undo2, Pause } from 'lucide-react';
 import RoleFilterDropdown from './RoleFilterDropdown';
 
-export default function ProAuctionLayout() {
+interface ProAuctionLayoutProps {
+  onClose?: () => void;
+}
+
+export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   const { tournament } = useAuthStore();
-  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode, showSponsors, sponsorRotationInterval } = useUIStore();
+  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode, showSponsors, sponsorRotationInterval, isAuctionPaused, setAuctionPaused } = useUIStore();
   const template = getTemplate(selectedThemeId);
   const {
     currentPlayer,
@@ -63,32 +68,55 @@ export default function ProAuctionLayout() {
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
 
+  // Debounced loadTeams to prevent multiple rapid calls (must be defined before useEffect that uses it)
+  const loadTeamsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadTeams = useCallback(async () => {
+    // Clear any pending load
+    if (loadTeamsTimeoutRef.current) {
+      clearTimeout(loadTeamsTimeoutRef.current);
+    }
+    // Debounce: wait 300ms before actually loading
+    loadTeamsTimeoutRef.current = setTimeout(async () => {
+      try {
+        const data = await api.getTeams() as Team[];
+        setTeams(data);
+      } catch (error) {
+        console.error('Failed to load teams:', error);
+      }
+    }, 300);
+  }, []);
+
   useEffect(() => {
     if (!tournament?.id) return;
 
     // Connect to socket and join tournament room
     socketClient.connect(tournament.id);
 
-    loadTeams();
+    // Initial load (immediate, no debounce)
+    api.getTeams().then(data => setTeams(data as Team[])).catch(console.error);
     loadAuctionState();
 
-    // Listen for auction state updates from server
-    socketClient.onAuctionState((state) => {
+    // Define handlers for proper cleanup
+    const handleAuctionState = (state: any) => {
       setAuctionState(state);
-    });
+    };
 
-    socketClient.onTeamsUpdated(() => {
-      loadTeams();
-    });
+    const handleTeamsUpdated = () => {
+      loadTeams(); // Uses debounced version
+    };
 
-    socketClient.onPlayersUpdated(() => {
-      // Refresh players if needed
-    });
+    // Listen for auction state updates from server
+    socketClient.onAuctionState(handleAuctionState);
+    socketClient.onTeamsUpdated(handleTeamsUpdated);
 
+    // Cleanup: remove specific listeners and clear debounce timeout
     return () => {
       socketClient.removeAllListeners();
+      if (loadTeamsTimeoutRef.current) {
+        clearTimeout(loadTeamsTimeoutRef.current);
+      }
     };
-  }, [tournament?.id, setAuctionState]);
+  }, [tournament?.id, setAuctionState, loadTeams]);
 
   useEffect(() => {
     if (status === 'bidding' && currentBid !== previousBidRef.current) {
@@ -137,15 +165,6 @@ export default function ProAuctionLayout() {
     // Only depend on status to prevent retriggering from object reference changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
-
-  const loadTeams = async () => {
-    try {
-      const data = await api.getTeams() as Team[];
-      setTeams(data);
-    } catch (error) {
-      console.error('Failed to load teams:', error);
-    }
-  };
 
   // Load sponsors
   useEffect(() => {
@@ -201,7 +220,12 @@ export default function ProAuctionLayout() {
         });
       }
     } catch (error: any) {
-      alert(error.message || 'No available players');
+      // Show more specific message if filters are active
+      const hasFilter = selectedCategoryId || selectedRoleCategory;
+      const defaultMsg = hasFilter
+        ? 'No players available in this category/role. Try clearing the filter.'
+        : 'No available players';
+      alert(error.message || defaultMsg);
     } finally {
       setLoading(false);
     }
@@ -212,7 +236,10 @@ export default function ProAuctionLayout() {
       // Fetch available players for the wheel with category and role filters
       const players = await api.getPlayers('available', selectedCategoryId || undefined, selectedRoleCategory || undefined) as Player[];
       if (!players || players.length === 0) {
-        alert('No available players for the Fortune Wheel');
+        const hasFilter = selectedCategoryId || selectedRoleCategory;
+        alert(hasFilter
+          ? 'No players available in this category/role for the Fortune Wheel. Try clearing the filter.'
+          : 'No available players for the Fortune Wheel');
         return;
       }
       setAvailablePlayers(players);
@@ -274,7 +301,7 @@ export default function ProAuctionLayout() {
 
     try {
       await api.placeBid(team.id, newBid);
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
     } catch (error: any) {
       setToast({
         message: error.message || 'Failed to place bid',
@@ -295,6 +322,32 @@ export default function ProAuctionLayout() {
       await api.incrementBid(currentBid + increment);
     } catch (error: any) {
       console.error('Failed to increment bid:', error);
+    }
+  }, [currentPlayer, currentBid, status, teams]);
+
+  const handleDecrementBid = useCallback(async () => {
+    if (!currentPlayer || status !== 'bidding') return;
+
+    // Get the base price - cannot go below this
+    const basePrice = currentPlayer.base_price || 0;
+
+    // Use team budget to determine appropriate bid increment
+    const teamBudget = teams[0]?.total_budget;
+    const increment = getBidIncrement(currentBid, teamBudget);
+
+    // Calculate new bid amount
+    const newBid = currentBid - increment;
+
+    // Constraint: Cannot go below base price
+    if (newBid < basePrice) {
+      console.log('Cannot decrease below base price:', basePrice);
+      return;
+    }
+
+    try {
+      await api.incrementBid(newBid);
+    } catch (error: any) {
+      console.error('Failed to decrement bid:', error);
     }
   }, [currentPlayer, currentBid, status, teams]);
 
@@ -320,7 +373,7 @@ export default function ProAuctionLayout() {
       // Save for undo before marking sold
       setLastAction({ player: currentPlayer, type: 'sold' });
       await api.markSold();
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
     } catch (error: any) {
       setLastAction(null);
       alert(error.message || 'Failed to mark as sold');
@@ -406,6 +459,7 @@ export default function ProAuctionLayout() {
     teams,
     onTeamBid: handleTeamBid,
     onIncrementBid: handleIncrementBid,
+    onDecrementBid: handleDecrementBid,
     enabled: status === 'bidding',
   });
 
@@ -413,6 +467,26 @@ export default function ProAuctionLayout() {
   if (selectedLayout === 'premium-broadcast') {
     return (
       <div className="relative min-h-screen h-screen flex flex-col overflow-hidden">
+        {/* Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+            title="Back to Dashboard"
+          >
+            <X size={20} />
+          </button>
+        )}
+
+        {/* Break Screen when auction is paused */}
+        {isAuctionPaused && tournament && (
+          <BreakScreen
+            tournament={tournament}
+            theme="premium"
+            onResume={() => setAuctionPaused(false)}
+          />
+        )}
+
         {/* Premium Broadcast Display */}
         <div className="flex-1 relative">
           <PremiumBroadcastLayout
@@ -424,11 +498,14 @@ export default function ProAuctionLayout() {
             status={status}
             timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
             timerKey={timerResetKey.current}
+            onNewPlayer={handleNewPlayer}
+            loading={loading}
           />
         </div>
 
-        {/* Control Bar Overlay - positioned above bottom nav */}
-        <div className="absolute bottom-16 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent pt-8 pb-4 px-6">
+        {/* Control Bar Overlay - positioned above bottom nav (hidden when paused or idle) */}
+        {!isAuctionPaused && currentPlayer && (
+        <div className="absolute bottom-16 left-0 right-0 z-40 bg-gradient-to-t from-black/90 via-black/70 to-transparent pt-8 pb-4 px-6">
           <div className="flex items-center justify-between max-w-6xl mx-auto">
             {/* Left: New Player + Role Filter + Search */}
             <div className="flex items-center gap-3">
@@ -524,6 +601,15 @@ export default function ProAuctionLayout() {
                 <Undo2 size={18} />
                 Undo
               </button>
+              {/* Pause/Break Button */}
+              <button
+                onClick={() => setAuctionPaused(true)}
+                disabled={status === 'bidding'}
+                className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors border border-purple-500/30 disabled:opacity-40"
+                title="Take a Break"
+              >
+                <Pause size={18} />
+              </button>
               {/* Layout Toggle */}
               <button
                 onClick={() => setSelectedLayout('classic')}
@@ -535,6 +621,7 @@ export default function ProAuctionLayout() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Fortune Wheel Modal */}
         {showFortuneWheel && (
@@ -579,6 +666,26 @@ export default function ProAuctionLayout() {
   if (selectedLayout === 'fire') {
     return (
       <div className="relative min-h-screen h-screen flex flex-col overflow-hidden">
+        {/* Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+            title="Back to Dashboard"
+          >
+            <X size={20} />
+          </button>
+        )}
+
+        {/* Break Screen when auction is paused */}
+        {isAuctionPaused && tournament && (
+          <BreakScreen
+            tournament={tournament}
+            theme="fire"
+            onResume={() => setAuctionPaused(false)}
+          />
+        )}
+
         {/* Fire Broadcast Display */}
         <div className="flex-1 relative">
           <FireBroadcastLayout
@@ -590,88 +697,92 @@ export default function ProAuctionLayout() {
             status={status}
             timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
             timerKey={timerResetKey.current}
+            onNewPlayer={handleNewPlayer}
+            loading={loading}
           />
         </div>
 
-        {/* Control Bar Overlay - Fire themed */}
-        <div className="absolute bottom-16 left-0 right-0 z-50 pt-8 pb-4 px-6"
+        {/* Control Bar Overlay - Fire themed - positioned above bottom nav (hidden when paused or idle) */}
+        {!isAuctionPaused && currentPlayer && (
+        <div className="absolute bottom-16 left-0 right-0 z-40 px-4 pt-4 pb-3"
           style={{
-            background: 'linear-gradient(to top, rgba(0,0,0,0.95), rgba(20,5,5,0.8), transparent)',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(15,5,5,0.95) 50%, rgba(15,5,5,0.7) 80%, transparent 100%)',
           }}
         >
-          <div className="flex items-center justify-between max-w-6xl mx-auto">
+          {/* Single Row: Left | Center Teams | Right */}
+          <div className="flex items-end justify-between gap-2">
             {/* Left: New Player + Role Filter + Fortune Wheel - Fire styled */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={handleNewPlayer}
                 disabled={loading || status === 'bidding'}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-50 hover:scale-105 border border-orange-500/40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-white text-sm transition-all disabled:opacity-50 hover:scale-105 border border-orange-500/40"
                 style={{
                   background: 'linear-gradient(135deg, #c2410c, #991b1b)',
-                  boxShadow: '0 0 20px rgba(249, 115, 22, 0.3)',
+                  boxShadow: '0 0 15px rgba(249, 115, 22, 0.3)',
                 }}
               >
-                <UserPlus size={18} />
+                <UserPlus size={16} />
                 New Player
               </button>
               <RoleFilterDropdown disabled={status === 'bidding'} theme="fire" />
               <button
                 onClick={handleOpenFortuneWheel}
                 disabled={status === 'bidding'}
-                className="p-2.5 rounded-xl text-orange-400 hover:scale-105 transition-all disabled:opacity-50 border border-orange-500/40"
+                className="p-2 rounded-lg text-orange-400 hover:scale-105 transition-all disabled:opacity-50 border border-orange-500/40"
                 style={{
                   background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
                 }}
                 title="Fortune Wheel"
               >
-                <Disc size={18} />
+                <Disc size={16} />
               </button>
 
               {/* Search by Player ID - Fire styled */}
               {showSearch ? (
-                <form onSubmit={handleSearchPlayer} className="flex items-center gap-2">
+                <form onSubmit={handleSearchPlayer} className="flex items-center gap-1">
                   <input
                     type="text"
                     value={playerSearch}
                     onChange={(e) => setPlayerSearch(e.target.value.toUpperCase())}
                     placeholder="P001"
-                    className="w-20 bg-orange-500/10 border border-orange-500/40 rounded-xl px-3 py-2 text-orange-400 text-center focus:border-orange-400 transition-all font-mono"
+                    className="w-16 bg-orange-500/10 border border-orange-500/40 rounded-lg px-2 py-1.5 text-orange-400 text-center text-sm focus:border-orange-400 transition-all font-mono"
                     autoFocus
                   />
                   <button
                     type="submit"
-                    className="p-2.5 rounded-xl text-orange-400 hover:scale-105 transition-all border border-orange-500/40"
+                    className="p-2 rounded-lg text-orange-400 hover:scale-105 transition-all border border-orange-500/40"
                     style={{
                       background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
                     }}
                   >
-                    <Search size={18} />
+                    <Search size={16} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowSearch(false)}
-                    className="text-orange-400/60 hover:text-orange-400 p-2"
+                    className="text-orange-400/60 hover:text-orange-400 p-1"
                   >
-                    <X size={18} />
+                    <X size={16} />
                   </button>
                 </form>
               ) : (
                 <button
                   onClick={() => setShowSearch(true)}
                   disabled={status === 'bidding'}
-                  className="p-2.5 rounded-xl text-orange-400 hover:scale-105 transition-all disabled:opacity-50 border border-orange-500/40"
+                  className="p-2 rounded-lg text-orange-400 hover:scale-105 transition-all disabled:opacity-50 border border-orange-500/40"
                   style={{
                     background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
                   }}
                   title="Search by Player ID"
                 >
-                  <Search size={18} />
+                  <Search size={16} />
                 </button>
               )}
             </div>
 
             {/* Center: Teams - Fire themed */}
-            <div className="flex-1 flex justify-center">
+            <div className="flex-1 flex justify-center px-2 min-w-0">
               <TeamButtons
                 teams={teams}
                 onTeamBid={handleTeamBid}
@@ -682,58 +793,71 @@ export default function ProAuctionLayout() {
             </div>
 
             {/* Right: Actions - Fire styled */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={handleSold}
                 disabled={!currentTeam || status !== 'bidding'}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 hover:scale-105 border border-emerald-500/40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-white text-sm transition-all disabled:opacity-40 hover:scale-105 border border-emerald-500/40"
                 style={{
                   background: 'linear-gradient(135deg, #059669, #047857)',
-                  boxShadow: !currentTeam || status !== 'bidding' ? 'none' : '0 0 15px rgba(16, 185, 129, 0.4)',
+                  boxShadow: !currentTeam || status !== 'bidding' ? 'none' : '0 0 12px rgba(16, 185, 129, 0.4)',
                 }}
               >
-                <Check size={18} />
+                <Check size={16} />
                 Sold
               </button>
               <button
                 onClick={handleUnsold}
                 disabled={!currentPlayer || status !== 'bidding'}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 hover:scale-105 border border-red-500/40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-white text-sm transition-all disabled:opacity-40 hover:scale-105 border border-red-500/40"
                 style={{
                   background: 'linear-gradient(135deg, #dc2626, #991b1b)',
-                  boxShadow: !currentPlayer || status !== 'bidding' ? 'none' : '0 0 15px rgba(239, 68, 68, 0.4)',
+                  boxShadow: !currentPlayer || status !== 'bidding' ? 'none' : '0 0 12px rgba(239, 68, 68, 0.4)',
                 }}
               >
-                <X size={18} />
+                <X size={16} />
                 Unsold
               </button>
               <button
                 onClick={handleUndo}
                 disabled={!lastAction}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 hover:scale-105 border border-amber-500/40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-white text-sm transition-all disabled:opacity-40 hover:scale-105 border border-amber-500/40"
                 style={{
                   background: 'linear-gradient(135deg, #d97706, #b45309)',
-                  boxShadow: !lastAction ? 'none' : '0 0 15px rgba(217, 119, 6, 0.4)',
+                  boxShadow: !lastAction ? 'none' : '0 0 12px rgba(217, 119, 6, 0.4)',
                 }}
                 title={lastAction ? `Undo ${lastAction.type} for ${lastAction.player.name}` : 'No action to undo'}
               >
-                <Undo2 size={18} />
+                <Undo2 size={16} />
                 Undo
+              </button>
+              {/* Pause/Break Button */}
+              <button
+                onClick={() => setAuctionPaused(true)}
+                disabled={status === 'bidding'}
+                className="p-2 rounded-lg text-orange-400 hover:scale-105 transition-all border border-orange-500/40 disabled:opacity-40"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
+                }}
+                title="Take a Break"
+              >
+                <Pause size={16} />
               </button>
               {/* Layout Toggle */}
               <button
                 onClick={() => setSelectedLayout('classic')}
-                className="p-2.5 rounded-xl text-orange-400 hover:scale-105 transition-all border border-orange-500/40"
+                className="p-2 rounded-lg text-orange-400 hover:scale-105 transition-all border border-orange-500/40"
                 style={{
                   background: 'linear-gradient(135deg, rgba(194,65,12,0.3), rgba(153,27,27,0.2))',
                 }}
                 title="Switch to Classic Layout"
               >
-                <Layout size={18} />
+                <Layout size={16} />
               </button>
             </div>
           </div>
         </div>
+        )}
 
         {/* Fortune Wheel Modal */}
         {showFortuneWheel && (
@@ -777,6 +901,26 @@ export default function ProAuctionLayout() {
   if (selectedLayout === 'city') {
     return (
       <div className="relative min-h-screen h-screen flex flex-col overflow-hidden">
+        {/* Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+            title="Back to Dashboard"
+          >
+            <X size={20} />
+          </button>
+        )}
+
+        {/* Break Screen when auction is paused */}
+        {isAuctionPaused && tournament && (
+          <BreakScreen
+            tournament={tournament}
+            theme="city"
+            onResume={() => setAuctionPaused(false)}
+          />
+        )}
+
         {/* City Broadcast Display */}
         <div className="flex-1 relative">
           <CityBroadcastLayout
@@ -788,11 +932,14 @@ export default function ProAuctionLayout() {
             status={status}
             timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
             timerKey={timerResetKey.current}
+            onNewPlayer={handleNewPlayer}
+            loading={loading}
           />
         </div>
 
-        {/* Control Bar Overlay - City themed */}
-        <div className="absolute bottom-16 left-0 right-0 z-50 pt-8 pb-4 px-6"
+        {/* Control Bar Overlay - City themed (hidden when paused or idle) */}
+        {!isAuctionPaused && currentPlayer && (
+        <div className="absolute bottom-16 left-0 right-0 z-40 pt-8 pb-4 px-6"
           style={{
             background: 'linear-gradient(to top, rgba(10,22,40,0.98), rgba(10,22,40,0.8), transparent)',
           }}
@@ -918,6 +1065,18 @@ export default function ProAuctionLayout() {
                 <Undo2 size={18} />
                 Undo
               </button>
+              {/* Pause/Break Button */}
+              <button
+                onClick={() => setAuctionPaused(true)}
+                disabled={status === 'bidding'}
+                className="p-2.5 rounded-xl text-cyan-400 hover:scale-105 transition-all border border-cyan-500/40 disabled:opacity-40"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(8,145,178,0.3), rgba(124,58,237,0.2))',
+                }}
+                title="Take a Break"
+              >
+                <Pause size={18} />
+              </button>
               {/* Layout Toggle */}
               <button
                 onClick={() => setSelectedLayout('classic')}
@@ -932,6 +1091,7 @@ export default function ProAuctionLayout() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Fortune Wheel Modal */}
         {showFortuneWheel && (
@@ -973,6 +1133,17 @@ export default function ProAuctionLayout() {
 
   return (
     <div className="relative min-h-screen h-screen flex flex-col overflow-hidden bg-slate-950">
+      {/* Close Button */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+          title="Back to Dashboard"
+        >
+          <X size={20} />
+        </button>
+      )}
+
       {/* Animated Background (for LIVE templates) */}
       {template.animatedBg && (
         <AnimatedBackground
@@ -1262,6 +1433,26 @@ export default function ProAuctionLayout() {
         </div>
       </div>
 
+      {/* Break Screen when auction is paused */}
+      {isAuctionPaused && tournament && (
+        <BreakScreen
+          tournament={tournament}
+          theme="classic"
+          accentColor={template.accentColor}
+          onResume={() => setAuctionPaused(false)}
+        />
+      )}
+
+      {/* Classic Idle Welcome Screen when no player selected - Full Screen */}
+      {!currentPlayer && !isAuctionPaused && tournament && (
+        <ClassicIdleScreen
+          tournament={tournament}
+          accentColor={template.accentColor}
+          onNewPlayer={handleNewPlayer}
+          loading={loading}
+        />
+      )}
+
       {/* Main Content - Classic Layout */}
       <div className="relative z-10 flex-1 flex items-stretch">
         <div className="flex-1 flex items-stretch px-12 py-6 gap-8">
@@ -1279,7 +1470,7 @@ export default function ProAuctionLayout() {
 
             {/* Right Side - Floating Bidding Team Display */}
             {currentTeam && status === 'bidding' && (
-              <div className="w-96 flex items-center justify-center pr-12">
+              <div className="w-[450px] flex items-center justify-center pr-12">
                 {(() => {
                   const biddingTeam = teams.find(t => t.id === currentTeam.id) || currentTeam;
                   return (
@@ -1295,11 +1486,11 @@ export default function ProAuctionLayout() {
                           <img
                             src={biddingTeam.logo_url}
                             alt={biddingTeam.name}
-                            className="w-36 h-36 object-contain"
+                            className="w-52 h-52 lg:w-60 lg:h-60 object-contain"
                           />
                         ) : (
                           <div
-                            className="w-36 h-36 rounded-2xl flex items-center justify-center text-4xl font-black text-white"
+                            className="w-52 h-52 lg:w-60 lg:h-60 rounded-2xl flex items-center justify-center text-5xl font-black text-white"
                             style={{
                               background: `linear-gradient(135deg, ${template.accentColor}, ${template.accentColor}80)`,
                               boxShadow: `0 0 50px ${template.accentColor}60`
@@ -1510,6 +1701,24 @@ export default function ProAuctionLayout() {
                   title="Fortune Wheel"
                 >
                   <Disc size={18} />
+                </button>
+
+                {/* Pause/Break Button */}
+                <button
+                  onClick={() => setAuctionPaused(true)}
+                  disabled={status === 'bidding'}
+                  className="disabled:bg-white/10 disabled:text-white/30 text-white p-2.5 rounded-xl transition-all disabled:cursor-not-allowed hover:scale-105"
+                  style={{
+                    background: status !== 'bidding'
+                      ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
+                      : undefined,
+                    boxShadow: status !== 'bidding'
+                      ? '0 0 15px rgba(139,92,246,0.4)'
+                      : undefined
+                  }}
+                  title="Take a Break"
+                >
+                  <Pause size={18} />
                 </button>
               </div>
             </div>

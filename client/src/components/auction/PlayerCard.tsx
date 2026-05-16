@@ -1,6 +1,6 @@
 import { Player, AuctionState } from '../../types';
-import { User, Sparkles } from 'lucide-react';
-import { formatAmount } from '../../utils/formatters';
+import { User, Sparkles, MapPin } from 'lucide-react';
+import { formatAmountCompact } from '../../utils/formatters';
 import { getRoleLabel, getRoleShortLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
 import StatusSticker from './StatusSticker';
 import { useUIStore } from '../../stores/uiStore';
@@ -143,7 +143,7 @@ export default function PlayerCard({ player, status }: PlayerCardProps) {
                 <div className="relative bg-slate-800/50 rounded-xl p-4 border border-amber-500/30">
                   <p className="text-amber-400/80 text-xs uppercase tracking-widest mb-1">Base Price</p>
                   <p className="text-4xl font-black text-white">
-                    {formatAmount(player.base_price, usePoints)}
+                    {formatAmountCompact(player.base_price, usePoints)}
                   </p>
                 </div>
               </div>
@@ -165,6 +165,14 @@ export default function PlayerCard({ player, status }: PlayerCardProps) {
                       <p className="text-slate-400 text-sm">{getRoleLabel(roleValue)}</p>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* City Section */}
+              {(player.city || player.stats?.city) && (
+                <div className="mt-3 flex items-center gap-2 text-amber-400/80">
+                  <MapPin size={16} />
+                  <span className="text-sm font-medium">{player.city || player.stats?.city}</span>
                 </div>
               )}
             </div>

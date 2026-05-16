@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Lightbulb, TrendingUp, AlertTriangle, Target } from 'lucide-react';
 import { Team, Player, Category } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 
 interface SmartBidSuggestionsProps {
   currentPlayer: Player | null;
@@ -131,7 +131,7 @@ export default function SmartBidSuggestions({
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-400">Category Average:</span>
               <span className="text-emerald-400 font-semibold">
-                {formatIndianNumber(category.avg_sold_price || category.base_price)}
+                {formatCompactIndian(category.avg_sold_price || category.base_price)}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm mt-1">
@@ -197,7 +197,7 @@ export default function SmartBidSuggestions({
                       Suggested Bid
                     </span>
                     <span className="font-bold text-emerald-400">
-                      {formatIndianNumber(suggestion.recommendedBid)}
+                      {formatCompactIndian(suggestion.recommendedBid)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -206,7 +206,7 @@ export default function SmartBidSuggestions({
                       Max Affordable
                     </span>
                     <span className="text-sm text-slate-300">
-                      {formatIndianNumber(suggestion.maxAffordable)}
+                      {formatCompactIndian(suggestion.maxAffordable)}
                     </span>
                   </div>
                 </div>

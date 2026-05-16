@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Player, Team } from '../../types';
 import { User } from 'lucide-react';
-import { formatAmount } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 import { useUIStore } from '../../stores/uiStore';
 
 interface ClassicSoldAnimationProps {
@@ -246,13 +246,13 @@ export default function ClassicSoldAnimation({
             textShadow: `0 0 50px ${teamColor}80, 0 0 100px ${teamColor}50`,
           }}
         >
-          {formatAmount(displayPrice, usePoints)}
+          {formatAmountCompact(displayPrice, usePoints)}
         </p>
 
         {/* Base and multiplier */}
         <div className="flex items-center justify-center gap-4 mt-4">
           <span className="text-white/50 text-lg">
-            Base: {formatAmount(player.base_price, usePoints)}
+            Base: {formatAmountCompact(player.base_price, usePoints)}
           </span>
           {parseFloat(multiplier) > 1 && (
             <span

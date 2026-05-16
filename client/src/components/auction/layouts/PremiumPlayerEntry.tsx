@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Player } from '../../../types';
 import { soundManager } from '../../../utils/soundManager';
 import { getRoleLabel } from '../../../config/playerRoles';
-import { formatIndianNumber } from '../../../utils/formatters';
+import { formatAmountCompact } from '../../../utils/formatters';
+import { useUIStore } from '../../../stores/uiStore';
 
 interface PremiumPlayerEntryProps {
   player: Player;
@@ -11,6 +12,8 @@ interface PremiumPlayerEntryProps {
 
 export default function PremiumPlayerEntry({ player, onComplete }: PremiumPlayerEntryProps) {
   const [phase, setPhase] = useState<'intro' | 'photo' | 'name' | 'stats' | 'ready' | 'exit'>('intro');
+  const { displayMode } = useUIStore();
+  const usePoints = displayMode === 'points';
 
   useEffect(() => {
     soundManager.play('whoosh');
@@ -133,12 +136,12 @@ export default function PremiumPlayerEntry({ player, onComplete }: PremiumPlayer
                 )}
               </div>
 
-              {/* Jersey number */}
+              {/* Player UID */}
               <div className={`absolute -bottom-4 left-1/2 -translate-x-1/2 transition-all duration-500 ${
                 phase === 'stats' || phase === 'ready' || phase === 'exit' ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
               }`}>
                 <div className="px-8 py-3 bg-gradient-to-r from-red-600 to-red-700 rounded-lg shadow-2xl shadow-red-500/50">
-                  <span className="text-white font-black text-3xl">#{player.jersey_number || '00'}</span>
+                  <span className="text-white font-black text-3xl">{player.player_uid || 'P000'}</span>
                 </div>
               </div>
             </div>
@@ -196,6 +199,14 @@ export default function PremiumPlayerEntry({ player, onComplete }: PremiumPlayer
                   </div>
                 </div>
               )}
+              {(player.city || player.stats?.city) && (
+                <div className="flex items-center gap-4">
+                  <span className="text-slate-500 w-24 text-right uppercase text-sm tracking-wider">City</span>
+                  <div className="h-10 px-6 bg-slate-800/80 rounded-lg flex items-center border-l-4 border-amber-500">
+                    <span className="text-white font-semibold">📍 {player.city || player.stats?.city}</span>
+                  </div>
+                </div>
+              )}
               {player.stats?.age && (
                 <div className="flex items-center gap-4">
                   <span className="text-slate-500 w-24 text-right uppercase text-sm tracking-wider">Age</span>
@@ -215,7 +226,7 @@ export default function PremiumPlayerEntry({ player, onComplete }: PremiumPlayer
                 <div className="relative px-10 py-6 bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl border-2 border-amber-500/50">
                   <p className="text-amber-400/80 text-sm uppercase tracking-[0.2em] mb-2">Base Price</p>
                   <p className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400">
-                    {formatIndianNumber(player.base_price)}
+                    {formatAmountCompact(player.base_price, usePoints)}
                   </p>
                 </div>
               </div>

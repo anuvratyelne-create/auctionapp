@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Users, List, Sparkles } from 'lucide-react';
 import { Team, Player } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import { getRoleByValue, convertLegacyRole } from '../../config/playerRoles';
 
 interface TeamPreviewModalProps {
@@ -30,6 +30,24 @@ export default function TeamPreviewModal({ team, players, onClose, onViewDetails
   const [showContent, setShowContent] = useState(false);
   const [animationPhase, setAnimationPhase] = useState(0);
   const [showSparkles, setShowSparkles] = useState(false);
+
+  // Calculate spent from players if team.spent_points is missing or 0
+  const calculatedSpent = useMemo(() => {
+    // First check if team has valid spent_points
+    if (team.spent_points && team.spent_points > 0) {
+      return team.spent_points;
+    }
+    // Otherwise calculate from players
+    return players.reduce((sum, p) => {
+      const price = p.sold_price || p.retention_price || 0;
+      return sum + price;
+    }, 0);
+  }, [team.spent_points, players]);
+
+  const calculatedRemaining = useMemo(() => {
+    const totalBudget = team.total_budget || 0;
+    return totalBudget - calculatedSpent;
+  }, [team.total_budget, calculatedSpent]);
 
   // Group players by role category with fixed order
   const roleGroups = useMemo((): RoleGroup[] => {
@@ -252,9 +270,9 @@ export default function TeamPreviewModal({ team, players, onClose, onViewDetails
           >
             <StatBox label="Players" value={players.length} color="text-white" delay={0} isVisible={animationPhase >= 2} />
             <div className="w-px h-12 bg-gradient-to-b from-transparent via-slate-600 to-transparent" />
-            <StatBox label="Spent" value={team.spent_points || 0} color="text-emerald-400" format delay={100} isVisible={animationPhase >= 2} />
+            <StatBox label="Spent" value={calculatedSpent} color="text-emerald-400" format delay={100} isVisible={animationPhase >= 2} />
             <div className="w-px h-12 bg-gradient-to-b from-transparent via-slate-600 to-transparent" />
-            <StatBox label="Remaining" value={typeof team.remaining_budget === 'number' ? team.remaining_budget : (team.total_budget || 0) - (team.spent_points || 0)} color="text-amber-400" format delay={200} isVisible={animationPhase >= 2} />
+            <StatBox label="Remaining" value={calculatedRemaining} color="text-amber-400" format delay={200} isVisible={animationPhase >= 2} />
           </div>
         </div>
 
@@ -345,7 +363,7 @@ function StatBox({ label, value, color, format, delay = 0, isVisible }: { label:
   return (
     <div className="text-center group">
       <p className={`text-4xl font-black ${color} transition-transform group-hover:scale-110`}>
-        {format ? formatIndianNumber(displayValue) : displayValue}
+        {format ? formatCompactIndian(displayValue) : displayValue}
       </p>
       <p className="text-sm text-slate-400 uppercase tracking-widest font-medium">{label}</p>
     </div>
@@ -450,7 +468,7 @@ function PlayerCard({ player, delay, isVisible, bgGradient, accentColor, borderC
           {/* Price with animation */}
           <div className="flex items-center justify-between">
             <p className="text-emerald-400 font-black text-xl">
-              {formatIndianNumber(player.sold_price || player.base_price)}
+              {formatCompactIndian(player.sold_price || player.base_price)}
             </p>
             {player.is_retained && (
               <span className="text-xs px-2 py-1 bg-amber-500/20 text-amber-400 rounded font-bold">

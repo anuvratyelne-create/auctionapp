@@ -1,5 +1,5 @@
 import { useAuctionStore } from '../../stores/auctionStore';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import { History, TrendingUp, Users } from 'lucide-react';
 
 interface BidHistoryPanelProps {
@@ -70,19 +70,19 @@ export default function BidHistoryPanel({ teams }: BidHistoryPanelProps) {
             <div className="text-center">
               <p className="text-xs text-slate-400">Base Price</p>
               <p className="font-semibold text-slate-300">
-                {formatIndianNumber(currentPlayer.base_price)}
+                {formatCompactIndian(currentPlayer.base_price)}
               </p>
             </div>
             <div className="text-center">
               <p className="text-xs text-slate-400">Current Bid</p>
               <p className="font-semibold text-emerald-400">
-                {formatIndianNumber(currentBid)}
+                {formatCompactIndian(currentBid)}
               </p>
             </div>
             <div className="text-center">
               <p className="text-xs text-slate-400">Increment</p>
               <p className="font-semibold text-amber-400">
-                {formatIndianNumber(currentBid - currentPlayer.base_price)}
+                {formatCompactIndian(currentBid - currentPlayer.base_price)}
               </p>
             </div>
           </div>
@@ -148,11 +148,11 @@ export default function BidHistoryPanel({ teams }: BidHistoryPanelProps) {
                     {/* Bid Amount */}
                     <div className="text-right">
                       <p className={`text-lg font-bold ${isLatest ? 'text-emerald-400' : 'text-white'}`}>
-                        {formatIndianNumber(bid.amount)}
+                        {formatCompactIndian(bid.amount)}
                       </p>
                       {index < bidHistory.length - 1 && (
                         <p className="text-xs text-slate-500">
-                          +{formatIndianNumber(bid.amount - bidHistory[bidHistory.length - index - 2].amount)}
+                          +{formatCompactIndian(bid.amount - bidHistory[bidHistory.length - index - 2].amount)}
                         </p>
                       )}
                     </div>

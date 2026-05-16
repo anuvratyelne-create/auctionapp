@@ -16,6 +16,7 @@ import auctionRoutes from './routes/auction';
 import retentionRoutes from './routes/retention';
 import statsRoutes from './routes/stats';
 import exportRoutes from './routes/export';
+import uploadRoutes from './routes/upload';
 import { setupSocketHandlers } from './socket/handlers';
 import supabase from './config/supabase';
 
@@ -86,6 +87,7 @@ app.use('/api/auction', auctionRoutes);
 app.use('/api/retention', retentionRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

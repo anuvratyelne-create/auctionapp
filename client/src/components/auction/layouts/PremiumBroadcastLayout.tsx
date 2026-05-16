@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
-import { formatAmount } from '../../../utils/formatters';
+import { formatAmountCompact } from '../../../utils/formatters';
 import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
 import { getPremiumBackground } from '../../../config/premiumBackgrounds';
-import { Wallet, Users, Zap, Trophy } from 'lucide-react';
+import { Users, Zap, Trophy } from 'lucide-react';
+import PremiumIdleScreen from './PremiumIdleScreen';
 
 interface PremiumBroadcastLayoutProps {
   tournament: any;
@@ -16,48 +17,46 @@ interface PremiumBroadcastLayoutProps {
   status: string;
   timerSeconds?: number;
   timerKey?: number;
+  onNewPlayer?: () => void;
+  loading?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GOLD PARTICLES - Floating champagne/gold particles
+// GOLD PARTICLES - Floating champagne/gold particles (memoized for performance)
 // ═══════════════════════════════════════════════════════════════════════════
-function GoldParticles() {
-  const particles = Array.from({ length: 30 }, (_, i) => ({
+const GoldParticles = memo(function GoldParticles() {
+  const particles = useMemo(() => Array.from({ length: 12 }, (_, i) => ({
     id: i,
-    left: `${Math.random() * 100}%`,
-    size: Math.random() * 4 + 2,
-    delay: Math.random() * 8,
-    duration: Math.random() * 10 + 12,
-    opacity: Math.random() * 0.4 + 0.2,
-    type: Math.random() > 0.7 ? 'diamond' : 'circle',
-    color: ['#FFD700', '#F5C518', '#D4AF37', '#F7E7CE', '#CD7F32'][Math.floor(Math.random() * 5)],
-  }));
+    left: `${(i * 8.3) % 100}%`,
+    size: 2 + (i % 3),
+    delay: i * 0.5,
+    duration: 14 + (i % 4) * 2,
+    opacity: 0.15 + (i % 3) * 0.1,
+    color: ['#FFD700', '#F5C518', '#D4AF37'][i % 3],
+  })), []);
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       {particles.map((p) => (
         <div
           key={p.id}
-          className="absolute animate-champagne-float"
+          className="absolute animate-champagne-float will-change-transform"
           style={{
             left: p.left,
             bottom: '-20px',
             width: p.size,
             height: p.size,
-            backgroundColor: p.type === 'circle' ? p.color : 'transparent',
-            borderRadius: p.type === 'circle' ? '50%' : '0',
-            transform: p.type === 'diamond' ? 'rotate(45deg)' : 'none',
-            border: p.type === 'diamond' ? `2px solid ${p.color}` : 'none',
+            backgroundColor: p.color,
+            borderRadius: '50%',
             opacity: p.opacity,
             animationDelay: `${p.delay}s`,
             animationDuration: `${p.duration}s`,
-            boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
           }}
         />
       ))}
     </div>
   );
-}
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GOLD FRAME - Ornate frame for photos
@@ -74,8 +73,8 @@ function GoldFrame({
   const sizeClasses = {
     small: 'w-14 h-14',
     medium: 'w-24 h-24',
-    large: 'w-56 h-56',
-    xlarge: 'w-72 h-72',
+    large: 'w-64 h-64',
+    xlarge: 'w-80 h-80 lg:w-96 lg:h-96',
   };
 
   return (
@@ -111,8 +110,8 @@ function GoldFrame({
           background: 'linear-gradient(135deg, #FFD700 0%, #D4AF37 25%, #F5C518 50%, #CD7F32 75%, #FFD700 100%)',
         }}
       >
-        {/* Inner content with dark background */}
-        <div className="w-full h-full rounded-xl overflow-hidden bg-slate-900/90">
+        {/* Inner content - transparent to preserve PNG transparency */}
+        <div className="w-full h-full rounded-xl overflow-hidden">
           {children}
         </div>
       </div>
@@ -160,7 +159,7 @@ function AnimatedBid({ value, className, usePoints = false }: { value: number; c
 
   return (
     <span className={`relative ${className} ${isAnimating ? 'animate-gold-shimmer' : ''}`}>
-      {formatAmount(displayValue, usePoints)}
+      {formatAmountCompact(displayValue, usePoints)}
       {isAnimating && (
         <span
           className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-400/30 to-transparent animate-shimmer-pass"
@@ -215,6 +214,8 @@ export default function PremiumBroadcastLayout({
   currentTeam,
   teams,
   status,
+  onNewPlayer,
+  loading,
 }: PremiumBroadcastLayoutProps) {
   const { showSponsors, sponsorRotationInterval, premiumBackgroundId, displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -249,11 +250,50 @@ export default function PremiumBroadcastLayout({
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: '#0a0a0f' }}>
-      {/* Background */}
-      <div
-        className="absolute inset-0"
-        style={{ background: background?.value || '#0a0a0f' }}
-      />
+      {/* Full Screen Idle Welcome Screen when no player selected */}
+      {!currentPlayer && tournament && (
+        <PremiumIdleScreen
+          tournament={tournament}
+          backgroundId={premiumBackgroundId}
+          onNewPlayer={onNewPlayer}
+          loading={loading}
+        />
+      )}
+
+      {/* Background - Supports gradient, image, and video */}
+      {background?.type === 'image' ? (
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url(${background.value})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            filter: `brightness(${background.brightness || 0.5})`,
+          }}
+        />
+      ) : background?.type === 'video' ? (
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ filter: `brightness(${background.brightness || 0.5})` }}
+        >
+          <source src={background.value} type="video/mp4" />
+        </video>
+      ) : (
+        <div
+          className="absolute inset-0"
+          style={{ background: background?.value || '#0a0a0f' }}
+        />
+      )}
+
+      {/* Dark overlay for better contrast on images */}
+      {background?.type === 'image' && (
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/40" />
+      )}
 
       {/* Gold Particles */}
       <GoldParticles />
@@ -278,38 +318,38 @@ export default function PremiumBroadcastLayout({
             style={{ background: 'linear-gradient(90deg, transparent, #FFD700, #D4AF37, #FFD700, transparent)' }}
           />
 
-          <div className="flex items-center h-28 px-8">
+          <div className="flex items-center h-36 px-10">
             {/* Left: Big Logo */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5">
               {tournament?.logo_url ? (
                 <img
                   src={tournament.logo_url}
                   alt={tournament.name}
-                  className="h-20 w-auto object-contain"
+                  className="h-28 w-auto object-contain"
                 />
               ) : (
                 <div
-                  className="h-20 w-20 rounded-2xl flex items-center justify-center"
+                  className="h-28 w-28 rounded-2xl flex items-center justify-center"
                   style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(212,175,55,0.1) 100%)' }}
                 >
-                  <Trophy size={40} className="text-amber-400" />
+                  <Trophy size={56} className="text-amber-400" />
                 </div>
               )}
 
               {/* LIVE indicator */}
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/20 border border-red-500/30">
-                <span className="relative flex h-3 w-3">
+              <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-red-500/20 border border-red-500/30">
+                <span className="relative flex h-4 w-4">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
                 </span>
-                <span className="text-red-400 font-bold text-sm tracking-wide">LIVE</span>
+                <span className="text-red-400 font-bold text-base tracking-wide">LIVE</span>
               </div>
             </div>
 
             {/* Center: Tournament Name - Big & Centered */}
             <div className="flex-1 text-center">
               <h1
-                className="text-4xl font-bold tracking-wide"
+                className="text-5xl lg:text-6xl font-bold tracking-wide"
                 style={{
                   background: 'linear-gradient(135deg, #FFFFFF 0%, #FFD700 50%, #D4AF37 100%)',
                   WebkitBackgroundClip: 'text',
@@ -319,30 +359,21 @@ export default function PremiumBroadcastLayout({
               >
                 {tournament?.name || 'Player Auction'}
               </h1>
-              <p className="text-sm text-amber-500/60 tracking-[0.3em] uppercase mt-1">
+              <p className="text-base text-amber-500/60 tracking-[0.3em] uppercase mt-2">
                 Season {new Date().getFullYear()}
               </p>
             </div>
 
             {/* Right: Stats & Time */}
             <div className="flex items-center gap-8">
-              <div className="flex items-center gap-3">
-                <Users size={20} className="text-amber-500/50" />
+              <div className="flex items-center gap-4">
+                <Users size={28} className="text-amber-500/50" />
                 <div>
-                  <p className="text-3xl font-bold text-white">{teams.reduce((acc, t) => acc + (t.player_count || 0), 0)}</p>
-                  <p className="text-xs text-amber-500/50 uppercase tracking-wider">Sold</p>
+                  <p className="text-4xl font-bold text-white">{teams.reduce((acc, t) => acc + (t.player_count || 0), 0)}</p>
+                  <p className="text-sm text-amber-500/50 uppercase tracking-wider">Sold</p>
                 </div>
               </div>
 
-              <div className="h-12 w-px bg-amber-500/20" />
-
-              <div className="flex items-center gap-3">
-                <Wallet size={20} className="text-amber-500/50" />
-                <div>
-                  <p className="text-3xl font-bold text-amber-400">{formatAmount(teams.reduce((acc, t) => acc + (t.spent_points || 0), 0), usePoints)}</p>
-                  <p className="text-xs text-amber-500/50 uppercase tracking-wider">Spent</p>
-                </div>
-              </div>
 
             </div>
           </div>
@@ -352,7 +383,7 @@ export default function PremiumBroadcastLayout({
       {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
       {/* MAIN CONTENT */}
       {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
-      <div className="absolute top-28 left-0 right-0 bottom-0 flex px-6 py-4 gap-5">
+      <div className="absolute top-40 left-0 right-0 bottom-0 flex px-6 py-4 gap-5">
 
         {/* LEFT: Team Standings */}
         <div className="w-72 flex-shrink-0">
@@ -393,7 +424,7 @@ export default function PremiumBroadcastLayout({
                     <div className="flex-1 min-w-0">
                       <p className="text-white/90 font-medium text-sm truncate">{team.short_name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-amber-400 text-xs font-medium">{formatAmount(team.remaining_budget, usePoints)}</span>
+                        <span className="text-amber-400 text-xs font-medium">{formatAmountCompact(team.remaining_budget, usePoints)}</span>
                         <span className="text-amber-500/30">•</span>
                         <span className="text-white/40 text-xs">{team.player_count || 0} players</span>
                       </div>
@@ -435,13 +466,20 @@ export default function PremiumBroadcastLayout({
                     {/* Photo with Gold Frame */}
                     <GoldFrame size="xlarge">
                       {currentPlayer.photo_url ? (
-                        <img
-                          src={currentPlayer.photo_url}
-                          alt={currentPlayer.name}
-                          className="w-full h-full object-cover"
-                        />
+                        <div className="w-full h-full">
+                          <img
+                            src={currentPlayer.photo_url}
+                            alt={currentPlayer.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-900/20 to-slate-900">
+                        <div
+                          className="w-full h-full flex items-center justify-center"
+                          style={{
+                            background: 'linear-gradient(135deg, #1a1510 0%, #0d0a08 50%, #1a1510 100%)',
+                          }}
+                        >
                           <span className="text-8xl text-amber-500/30">👤</span>
                         </div>
                       )}
@@ -504,6 +542,17 @@ export default function PremiumBroadcastLayout({
                           {currentPlayer.categories.name}
                         </span>
                       )}
+                      {(currentPlayer.city || currentPlayer.stats?.city) && (
+                        <span
+                          className="px-5 py-2 rounded-full text-amber-100 text-base font-medium border flex items-center gap-1.5"
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(205,127,50,0.15) 0%, rgba(180,100,40,0.1) 100%)',
+                            borderColor: 'rgba(205,127,50,0.3)',
+                          }}
+                        >
+                          📍 {currentPlayer.city || currentPlayer.stats?.city}
+                        </span>
+                      )}
                     </div>
 
                     {/* Stats Row */}
@@ -553,7 +602,7 @@ export default function PremiumBroadcastLayout({
                       {/* Base Price */}
                       <div>
                         <p className="text-xs text-amber-500/50 uppercase tracking-wider mb-1">Base</p>
-                        <p className="text-2xl font-semibold text-amber-400/60">{formatAmount(currentPlayer.base_price, usePoints)}</p>
+                        <p className="text-2xl font-semibold text-amber-400/60">{formatAmountCompact(currentPlayer.base_price, usePoints)}</p>
                       </div>
 
                       {/* Current Bid - Large & Prominent */}
@@ -577,7 +626,7 @@ export default function PremiumBroadcastLayout({
                           />
                           {status === 'bidding' && (
                             <span className="text-amber-500/50 text-lg font-medium">
-                              +{formatAmount(currentBid >= 50000 ? 5000 : currentBid >= 30000 ? 3000 : currentBid >= 20000 ? 2000 : 1000, usePoints)}
+                              +{formatAmountCompact(currentBid >= 50000 ? 5000 : currentBid >= 30000 ? 3000 : currentBid >= 20000 ? 2000 : 1000, usePoints)}
                             </span>
                           )}
                         </div>
@@ -587,31 +636,7 @@ export default function PremiumBroadcastLayout({
                 </div>
               </GlassCard>
             </div>
-          ) : (
-            /* No Player State */
-            <div className="text-center">
-              <div
-                className="w-40 h-40 mx-auto rounded-full flex items-center justify-center mb-6 border"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(255,215,0,0.05) 0%, rgba(20,20,30,0.5) 100%)',
-                  borderColor: 'rgba(255,215,0,0.15)',
-                }}
-              >
-                <span className="text-6xl text-amber-500/30">👤</span>
-              </div>
-              <h2
-                className="text-3xl font-light mb-2"
-                style={{
-                  background: 'linear-gradient(135deg, #FFFFFF 0%, #FFD700 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                Ready for Auction
-              </h2>
-              <p className="text-amber-500/50">Select a player to begin bidding</p>
-            </div>
-          )}
+          ) : null}
         </div>
 
         {/* RIGHT: Team & Sponsor Panel */}
@@ -650,12 +675,19 @@ export default function PremiumBroadcastLayout({
                 </div>
 
                 {/* Team Logo with Gold Frame */}
-                <GoldFrame size="large" className="mb-5">
+                <GoldFrame size="xlarge" className="mb-5">
                   {currentTeam.logo_url ? (
-                    <img src={currentTeam.logo_url} alt={currentTeam.name} className="w-full h-full object-contain p-3" />
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <img src={currentTeam.logo_url} alt={currentTeam.name} className="w-full h-full object-contain" />
+                    </div>
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-3xl font-bold text-amber-400">{currentTeam.short_name}</span>
+                    <div
+                      className="w-full h-full flex items-center justify-center"
+                      style={{
+                        background: 'linear-gradient(135deg, #1a1510 0%, #0d0a08 50%, #1a1510 100%)',
+                      }}
+                    >
+                      <span className="text-4xl font-bold text-amber-400">{currentTeam.short_name}</span>
                     </div>
                   )}
                 </GoldFrame>
@@ -672,7 +704,7 @@ export default function PremiumBroadcastLayout({
                     }}
                   >
                     <span className="text-amber-500/60 text-base">Remaining</span>
-                    <span className="text-amber-400 font-bold text-lg">{formatAmount(currentTeam.remaining_budget, usePoints)}</span>
+                    <span className="text-amber-400 font-bold text-lg">{formatAmountCompact(currentTeam.remaining_budget, usePoints)}</span>
                   </div>
                   <div
                     className="flex items-center justify-between px-5 py-3 rounded-xl"
@@ -681,7 +713,7 @@ export default function PremiumBroadcastLayout({
                     }}
                   >
                     <span className="text-amber-500/60 text-base">Max Bid</span>
-                    <span className="text-amber-300 font-bold text-lg">{formatAmount(currentTeam.max_bid, usePoints)}</span>
+                    <span className="text-amber-300 font-bold text-lg">{formatAmountCompact(currentTeam.max_bid, usePoints)}</span>
                   </div>
                   <div
                     className="flex items-center justify-between px-5 py-3 rounded-xl"

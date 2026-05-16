@@ -149,18 +149,43 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   }
 });
 
-// Bulk update categories with standard prices
+// Bulk update categories with prices (accepts custom prices or uses budget-based defaults)
 router.post('/update-standard-prices', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const standardPrices: Record<string, number> = {
-      'Platinum': 50000,
-      'Gold': 30000,
-      'Silver': 20000,
-      'Bronze': 10000
-    };
+    // Get tournament budget to determine appropriate prices
+    const { data: tournament } = await supabase
+      .from('tournaments')
+      .select('total_points')
+      .eq('id', req.tournamentId)
+      .single();
+
+    const budget = tournament?.total_points || 1000000;
+
+    // Accept custom prices from request body, or calculate from budget
+    let categoryPrices: Record<string, number>;
+
+    if (req.body.category_prices) {
+      // Use custom prices provided in request
+      categoryPrices = {
+        'Platinum': req.body.category_prices.platinum,
+        'Gold': req.body.category_prices.gold,
+        'Silver': req.body.category_prices.silver,
+        'Bronze': req.body.category_prices.bronze,
+      };
+    } else {
+      // Calculate based on budget (5%, 3%, 2%, 1% of budget)
+      categoryPrices = {
+        'Platinum': Math.round(budget * 0.05),
+        'Gold': Math.round(budget * 0.03),
+        'Silver': Math.round(budget * 0.02),
+        'Bronze': Math.round(budget * 0.01),
+      };
+    }
+
+    console.log('Updating categories with prices:', categoryPrices);
 
     const results = [];
-    for (const [name, base_price] of Object.entries(standardPrices)) {
+    for (const [name, base_price] of Object.entries(categoryPrices)) {
       const { data, error } = await supabase
         .from('categories')
         .update({ base_price })
@@ -174,10 +199,12 @@ router.post('/update-standard-prices', authenticateToken, async (req: AuthReques
     }
 
     res.json({
-      message: 'Categories updated with standard prices',
+      message: 'Categories updated with budget-appropriate prices',
+      budget,
       updated: results
     });
   } catch (error) {
+    console.error('Update categories error:', error);
     res.status(500).json({ error: 'Failed to update categories' });
   }
 });

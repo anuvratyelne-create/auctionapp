@@ -33,6 +33,8 @@ export interface Team {
   spent_points: number;
   remaining_budget: number;
   player_count: number;
+  retained_count?: number;
+  retention_spent?: number;
   reserve_points: number;
   max_bid: number;
   players?: Player[];
@@ -61,11 +63,13 @@ export interface Player {
   team_id?: string;
   name: string;
   photo_url?: string;
+  player_uid?: string;
   jersey_number?: string;
   role?: PlayerRole;
+  city?: string;
   base_price: number;
   sold_price?: number;
-  status: 'available' | 'bidding' | 'sold' | 'unsold';
+  status: 'available' | 'bidding' | 'sold' | 'unsold' | 'retained';
   stats?: Record<string, any>;
   sequence_num: number;
   categories?: Category;
@@ -141,6 +145,7 @@ export interface Round {
 export interface Sponsor {
   id: string;
   tournament_id: string;
+  name?: string;
   logo_url: string;
   display_order: number;
 }

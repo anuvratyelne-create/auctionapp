@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Player, Team } from '../../types';
 import { User } from 'lucide-react';
-import { formatAmount } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -764,7 +764,7 @@ export default function CitySoldAnimation({
                 filter: `drop-shadow(0 0 30px ${CITY_COLORS.gold}80)`,
               }}
             >
-              {formatAmount(displayPrice, usePoints)}
+              {formatAmountCompact(displayPrice, usePoints)}
             </p>
           </div>
         </div>
@@ -776,7 +776,7 @@ export default function CitySoldAnimation({
           }`}
         >
           <span className="text-lg font-mono" style={{ color: CITY_COLORS.cyan }}>
-            Base: {formatAmount(player.base_price, usePoints)}
+            Base: {formatAmountCompact(player.base_price, usePoints)}
           </span>
           {parseFloat(multiplier) > 1 && (
             <span

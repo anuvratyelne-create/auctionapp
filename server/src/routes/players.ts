@@ -16,27 +16,18 @@ const createPlayerSchema = z.object({
   sequence_num: z.number().optional()
 });
 
-// Helper function to generate next player UID for a tournament
+// Helper function to generate next player UID per tournament (P001, P002, etc.)
 async function generatePlayerUID(tournamentId: string): Promise<string> {
-  const { data: lastPlayer } = await supabase
+  // Get count of players in THIS tournament only
+  const { count } = await supabase
     .from('players')
-    .select('player_uid')
-    .eq('tournament_id', tournamentId)
-    .not('player_uid', 'is', null)
-    .order('player_uid', { ascending: false })
-    .limit(1)
-    .single();
+    .select('*', { count: 'exact', head: true })
+    .eq('tournament_id', tournamentId);
 
-  let nextNum = 1;
-  if (lastPlayer?.player_uid) {
-    // Extract number from UID (e.g., "P001" -> 1)
-    const match = lastPlayer.player_uid.match(/P(\d+)/);
-    if (match) {
-      nextNum = parseInt(match[1], 10) + 1;
-    }
-  }
+  // Simple sequential number per tournament
+  const nextNum = (count || 0) + 1;
 
-  // Format as P001, P002, etc.
+  // Format as P followed by 3-digit number (P001, P002, ... P999)
   return `P${nextNum.toString().padStart(3, '0')}`;
 }
 
@@ -45,20 +36,15 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { status, category_id, role_category } = req.query;
 
+    // Fetch players without joins first (faster query)
     let query = supabase
       .from('players')
-      .select(`
-        *,
-        categories(id, name, base_price),
-        teams(id, name, short_name, logo_url)
-      `)
+      .select('id, name, photo_url, player_uid, jersey_number, base_price, sold_price, status, stats, sequence_num, is_retained, retention_price, category_id, team_id')
       .eq('tournament_id', req.tournamentId)
       .order('sequence_num', { ascending: true });
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
-      // When fetching 'available' players, exclude pending registrations
-      // Pending players have stats->>'pending' = 'true' OR category_id is null
       if (status === 'available') {
         query = query
           .not('category_id', 'is', null)
@@ -78,20 +64,36 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(500).json({ error: 'Failed to fetch players' });
     }
 
+    // Fetch categories and teams separately (parallel, faster)
+    const [categoriesRes, teamsRes] = await Promise.all([
+      supabase.from('categories').select('id, name, base_price').eq('tournament_id', req.tournamentId),
+      supabase.from('teams').select('id, name, short_name, logo_url').eq('tournament_id', req.tournamentId)
+    ]);
+
+    const categoriesMap = new Map((categoriesRes.data || []).map(c => [c.id, c]));
+    const teamsMap = new Map((teamsRes.data || []).map(t => [t.id, t]));
+
+    // Merge data
+    let enrichedPlayers = (players || []).map(p => ({
+      ...p,
+      categories: p.category_id ? categoriesMap.get(p.category_id) : null,
+      teams: p.team_id ? teamsMap.get(p.team_id) : null
+    }));
+
     // Filter by role category if specified
-    let filteredPlayers = players || [];
     if (role_category && typeof role_category === 'string') {
       const validRoles = getRolesByFilterCategory(role_category);
       if (validRoles.length > 0) {
-        filteredPlayers = filteredPlayers.filter((player: any) => {
+        enrichedPlayers = enrichedPlayers.filter((player: any) => {
           const playerRole = player.stats?.role?.toLowerCase();
           return playerRole && validRoles.some(r => r.toLowerCase() === playerRole);
         });
       }
     }
 
-    res.json(filteredPlayers);
+    res.json(enrichedPlayers);
   } catch (error) {
+    console.error('Players route error:', error);
     res.status(500).json({ error: 'Failed to fetch players' });
   }
 });
@@ -312,36 +314,29 @@ router.post('/bulk', authenticateToken, async (req: AuthRequest, res: Response) 
 
     const categoryPrices = new Map(categories?.map(c => [c.id, c.base_price]) || []);
 
-    // Get last player UID to continue sequence
-    const { data: lastUIDPlayer } = await supabase
+    // Get count of all players for unique UID generation
+    const { count: totalCount } = await supabase
       .from('players')
-      .select('player_uid')
-      .eq('tournament_id', req.tournamentId)
-      .not('player_uid', 'is', null)
-      .order('player_uid', { ascending: false })
-      .limit(1)
-      .single();
+      .select('*', { count: 'exact', head: true });
 
-    let nextUIDNum = 1;
-    if (lastUIDPlayer?.player_uid) {
-      const match = lastUIDPlayer.player_uid.match(/P(\d+)/);
-      if (match) {
-        nextUIDNum = parseInt(match[1], 10) + 1;
-      }
-    }
+    const baseUID = (totalCount || 0) + 1;
+    const baseTimestamp = Date.now() % 10000;
 
-    const playersToInsert = players.map((p: any, idx: number) => ({
-      name: p.name,
-      photo_url: p.photo_url || null,
-      jersey_number: p.jersey_number || null,
-      category_id: p.category_id,
-      base_price: p.base_price || categoryPrices.get(p.category_id) || 1000,
-      stats: p.stats || {},
-      sequence_num: nextSeq + idx,
-      player_uid: `P${(nextUIDNum + idx).toString().padStart(3, '0')}`,
-      tournament_id: req.tournamentId,
-      status: 'available'
-    }));
+    const playersToInsert = players.map((p: any, idx: number) => {
+      const uniqueNum = (baseUID + idx) * 10000 + baseTimestamp + idx;
+      return {
+        name: p.name,
+        photo_url: p.photo_url || null,
+        jersey_number: p.jersey_number || null,
+        category_id: p.category_id,
+        base_price: p.base_price || categoryPrices.get(p.category_id) || 1000,
+        stats: p.stats || {},
+        sequence_num: nextSeq + idx,
+        player_uid: `P${uniqueNum.toString().padStart(8, '0')}`,
+        tournament_id: req.tournamentId,
+        status: 'available'
+      };
+    });
 
     const { data: createdPlayers, error } = await supabase
       .from('players')
@@ -359,6 +354,187 @@ router.post('/bulk', authenticateToken, async (req: AuthRequest, res: Response) 
     res.status(201).json(createdPlayers);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create players' });
+  }
+});
+
+// Bulk upsert players (create new or update existing)
+// Matches by name (case-insensitive) OR jersey_number
+router.post('/bulk-upsert', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { players } = req.body;
+
+    if (!Array.isArray(players) || players.length === 0) {
+      return res.status(400).json({ error: 'Players array required' });
+    }
+
+    // Fetch all existing players for this tournament
+    const { data: existingPlayers, error: fetchError } = await supabase
+      .from('players')
+      .select('id, name, jersey_number, player_uid, status, team_id, sequence_num, stats')
+      .eq('tournament_id', req.tournamentId);
+
+    if (fetchError) {
+      console.error('Fetch existing players error:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch existing players' });
+    }
+
+    // Create lookup maps for existing players
+    const existingByName = new Map<string, any>();
+    const existingByJersey = new Map<string, any>();
+
+    for (const player of existingPlayers || []) {
+      existingByName.set(player.name.toLowerCase().trim(), player);
+      if (player.jersey_number) {
+        existingByJersey.set(player.jersey_number.trim(), player);
+      }
+    }
+
+    // Get categories for base prices
+    const { data: categories } = await supabase
+      .from('categories')
+      .select('id, base_price')
+      .eq('tournament_id', req.tournamentId);
+
+    const categoryPrices = new Map(categories?.map(c => [c.id, c.base_price]) || []);
+
+    // Get last sequence number for this tournament
+    const { data: lastPlayer } = await supabase
+      .from('players')
+      .select('sequence_num')
+      .eq('tournament_id', req.tournamentId)
+      .order('sequence_num', { ascending: false })
+      .limit(1)
+      .single();
+
+    let nextSeq = (lastPlayer?.sequence_num || 0) + 1;
+
+    // Get count of players in THIS tournament for per-tournament UID
+    const { count: tournamentPlayerCount } = await supabase
+      .from('players')
+      .select('*', { count: 'exact', head: true })
+      .eq('tournament_id', req.tournamentId);
+
+    // Next UID number for this tournament (P001, P002, etc.)
+    let nextUIDNum = (tournamentPlayerCount || 0) + 1;
+
+    const results = {
+      created: [] as any[],
+      updated: [] as any[],
+      errors: [] as { row: number; name: string; error: string }[],
+    };
+
+    // Process each player
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+
+      try {
+        // Try to match existing player
+        let matchedPlayer: any = null;
+
+        // First try name match (case-insensitive)
+        if (p.name) {
+          matchedPlayer = existingByName.get(p.name.toLowerCase().trim());
+        }
+
+        // If no name match, try jersey number match
+        if (!matchedPlayer && p.jersey_number) {
+          matchedPlayer = existingByJersey.get(p.jersey_number.trim());
+        }
+
+        if (matchedPlayer) {
+          // UPDATE existing player - preserve id, player_uid, status, team_id
+          const updatedStats = {
+            ...matchedPlayer.stats,
+            ...(p.stats || {}),
+          };
+
+          const updateData: any = {
+            name: p.name || matchedPlayer.name,
+            // Convert empty string to null for photo_url
+            photo_url: p.photo_url !== undefined
+              ? (p.photo_url || null)
+              : matchedPlayer.photo_url,
+            jersey_number: p.jersey_number !== undefined
+              ? (p.jersey_number || null)
+              : matchedPlayer.jersey_number,
+            category_id: p.category_id || matchedPlayer.category_id,
+            base_price: p.base_price || categoryPrices.get(p.category_id) || matchedPlayer.base_price,
+            stats: updatedStats,
+          };
+
+          const { data: updatedPlayer, error: updateError } = await supabase
+            .from('players')
+            .update(updateData)
+            .eq('id', matchedPlayer.id)
+            .eq('tournament_id', req.tournamentId)
+            .select()
+            .single();
+
+          if (updateError) {
+            results.errors.push({
+              row: p.rowNumber || i + 1,
+              name: p.name || 'Unknown',
+              error: updateError.message,
+            });
+          } else {
+            results.updated.push(updatedPlayer);
+          }
+        } else {
+          // INSERT new player - generate simple per-tournament UID (P001, P002, etc.)
+          const playerUID = `P${(nextUIDNum++).toString().padStart(3, '0')}`;
+
+          const newPlayerData = {
+            name: p.name,
+            photo_url: p.photo_url || null,
+            jersey_number: p.jersey_number || null,
+            category_id: p.category_id,
+            base_price: p.base_price || categoryPrices.get(p.category_id) || 1000,
+            stats: p.stats || {},
+            sequence_num: nextSeq++,
+            player_uid: playerUID,
+            tournament_id: req.tournamentId,
+            status: 'available',
+          };
+
+          const { data: createdPlayer, error: createError } = await supabase
+            .from('players')
+            .insert(newPlayerData)
+            .select()
+            .single();
+
+          if (createError) {
+            results.errors.push({
+              row: p.rowNumber || i + 1,
+              name: p.name || 'Unknown',
+              error: createError.message,
+            });
+          } else {
+            results.created.push(createdPlayer);
+            // Add to lookup maps for subsequent rows in same batch
+            if (createdPlayer) {
+              existingByName.set(createdPlayer.name.toLowerCase().trim(), createdPlayer);
+              if (createdPlayer.jersey_number) {
+                existingByJersey.set(createdPlayer.jersey_number.trim(), createdPlayer);
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        results.errors.push({
+          row: p.rowNumber || i + 1,
+          name: p.name || 'Unknown',
+          error: err.message || 'Unknown error',
+        });
+      }
+    }
+
+    const io = req.app.get('io');
+    io.to(`tournament:${req.tournamentId}`).emit('players:updated');
+
+    res.status(200).json(results);
+  } catch (error: any) {
+    console.error('Bulk upsert error:', error);
+    res.status(500).json({ error: error.message || 'Failed to upsert players' });
   }
 });
 

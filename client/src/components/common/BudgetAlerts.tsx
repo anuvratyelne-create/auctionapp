@@ -33,8 +33,9 @@ export default function BudgetAlerts({ teams, totalBudget, currentBiddingTeam }:
     const teamData = teams.find(t => t.id === currentBiddingTeam.id);
     if (!teamData) return;
 
-    const remainingBudget = teamData.remaining_budget || (totalBudget - (teamData.spent_points || 0));
-    const percentage = (remainingBudget / totalBudget) * 100;
+    const teamBudget = teamData.total_budget || totalBudget;
+    const remainingBudget = teamData.remaining_budget || (teamBudget - (teamData.spent_points || 0));
+    const percentage = (remainingBudget / teamBudget) * 100;
 
     // Generate unique keys for alert levels
     const criticalKey = `${teamData.id}-critical`;

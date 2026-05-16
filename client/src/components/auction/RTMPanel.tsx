@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Shield, Check, X, AlertCircle } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
 import { Team, Player } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 
 interface RTMPanelProps {
   tournamentId: string;
@@ -102,7 +102,7 @@ export default function RTMPanel({
                 <div className="bg-slate-700/50 rounded-xl p-3 text-center">
                   <p className="text-xs text-slate-400 mb-1">Winning Bid</p>
                   <p className="text-xl font-bold text-emerald-400">
-                    {formatIndianNumber(currentBid)}
+                    {formatCompactIndian(currentBid)}
                   </p>
                 </div>
                 <div className="bg-slate-700/50 rounded-xl p-3 text-center">
@@ -134,7 +134,7 @@ export default function RTMPanel({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-400">Remaining Budget:</span>
                 <span className="text-white font-semibold">
-                  {formatIndianNumber(rtmTeam.remaining_budget)}
+                  {formatCompactIndian(rtmTeam.remaining_budget)}
                 </span>
               </div>
             </div>
@@ -152,7 +152,7 @@ export default function RTMPanel({
                     </p>
                     <p className="text-sm text-slate-400 mt-1">
                       {confirming === 'match'
-                        ? `${rtmTeam.name} will acquire ${currentPlayer.name} for ${formatIndianNumber(currentBid)}`
+                        ? `${rtmTeam.name} will acquire ${currentPlayer.name} for ${formatCompactIndian(currentBid)}`
                         : `${currentTeam.name} will acquire ${currentPlayer.name}`}
                     </p>
                     <div className="flex items-center gap-2 mt-3">
@@ -187,7 +187,7 @@ export default function RTMPanel({
                   className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Check size={20} />
-                  Match ({formatIndianNumber(currentBid)})
+                  Match ({formatCompactIndian(currentBid)})
                 </button>
                 <button
                   onClick={handleDecline}

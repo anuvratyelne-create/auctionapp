@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Player, Team } from '../../types';
 import { User } from 'lucide-react';
-import { formatAmount } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -455,7 +455,7 @@ export default function FireSoldAnimation({
               WebkitTextFillColor: 'transparent',
             }}
           >
-            {formatAmount(displayPrice, usePoints)}
+            {formatAmountCompact(displayPrice, usePoints)}
           </p>
         </div>
 
@@ -466,7 +466,7 @@ export default function FireSoldAnimation({
           }`}
         >
           <span className="text-lg" style={{ color: FIRE_COLORS.ember }}>
-            Base: {formatAmount(player.base_price, usePoints)}
+            Base: {formatAmountCompact(player.base_price, usePoints)}
           </span>
           {parseFloat(multiplier) > 1 && (
             <span

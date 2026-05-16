@@ -5,6 +5,7 @@ interface UseKeyboardShortcutsProps {
   teams: Team[];
   onTeamBid: (team: Team) => void;
   onIncrementBid: () => void;
+  onDecrementBid?: () => void;
   enabled?: boolean;
 }
 
@@ -12,6 +13,7 @@ export const useKeyboardShortcuts = ({
   teams,
   onTeamBid,
   onIncrementBid,
+  onDecrementBid,
   enabled = true,
 }: UseKeyboardShortcutsProps) => {
 
@@ -36,6 +38,13 @@ export const useKeyboardShortcuts = ({
         return;
       }
 
+      // Arrow down for bid decrement
+      if (event.key === 'ArrowDown' && onDecrementBid) {
+        event.preventDefault();
+        onDecrementBid();
+        return;
+      }
+
       // Team keyboard shortcuts for bidding
       const team = teams.find(
         (t) => t.keyboard_key?.toUpperCase() === key
@@ -45,7 +54,7 @@ export const useKeyboardShortcuts = ({
         onTeamBid(team);
       }
     },
-    [enabled, teams, onTeamBid, onIncrementBid]
+    [enabled, teams, onTeamBid, onIncrementBid, onDecrementBid]
   );
 
   useEffect(() => {

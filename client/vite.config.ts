@@ -22,5 +22,8 @@ export default defineConfig({
         ws: true,
       },
     },
+    headers: {
+      'Cache-Control': 'no-store',
+    },
   },
 })

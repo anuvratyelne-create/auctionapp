@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 
 interface AnimatedBidAmountProps {
   value: number;
@@ -58,9 +58,7 @@ export default function AnimatedBidAmount({
     };
   }, [value, duration]);
 
-  const formattedValue = usePoints
-    ? `${formatIndianNumber(displayValue)} pts`
-    : `₹${formatIndianNumber(displayValue)}`;
+  const formattedValue = formatAmountCompact(displayValue, usePoints);
 
   return (
     <span

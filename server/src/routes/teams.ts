@@ -36,7 +36,7 @@ router.get('/compare', authenticateToken, async (req: AuthRequest, res: Response
       .select(`
         *,
         players:players(
-          id, name, photo_url, jersey_number, sold_price, retention_price, status, base_price, is_retained,
+          id, name, photo_url, player_uid, jersey_number, sold_price, retention_price, status, base_price, is_retained,
           categories(id, name)
         )
       `)
@@ -238,12 +238,18 @@ router.get('/public/:tournamentId', async (req, res) => {
 // Get single team with squad
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const { data: tournament } = await supabase
+      .from('tournaments')
+      .select('total_points, min_players')
+      .eq('id', req.tournamentId)
+      .single();
+
     const { data: team, error } = await supabase
       .from('teams')
       .select(`
         *,
         players:players(
-          id, name, photo_url, jersey_number, sold_price, retention_price, status, is_retained, base_price,
+          id, name, photo_url, player_uid, jersey_number, sold_price, retention_price, status, is_retained, base_price,
           categories(name)
         )
       `)
@@ -255,15 +261,41 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    // Include both sold AND retained players in squad
-    team.players = team.players?.filter((p: any) => p.status === 'sold' || p.status === 'retained')
-      .map((p: any) => ({
-        ...p,
-        // For retained players, use retention_price as sold_price for display
-        sold_price: p.status === 'retained' ? p.retention_price : p.sold_price
-      })) || [];
+    // Filter to sold and retained players
+    const soldPlayers = team.players?.filter((p: any) => p.status === 'sold') || [];
+    const retainedPlayers = team.players?.filter((p: any) => p.status === 'retained') || [];
 
-    res.json(team);
+    // Calculate spent points
+    const soldSpentPoints = soldPlayers.reduce((sum: number, p: any) => sum + (p.sold_price || 0), 0);
+    const retentionSpent = team.retention_spent || 0;
+    const totalSpentPoints = soldSpentPoints + retentionSpent;
+
+    // Calculate budget values
+    const playerCount = soldPlayers.length + retainedPlayers.length;
+    const remainingSlots = Math.max(0, (tournament?.min_players || 7) - playerCount);
+    const minBasePrice = 1000;
+    const reservePoints = remainingSlots * minBasePrice;
+    const totalBudget = team.total_budget || tournament?.total_points || 100000;
+    const remainingBudget = totalBudget - totalSpentPoints;
+    const maxBid = Math.max(0, remainingBudget - reservePoints);
+
+    // Include both sold AND retained players in squad
+    const squadPlayers = [...soldPlayers, ...retainedPlayers].map((p: any) => ({
+      ...p,
+      // For retained players, use retention_price as sold_price for display
+      sold_price: p.status === 'retained' ? p.retention_price : p.sold_price
+    }));
+
+    res.json({
+      ...team,
+      players: squadPlayers,
+      spent_points: totalSpentPoints,
+      remaining_budget: remainingBudget,
+      player_count: playerCount,
+      retained_count: retainedPlayers.length,
+      reserve_points: reservePoints,
+      max_bid: maxBid,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch team' });
   }

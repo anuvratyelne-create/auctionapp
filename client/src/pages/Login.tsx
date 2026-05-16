@@ -1,16 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Gavel, Phone, Lock, LogIn, Sparkles, Trophy, Users, Zap } from 'lucide-react';
+import { Gavel, Mail, Lock, LogIn, Sparkles, Trophy, Users, Zap } from 'lucide-react';
 
 export default function Login() {
-  const [mobile, setMobile] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { setAuth } = useAuthStore();
+  const { setAuth, isAuthenticated } = useAuthStore();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    // Check localStorage directly for faster check
+    try {
+      const stored = localStorage.getItem('auction-auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.state?.token && parsed?.state?.isAuthenticated) {
+          navigate('/manage', { replace: true });
+          return;
+        }
+      }
+    } catch (e) {}
+
+    // Also check zustand state
+    if (isAuthenticated) {
+      navigate('/manage', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +38,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await api.login(mobile, password) as any;
+      const response = await api.login(identifier, password) as any;
       api.setToken(response.token);
       setAuth(response.user, response.tournament, response.token);
       navigate('/manage');
@@ -31,7 +51,7 @@ export default function Login() {
   };
 
   const handleDemoLogin = async () => {
-    setMobile('demo');
+    setIdentifier('demo');
     setPassword('demo123');
     setError('');
     setLoading(true);
@@ -177,21 +197,21 @@ export default function Login() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Mobile Number
+                    Email or Mobile
                   </label>
                   <div className="relative group">
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl opacity-0 group-focus-within:opacity-100 blur transition-opacity" />
                     <div className="relative">
-                      <Phone
+                      <Mail
                         size={20}
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-amber-400 transition-colors"
                       />
                       <input
                         type="text"
-                        value={mobile}
-                        onChange={(e) => setMobile(e.target.value)}
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
                         className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:bg-slate-800 transition-all"
-                        placeholder="Enter mobile number"
+                        placeholder="Enter email or mobile number"
                         required
                       />
                     </div>
@@ -257,7 +277,7 @@ export default function Login() {
               <p className="mt-8 text-center text-slate-400 text-sm">
                 Don't have an account?{' '}
                 <Link to="/register" className="text-amber-400 hover:text-amber-300 font-medium transition-colors">
-                  Create Tournament
+                  Sign Up
                 </Link>
               </p>
             </div>

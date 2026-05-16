@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
-import { formatAmount } from '../../../utils/formatters';
+import { formatAmountCompact } from '../../../utils/formatters';
 import { soundManager } from '../../../utils/soundManager';
 import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
 import { getCityBackground } from '../../../config/cityBackgrounds';
 import { User } from 'lucide-react';
+import CityIdleScreen from './CityIdleScreen';
 
 interface Sponsor {
   id: string;
@@ -24,6 +25,8 @@ interface CityBroadcastLayoutProps {
   status: string;
   timerSeconds?: number;
   timerKey?: number;
+  onNewPlayer?: () => void;
+  loading?: boolean;
 }
 
 // City theme colors
@@ -309,51 +312,69 @@ function CityFrame({
   );
 }
 
-// Floating city lights particles
-function CityLights() {
+// Floating city lights particles (memoized for performance)
+const CityLights = memo(function CityLights() {
+  const lights = useMemo(() => [...Array(12)].map((_, i) => ({
+    id: i,
+    left: `${5 + (i * 7.5) % 90}%`,
+    bottom: `${10 + (i * 2.5) % 30}%`,
+    size: `${2 + (i % 2)}px`,
+    color: i % 3 === 0 ? CITY_COLORS.cyan : i % 3 === 1 ? CITY_COLORS.purple : CITY_COLORS.gold,
+    duration: `${5 + (i % 3)}s`,
+    delay: `${i * 0.3}s`,
+  })), []);
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(30)].map((_, i) => (
+      {lights.map((l) => (
         <div
-          key={i}
-          className="absolute rounded-full animate-city-light-float"
+          key={l.id}
+          className="absolute rounded-full animate-city-light-float will-change-transform"
           style={{
-            left: `${5 + Math.random() * 90}%`,
-            bottom: `${10 + Math.random() * 30}%`,
-            width: `${2 + Math.random() * 3}px`,
-            height: `${2 + Math.random() * 3}px`,
-            background: i % 3 === 0 ? CITY_COLORS.cyan : i % 3 === 1 ? CITY_COLORS.purple : CITY_COLORS.gold,
-            boxShadow: `0 0 ${4 + Math.random() * 6}px ${i % 3 === 0 ? CITY_COLORS.cyan : i % 3 === 1 ? CITY_COLORS.purple : CITY_COLORS.gold}`,
-            animationDuration: `${4 + Math.random() * 4}s`,
-            animationDelay: `${Math.random() * 5}s`,
+            left: l.left,
+            bottom: l.bottom,
+            width: l.size,
+            height: l.size,
+            background: l.color,
+            animationDuration: l.duration,
+            animationDelay: l.delay,
           }}
         />
       ))}
     </div>
   );
-}
+});
 
-// Traffic light trails at bottom
-function TrafficLights() {
+// Traffic light trails at bottom (memoized for performance)
+const TrafficLights = memo(function TrafficLights() {
+  const trails = useMemo(() => [...Array(6)].map((_, i) => ({
+    id: i,
+    bottom: `${15 + (i * 8) % 50}%`,
+    width: `${60 + (i * 10) % 80}px`,
+    color: i % 2 === 0 ? CITY_COLORS.gold : '#ffffff',
+    duration: `${3 + (i % 2)}s`,
+    delay: `${i * 0.5}s`,
+  })), []);
+
   return (
     <div className="absolute bottom-0 left-0 right-0 h-32 overflow-hidden pointer-events-none">
-      {[...Array(8)].map((_, i) => (
+      {trails.map((t) => (
         <div
-          key={i}
-          className="absolute h-0.5 animate-traffic-flow"
+          key={t.id}
+          className="absolute h-0.5 animate-traffic-flow will-change-transform"
           style={{
-            bottom: `${15 + Math.random() * 50}%`,
+            bottom: t.bottom,
             left: '-20%',
-            width: `${60 + Math.random() * 80}px`,
-            background: `linear-gradient(90deg, transparent, ${i % 2 === 0 ? CITY_COLORS.gold : '#ffffff'}80, transparent)`,
-            animationDuration: `${3 + Math.random() * 2}s`,
-            animationDelay: `${Math.random() * 4}s`,
+            width: t.width,
+            background: `linear-gradient(90deg, transparent, ${t.color}80, transparent)`,
+            animationDuration: t.duration,
+            animationDelay: t.delay,
           }}
         />
       ))}
     </div>
   );
-}
+});
 
 export default function CityBroadcastLayout({
   tournament,
@@ -364,6 +385,8 @@ export default function CityBroadcastLayout({
   status,
   timerSeconds = 15,
   timerKey = 0,
+  onNewPlayer,
+  loading,
 }: CityBroadcastLayoutProps) {
   const { showSponsors, sponsorRotationInterval, cityBackgroundId, displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -438,6 +461,15 @@ export default function CityBroadcastLayout({
 
       {/* Traffic light trails */}
       <TrafficLights />
+
+      {/* Full Screen Idle Welcome Screen when no player selected */}
+      {!currentPlayer && tournament && (
+        <CityIdleScreen
+          tournament={tournament}
+          onNewPlayer={onNewPlayer}
+          loading={loading}
+        />
+      )}
 
       {/* Main Content */}
       <div className="relative z-10 flex flex-col h-full">
@@ -523,7 +555,7 @@ export default function CityBroadcastLayout({
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* MAIN AUCTION AREA */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
-        <div className="flex-1 flex px-6 pt-4 gap-6" style={{ paddingBottom: '220px' }}>
+        <div className="flex-1 flex px-6 pt-4 gap-6" style={{ paddingBottom: '280px' }}>
 
           {/* ══ LEFT SIDEBAR: Team Standings ══ */}
           <div className="w-64 flex-shrink-0" style={{ maxHeight: 'calc(100vh - 380px)' }}>
@@ -644,7 +676,7 @@ export default function CityBroadcastLayout({
                               textShadow: `0 0 8px ${CITY_COLORS.gold}60`,
                             }}
                           >
-                            {formatAmount(team.remaining_budget, usePoints)}
+                            {formatAmountCompact(team.remaining_budget, usePoints)}
                           </span>
                           <span style={{ color: CITY_COLORS.cyan }}>•</span>
                           <span
@@ -667,38 +699,76 @@ export default function CityBroadcastLayout({
             {/* Top Row: Player | Timer/Bid | Team */}
             <div className="flex items-center justify-center gap-6 md:gap-10 lg:gap-16">
 
-            {/* Left - Player Frame (Clean, no info below) */}
-            {currentPlayer ? (
-              <CityFrame size="large" imageUrl={currentPlayer.photo_url}>
-                {currentPlayer.photo_url ? (
-                  // PNG: contain to show full image, JPG: cover with face focus
-                  isPngImage(currentPlayer.photo_url) ? (
-                    <img
-                      src={currentPlayer.photo_url}
-                      alt={currentPlayer.name}
-                      className="w-full h-full object-contain"
-                    />
+            {/* Left - Player Frame with UID Badge and Role */}
+            <div className="relative">
+              {/* Player UID Badge - Top Right */}
+              {currentPlayer?.player_uid && (
+                <div
+                  className="absolute -top-4 -right-4 z-30 px-4 py-2 font-black text-white text-xl"
+                  style={{
+                    background: `linear-gradient(135deg, ${CITY_COLORS.purple}, ${CITY_COLORS.magenta})`,
+                    clipPath: 'polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%)',
+                    boxShadow: `0 0 25px ${CITY_COLORS.purple}, 0 0 50px ${CITY_COLORS.magenta}60`,
+                  }}
+                >
+                  {currentPlayer.player_uid}
+                </div>
+              )}
+
+              {/* Player Role Badge - Bottom Center */}
+              {currentPlayer && (
+                <div
+                  className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-30 px-5 py-2 whitespace-nowrap"
+                  style={{
+                    background: `linear-gradient(135deg, ${CITY_COLORS.cyan}90, ${CITY_COLORS.purple}90)`,
+                    clipPath: 'polygon(5% 0%, 95% 0%, 100% 50%, 95% 100%, 5% 100%, 0% 50%)',
+                    boxShadow: `0 0 20px ${CITY_COLORS.cyan}80, 0 0 40px ${CITY_COLORS.purple}50`,
+                  }}
+                >
+                  <p
+                    className="text-sm font-bold uppercase tracking-wider text-white"
+                    style={{ textShadow: `0 0 10px ${CITY_COLORS.cyan}` }}
+                  >
+                    {(() => {
+                      const role = getRoleLabel(currentPlayer.stats?.role || currentPlayer.role);
+                      return (role && role.toUpperCase() !== 'UNKNOWN') ? role : (currentPlayer.categories?.name || 'Player');
+                    })()}
+                  </p>
+                </div>
+              )}
+
+              {currentPlayer ? (
+                <CityFrame size="large" imageUrl={currentPlayer.photo_url}>
+                  {currentPlayer.photo_url ? (
+                    // PNG: contain to show full image, JPG: cover with face focus
+                    isPngImage(currentPlayer.photo_url) ? (
+                      <img
+                        src={currentPlayer.photo_url}
+                        alt={currentPlayer.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <img
+                        src={currentPlayer.photo_url}
+                        alt={currentPlayer.name}
+                        className="w-full h-full object-cover"
+                        style={{ objectPosition: 'center 20%' }}
+                      />
+                    )
                   ) : (
-                    <img
-                      src={currentPlayer.photo_url}
-                      alt={currentPlayer.name}
-                      className="w-full h-full object-cover"
-                      style={{ objectPosition: 'center 20%' }}
-                    />
-                  )
-                ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+                      <User size={80} className="text-slate-600" />
+                    </div>
+                  )}
+                </CityFrame>
+              ) : (
+                <CityFrame size="large">
                   <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
                     <User size={80} className="text-slate-600" />
                   </div>
-                )}
-              </CityFrame>
-            ) : (
-              <CityFrame size="large">
-                <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                  <User size={80} className="text-slate-600" />
-                </div>
-              </CityFrame>
-            )}
+                </CityFrame>
+              )}
+            </div>
 
             {/* Center - Timer + Stamps + Bid Amount */}
             <div className="flex flex-col items-center justify-center gap-4 min-w-[280px]">
@@ -805,7 +875,7 @@ export default function CityBroadcastLayout({
                         `,
                       }}
                     >
-                      {formatAmount(currentBid, usePoints)}
+                      {formatAmountCompact(currentBid, usePoints)}
                     </p>
                   </div>
                 </div>
@@ -905,189 +975,173 @@ export default function CityBroadcastLayout({
                 }}
               />
 
-              {/* Content grid */}
-              <div className="flex items-stretch">
+              {/* Content - Sleek Cyberpunk Style */}
+              <div className="flex items-center justify-between px-6 py-3">
 
                 {/* ══ PLAYER SECTION ══ */}
-                <div className="flex-1 flex items-center justify-center py-5 px-6 gap-8">
+                <div className="flex items-center gap-8">
                   {currentPlayer ? (
                     <>
-                      {/* Player Name Block - GLOWING */}
-                      <div
-                        className="px-6 py-2 relative"
-                        style={{
-                          background: `linear-gradient(135deg, ${CITY_COLORS.cyan}25, ${CITY_COLORS.cyan}05)`,
-                          borderLeft: `4px solid ${CITY_COLORS.cyan}`,
-                          boxShadow: `
-                            -4px 0 20px ${CITY_COLORS.cyan}50,
-                            inset 0 0 20px ${CITY_COLORS.cyan}10
-                          `,
-                        }}
-                      >
+                      {/* Player Name + City - Clean with glow underline */}
+                      <div className="relative">
                         <p
                           className="text-2xl md:text-3xl font-black uppercase tracking-wider"
                           style={{
                             color: '#ffffff',
                             fontFamily: "'Orbitron', sans-serif",
-                            textShadow: `0 0 20px ${CITY_COLORS.cyan}60, 0 0 40px ${CITY_COLORS.cyan}30`,
+                            textShadow: `0 0 20px ${CITY_COLORS.cyan}60`,
                           }}
                         >
                           {currentPlayer.name}
                         </p>
-                      </div>
-
-                      {/* Role Badge - GLOWING */}
-                      <div
-                        className="px-4 py-2 rounded-lg"
-                        style={{
-                          background: `linear-gradient(135deg, ${CITY_COLORS.cyan}35, ${CITY_COLORS.cyan}15)`,
-                          border: `2px solid ${CITY_COLORS.cyan}80`,
-                          boxShadow: `0 0 20px ${CITY_COLORS.cyan}40, inset 0 0 15px ${CITY_COLORS.cyan}20`,
-                        }}
-                      >
-                        <p
-                          className="text-lg font-bold uppercase tracking-wide"
-                          style={{
-                            color: CITY_COLORS.cyanLight,
-                            textShadow: `0 0 15px ${CITY_COLORS.cyan}`,
-                          }}
-                        >
-                          {(() => {
-                            const role = getRoleLabel(currentPlayer.stats?.role || currentPlayer.role);
-                            return (role && role.toUpperCase() !== 'UNKNOWN') ? role : (currentPlayer.categories?.name || 'Player');
-                          })()}
-                        </p>
-                      </div>
-
-                      {/* Player UID Badge - GLOWING */}
-                      {currentPlayer.player_uid && (
-                        <div
-                          className="px-4 py-2 rounded-lg"
-                          style={{
-                            background: `linear-gradient(135deg, ${CITY_COLORS.purple}35, ${CITY_COLORS.purple}15)`,
-                            border: `2px solid ${CITY_COLORS.purple}80`,
-                            boxShadow: `0 0 20px ${CITY_COLORS.purple}40, inset 0 0 15px ${CITY_COLORS.purple}20`,
-                          }}
-                        >
+                        {(currentPlayer.city || currentPlayer.stats?.city) && (
                           <p
-                            className="text-lg font-black"
+                            className="text-sm font-semibold tracking-wide mt-1"
                             style={{
-                              color: CITY_COLORS.purple,
-                              textShadow: `0 0 15px ${CITY_COLORS.purple}`,
+                              color: CITY_COLORS.pink,
+                              textShadow: `0 0 10px ${CITY_COLORS.pink}80`,
                             }}
                           >
-                            {currentPlayer.player_uid}
+                            {currentPlayer.city || currentPlayer.stats?.city}
                           </p>
-                        </div>
-                      )}
+                        )}
+                        {/* Glowing underline */}
+                        <div
+                          className="absolute -bottom-2 left-0 right-0 h-0.5"
+                          style={{
+                            background: `linear-gradient(90deg, ${CITY_COLORS.cyan}, ${CITY_COLORS.purple}, transparent)`,
+                            boxShadow: `0 0 10px ${CITY_COLORS.cyan}`,
+                          }}
+                        />
+                      </div>
 
-                      {/* Base Price - GLOWING */}
+                      {/* Cyber divider */}
                       <div className="flex items-center gap-2">
-                        <span className="text-sm uppercase tracking-wider text-slate-400">Base</span>
-                        <span
-                          className="text-xl font-black"
+                        <div className="w-2 h-2 rotate-45" style={{ background: CITY_COLORS.cyan, boxShadow: `0 0 8px ${CITY_COLORS.cyan}` }} />
+                        <div className="w-12 h-px" style={{ background: `linear-gradient(90deg, ${CITY_COLORS.cyan}60, ${CITY_COLORS.gold}60)` }} />
+                        <div className="w-2 h-2 rotate-45" style={{ background: CITY_COLORS.gold, boxShadow: `0 0 8px ${CITY_COLORS.gold}` }} />
+                      </div>
+
+                      {/* Base Price - Clean text */}
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em]" style={{ color: `${CITY_COLORS.gold}80` }}>Base</p>
+                        <p
+                          className="text-2xl font-black"
                           style={{
                             color: CITY_COLORS.gold,
-                            textShadow: `0 0 15px ${CITY_COLORS.gold}, 0 0 30px ${CITY_COLORS.gold}60`,
+                            textShadow: `0 0 15px ${CITY_COLORS.gold}, 0 0 30px ${CITY_COLORS.gold}50`,
                           }}
                         >
-                          {formatAmount(currentPlayer.base_price, usePoints)}
-                        </span>
+                          {formatAmountCompact(currentPlayer.base_price, usePoints)}
+                        </p>
                       </div>
                     </>
                   ) : (
-                    <p className="text-lg text-slate-500">Select a player...</p>
+                    <p className="text-lg" style={{ color: `${CITY_COLORS.cyan}40` }}>Select a player...</p>
                   )}
                 </div>
 
-                {/* ══ CENTER DIVIDER - GLOWING ══ */}
-                <div
-                  className="w-1 self-stretch my-3 relative"
-                  style={{
-                    background: `linear-gradient(180deg, ${CITY_COLORS.cyan}, ${CITY_COLORS.gold}, ${CITY_COLORS.purple})`,
-                    boxShadow: `0 0 20px ${CITY_COLORS.gold}, 0 0 40px ${CITY_COLORS.gold}60`,
-                    borderRadius: '2px',
-                  }}
-                />
+                {/* ══ CENTER DIAMOND DIVIDER ══ */}
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-px" style={{ background: `linear-gradient(90deg, transparent, ${CITY_COLORS.cyan})` }} />
+                  <div
+                    className="w-4 h-4 rotate-45"
+                    style={{
+                      background: `linear-gradient(135deg, ${CITY_COLORS.cyan}, ${CITY_COLORS.gold})`,
+                      boxShadow: `0 0 15px ${CITY_COLORS.gold}, 0 0 30px ${CITY_COLORS.cyan}60`,
+                    }}
+                  />
+                  <div className="w-16 h-px" style={{ background: `linear-gradient(90deg, ${CITY_COLORS.purple}, transparent)` }} />
+                </div>
 
                 {/* ══ TEAM SECTION ══ */}
-                <div className="flex-1 flex items-center justify-center py-5 px-6 gap-8">
+                <div className="flex items-center gap-8">
                   {currentTeam ? (
                     <>
-                      {/* Team Name Block - GLOWING */}
-                      <div
-                        className="px-6 py-2 relative"
-                        style={{
-                          background: `linear-gradient(135deg, ${CITY_COLORS.purple}25, ${CITY_COLORS.purple}05)`,
-                          borderLeft: `4px solid ${CITY_COLORS.purple}`,
-                          boxShadow: `
-                            -4px 0 20px ${CITY_COLORS.purple}50,
-                            inset 0 0 20px ${CITY_COLORS.purple}10
-                          `,
-                        }}
-                      >
+                      {/* Team Name - Clean with glow */}
+                      <div className="relative">
                         <p
                           className="text-2xl md:text-3xl font-black uppercase tracking-wider"
                           style={{
                             color: '#ffffff',
                             fontFamily: "'Orbitron', sans-serif",
-                            textShadow: `0 0 20px ${CITY_COLORS.purple}60, 0 0 40px ${CITY_COLORS.purple}30`,
+                            textShadow: `0 0 20px ${CITY_COLORS.purple}60`,
                           }}
                         >
                           {currentTeam.short_name || currentTeam.name}
                         </p>
+                        {/* Glowing underline */}
+                        <div
+                          className="absolute -bottom-1 left-0 right-0 h-0.5"
+                          style={{
+                            background: `linear-gradient(90deg, transparent, ${CITY_COLORS.purple}, ${CITY_COLORS.magenta})`,
+                            boxShadow: `0 0 10px ${CITY_COLORS.purple}`,
+                          }}
+                        />
                       </div>
 
-                      {/* Budget - GLOWING */}
+                      {/* Cyber divider */}
                       <div className="flex items-center gap-2">
-                        <span className="text-sm uppercase tracking-wider text-slate-400">Budget</span>
-                        <span
-                          className="text-xl font-black"
-                          style={{
-                            color: CITY_COLORS.gold,
-                            textShadow: `0 0 15px ${CITY_COLORS.gold}, 0 0 30px ${CITY_COLORS.gold}60`,
-                          }}
-                        >
-                          {formatAmount(currentTeam.remaining_budget || 0, usePoints)}
-                        </span>
+                        <div className="w-2 h-2 rotate-45" style={{ background: CITY_COLORS.purple, boxShadow: `0 0 8px ${CITY_COLORS.purple}` }} />
+                        <div className="w-8 h-px" style={{ background: `${CITY_COLORS.purple}60` }} />
                       </div>
 
-                      {/* Players Badge - GLOWING */}
-                      <div
-                        className="px-4 py-2 rounded-lg"
-                        style={{
-                          background: `linear-gradient(135deg, ${CITY_COLORS.magenta}35, ${CITY_COLORS.magenta}15)`,
-                          border: `2px solid ${CITY_COLORS.magenta}80`,
-                          boxShadow: `0 0 20px ${CITY_COLORS.magenta}40, inset 0 0 15px ${CITY_COLORS.magenta}20`,
-                        }}
-                      >
-                        <p
-                          className="text-lg font-bold"
+                      {/* Team Stats - Inline flowing */}
+                      <div className="flex items-center gap-6">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em]" style={{ color: `${CITY_COLORS.gold}70` }}>Budget</p>
+                          <p
+                            className="text-xl font-black"
+                            style={{
+                              color: CITY_COLORS.gold,
+                              textShadow: `0 0 12px ${CITY_COLORS.gold}`,
+                            }}
+                          >
+                            {formatAmountCompact(currentTeam.remaining_budget || 0, usePoints)}
+                          </p>
+                        </div>
+                        <div
+                          className="w-3 h-3 rotate-45"
                           style={{
-                            color: CITY_COLORS.magenta,
-                            textShadow: `0 0 15px ${CITY_COLORS.magenta}`,
+                            border: `1px solid ${CITY_COLORS.magenta}60`,
+                            boxShadow: `0 0 6px ${CITY_COLORS.magenta}40`,
                           }}
-                        >
-                          {currentTeam.player_count || 0} Players
-                        </p>
-                      </div>
-
-                      {/* Spent - GLOWING */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm uppercase tracking-wider text-slate-400">Spent</span>
-                        <span
-                          className="text-xl font-black"
+                        />
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em]" style={{ color: `${CITY_COLORS.magenta}70` }}>Squad</p>
+                          <p
+                            className="text-xl font-black"
+                            style={{
+                              color: CITY_COLORS.magenta,
+                              textShadow: `0 0 12px ${CITY_COLORS.magenta}`,
+                            }}
+                          >
+                            {currentTeam.player_count || 0}
+                          </p>
+                        </div>
+                        <div
+                          className="w-3 h-3 rotate-45"
                           style={{
-                            color: CITY_COLORS.cyan,
-                            textShadow: `0 0 15px ${CITY_COLORS.cyan}, 0 0 30px ${CITY_COLORS.cyan}60`,
+                            border: `1px solid ${CITY_COLORS.cyan}60`,
+                            boxShadow: `0 0 6px ${CITY_COLORS.cyan}40`,
                           }}
-                        >
-                          {formatAmount(currentTeam.spent_points || 0, usePoints)}
-                        </span>
+                        />
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em]" style={{ color: `${CITY_COLORS.cyan}70` }}>Spent</p>
+                          <p
+                            className="text-xl font-black"
+                            style={{
+                              color: CITY_COLORS.cyan,
+                              textShadow: `0 0 12px ${CITY_COLORS.cyan}`,
+                            }}
+                          >
+                            {formatAmountCompact(currentTeam.spent_points || 0, usePoints)}
+                          </p>
+                        </div>
                       </div>
                     </>
                   ) : (
-                    <p className="text-lg text-slate-500">Awaiting bid...</p>
+                    <p className="text-lg" style={{ color: `${CITY_COLORS.purple}40` }}>Awaiting bid...</p>
                   )}
                 </div>
               </div>

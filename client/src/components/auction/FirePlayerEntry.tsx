@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Player } from '../../types';
 import { User } from 'lucide-react';
-import { formatAmount } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -217,7 +217,7 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
             {player.name}
           </h1>
 
-          {/* Role & Category */}
+          {/* Role & Category & City */}
           <div className={`flex items-center justify-center gap-3 mt-4 transition-all duration-500 delay-100 ${
             phase === 'name' || phase === 'stats' || phase === 'ready' || phase === 'exit'
               ? 'opacity-100' : 'opacity-0'
@@ -232,6 +232,18 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
                 }}
               >
                 {player.categories.name}
+              </span>
+            )}
+            {(player.city || player.stats?.city) && (
+              <span
+                className="px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider flex items-center gap-1"
+                style={{
+                  background: `linear-gradient(135deg, ${FIRE_COLORS.red}40, ${FIRE_COLORS.darkRed}30)`,
+                  color: FIRE_COLORS.ember,
+                  border: `1px solid ${FIRE_COLORS.red}60`,
+                }}
+              >
+                📍 {player.city || player.stats?.city}
               </span>
             )}
           </div>
@@ -263,7 +275,7 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
                 WebkitTextFillColor: 'transparent',
               }}
             >
-              {formatAmount(player.base_price, usePoints)}
+              {formatAmountCompact(player.base_price, usePoints)}
             </span>
           </div>
         </div>

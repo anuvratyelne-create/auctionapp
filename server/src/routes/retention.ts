@@ -360,7 +360,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
       .from('teams')
       .select(`
         id, name, short_name, logo_url, total_budget, retention_spent,
-        players:players(id, name, photo_url, jersey_number, retention_price, is_retained, categories(name))
+        players:players(id, name, photo_url, player_uid, jersey_number, retention_price, is_retained, categories(name))
       `)
       .eq('tournament_id', req.tournamentId);
 
@@ -380,6 +380,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
           id: p.id,
           name: p.name,
           photo_url: p.photo_url,
+          player_uid: p.player_uid,
           jersey_number: p.jersey_number,
           retention_price: p.retention_price,
           category: p.categories?.name

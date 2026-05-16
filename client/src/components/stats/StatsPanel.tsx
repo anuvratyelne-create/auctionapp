@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
 import { DashboardStats } from '../../types/stats';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import StatCard from './StatCard';
 import {
   Users,
@@ -90,27 +90,27 @@ export default function StatsPanel() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             title="Total Players"
-            value={formatIndianNumber(stats.overview.total_players)}
+            value={formatCompactIndian(stats.overview.total_players)}
             icon={Users}
             variant="blue"
           />
           <StatCard
             title="Players Sold"
-            value={formatIndianNumber(stats.overview.sold_players)}
+            value={formatCompactIndian(stats.overview.sold_players)}
             subtitle={`${stats.overview.auction_progress}% complete`}
             icon={Trophy}
             variant="success"
           />
           <StatCard
             title="Total Value"
-            value={formatIndianNumber(stats.overview.total_sold_value)}
+            value={formatCompactIndian(stats.overview.total_sold_value)}
             subtitle="Points spent"
             icon={Wallet}
             variant="gold"
           />
           <StatCard
             title="Avg Price"
-            value={formatIndianNumber(stats.overview.avg_sold_price)}
+            value={formatCompactIndian(stats.overview.avg_sold_price)}
             subtitle="Per player"
             icon={TrendingUp}
             variant="purple"
@@ -201,10 +201,10 @@ export default function StatsPanel() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-emerald-400 font-medium">
-                        Total: {formatIndianNumber(cat.total_value)} pts
+                        Total: {formatCompactIndian(cat.total_value)} pts
                       </span>
                       <span className="text-slate-500">
-                        Avg: {formatIndianNumber(cat.avg_sold_price)} pts
+                        Avg: {formatCompactIndian(cat.avg_sold_price)} pts
                       </span>
                     </div>
                   </div>
@@ -260,15 +260,15 @@ export default function StatsPanel() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-white truncate">{team.name}</p>
                       <p className="text-xs text-slate-400">
-                        {team.player_count} players • Avg {formatIndianNumber(team.avg_per_player)}
+                        {team.player_count} players • Avg {formatCompactIndian(team.avg_per_player)}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-bold text-amber-400">
-                        {formatIndianNumber(team.spent_points)}
+                        {formatCompactIndian(team.spent_points)}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {formatIndianNumber(team.remaining_budget)} left
+                        {formatCompactIndian(team.remaining_budget)} left
                       </p>
                     </div>
                   </div>
@@ -339,7 +339,7 @@ export default function StatsPanel() {
                       </p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-xl font-bold text-emerald-400">
-                          {formatIndianNumber(player.sold_price)}
+                          {formatCompactIndian(player.sold_price)}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-primary-500/20 text-primary-400">
                           {player.multiplier}x

@@ -76,7 +76,8 @@ export function formatAmount(num: number | undefined | null, usePoints: boolean 
  * 50000 -> 50K
  * 100000 -> 1L
  * 1000000 -> 10L
- * 10000000 -> 1Cr
+ * 10000000 -> 1 Cr
+ * 26000000 -> 2.60 Cr
  */
 export function formatCompactIndian(num: number | undefined | null): string {
   if (num === undefined || num === null) return '0';
@@ -85,17 +86,46 @@ export function formatCompactIndian(num: number | undefined | null): string {
   const sign = num < 0 ? '-' : '';
 
   if (absNum >= 10000000) {
-    // Crores
+    // Crores (1 Cr = 10,000,000)
     const crores = absNum / 10000000;
-    return sign + (crores % 1 === 0 ? crores.toFixed(0) : crores.toFixed(1)) + ' Cr';
+    // Show 2 decimal places for precision, trim trailing zeros
+    const formatted = crores.toFixed(2).replace(/\.?0+$/, '');
+    return sign + formatted + ' Cr';
   } else if (absNum >= 100000) {
-    // Lakhs
+    // Lakhs (1 L = 100,000)
     const lakhs = absNum / 100000;
-    return sign + (lakhs % 1 === 0 ? lakhs.toFixed(0) : lakhs.toFixed(1)) + ' L';
+    const formatted = lakhs.toFixed(2).replace(/\.?0+$/, '');
+    return sign + formatted + ' L';
   } else if (absNum >= 1000) {
     // Thousands - show full Indian format for better clarity
     return sign + formatIndianNumber(absNum);
   }
 
   return sign + absNum.toString();
+}
+
+/**
+ * Format amount with compact notation and currency/points
+ * Uses compact format (Cr, L) for large numbers to save space
+ * Examples (usePoints = false):
+ * 26000000 -> ₹2.60 Cr
+ * 500000 -> ₹5 L
+ * 50000 -> ₹50,000
+ * Examples (usePoints = true):
+ * 26000000 -> 2.60 Cr pts
+ * 500000 -> 5 L pts
+ */
+export function formatAmountCompact(num: number | undefined | null, usePoints: boolean = false): string {
+  if (num === undefined || num === null) return usePoints ? '0 pts' : '₹0';
+
+  const absNum = Math.abs(num);
+
+  // Use compact format for lakhs and above
+  if (absNum >= 100000) {
+    const compact = formatCompactIndian(num);
+    return usePoints ? `${compact} pts` : `₹${compact}`;
+  }
+
+  // Use regular format for smaller amounts
+  return formatAmount(num, usePoints);
 }

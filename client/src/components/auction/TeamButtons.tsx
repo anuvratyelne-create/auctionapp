@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Team } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import TeamPreviewPopover from './TeamPreviewPopover';
 
 interface TeamButtonsProps {
@@ -104,7 +104,7 @@ export default function TeamButtons({
           title={
             isCurrentBidder
               ? `${team.name} - Current bidder`
-              : `${team.name} - Max: ${formatIndianNumber(team.max_bid)}`
+              : `${team.name} - Max: ${formatCompactIndian(team.max_bid)}`
           }
         >
         {/* Team Logo */}
@@ -126,7 +126,7 @@ export default function TeamButtons({
         {/* Capacity Indicator Dot */}
         <span
           className={`w-2.5 h-2.5 rounded-full ${capacityColor} shadow-lg`}
-          title={`Max bid: ${formatIndianNumber(team.max_bid)}`}
+          title={`Max bid: ${formatCompactIndian(team.max_bid)}`}
         />
 
         {/* Keyboard Shortcut - Shows on hover */}

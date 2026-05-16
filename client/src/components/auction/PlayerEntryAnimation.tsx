@@ -101,8 +101,8 @@ export default function PlayerEntryAnimation({
             </div>
           </div>
 
-          {/* Jersey number badge */}
-          {player.jersey_number && (
+          {/* Player UID badge */}
+          {player.player_uid && (
             <div
               className={`absolute -top-2 -right-2 w-16 h-16 rounded-full flex items-center justify-center
                 text-white font-black text-2xl shadow-2xl transition-all duration-500
@@ -112,7 +112,7 @@ export default function PlayerEntryAnimation({
                 boxShadow: `0 0 30px ${accentColor}60`,
               }}
             >
-              {player.jersey_number}
+              {player.player_uid}
             </div>
           )}
         </div>

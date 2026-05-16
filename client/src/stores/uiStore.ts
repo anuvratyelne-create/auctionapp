@@ -35,6 +35,8 @@ interface UIState {
   premiumBackgroundId: string;
   // Display mode for currency
   displayMode: 'rupees' | 'points';
+  // Auction pause/break state
+  isAuctionPaused: boolean;
   setActivePanel: (panel: Panel) => void;
   toggleFullscreen: () => void;
   setShowTeamSquad: (teamId: string | null) => void;
@@ -58,6 +60,8 @@ interface UIState {
   setCityBackground: (backgroundId: string) => void;
   setPremiumBackground: (backgroundId: string) => void;
   setDisplayMode: (mode: 'rupees' | 'points') => void;
+  toggleAuctionPause: () => void;
+  setAuctionPaused: (paused: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -86,6 +90,7 @@ export const useUIStore = create<UIState>()(
       cityBackgroundId: 'city-night-skyline',
       premiumBackgroundId: 'dark-velvet',
       displayMode: 'rupees',
+      isAuctionPaused: false,
 
       setActivePanel: (panel) => {
         set({ activePanel: panel, showExtraMenu: false });
@@ -192,6 +197,14 @@ export const useUIStore = create<UIState>()(
 
       setDisplayMode: (mode) => {
         set({ displayMode: mode });
+      },
+
+      toggleAuctionPause: () => {
+        set((state) => ({ isAuctionPaused: !state.isAuctionPaused }));
+      },
+
+      setAuctionPaused: (paused) => {
+        set({ isAuctionPaused: paused });
       },
     }),
     {

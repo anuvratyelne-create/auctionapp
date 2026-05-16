@@ -3,7 +3,7 @@ import { api } from '../../utils/api';
 import { Player, Category } from '../../types';
 import { useUIStore } from '../../stores/uiStore';
 import { useSocket } from '../../hooks/useSocket';
-import { User, Hash, Tag, Filter, ToggleLeft, ToggleRight } from 'lucide-react';
+import { User, Tag, Filter, ToggleLeft, ToggleRight } from 'lucide-react';
 
 export default function PlayersPanel() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -191,10 +191,9 @@ export default function PlayersPanel() {
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-2">
                     <h3 className="font-semibold text-white">{player.name}</h3>
-                    {player.jersey_number && (
-                      <span className="flex items-center gap-0.5 text-slate-400 text-sm">
-                        <Hash size={12} />
-                        {player.jersey_number}
+                    {player.player_uid && (
+                      <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded">
+                        {player.player_uid}
                       </span>
                     )}
                   </div>

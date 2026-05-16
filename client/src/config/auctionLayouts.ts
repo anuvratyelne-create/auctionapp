@@ -1,6 +1,6 @@
 // Layout Templates - Controls HOW things are arranged (independent of theme/colors)
 
-export type LayoutType = 'classic' | 'premium-broadcast' | 'minimal-card' | 'ipl-style' | 'fire';
+export type LayoutType = 'classic' | 'premium-broadcast' | 'fire' | 'city';
 
 export interface LayoutTemplate {
   id: LayoutType;
@@ -21,29 +21,22 @@ export const layoutTemplates: LayoutTemplate[] = [
   {
     id: 'premium-broadcast',
     name: 'Premium Broadcast',
-    description: 'TV broadcast style with stats panel, metallic blue/gold theme',
+    description: 'Luxury gold theme with elegant frames, floating particles, and premium aesthetics',
     preview: 'premium-broadcast',
     hasStats: true,
-  },
-  {
-    id: 'ipl-style',
-    name: 'IPL Style',
-    description: 'Indian Premier League inspired design',
-    preview: 'ipl-style',
-    hasStats: true,
-  },
-  {
-    id: 'minimal-card',
-    name: 'Minimal Card',
-    description: 'Clean, simple card-based layout',
-    preview: 'minimal-card',
-    hasStats: false,
   },
   {
     id: 'fire',
     name: 'Fire',
     description: 'Dramatic fire theme with animated flames and embers',
     preview: 'fire',
+    hasStats: false,
+  },
+  {
+    id: 'city',
+    name: 'City',
+    description: 'Night city skyline with neon glow effects',
+    preview: 'city',
     hasStats: false,
   },
 ];

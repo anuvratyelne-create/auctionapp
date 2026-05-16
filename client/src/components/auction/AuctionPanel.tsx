@@ -11,15 +11,9 @@ import BidDisplay from './BidDisplay';
 import TeamButtons from './TeamButtons';
 import AuctionTimer from './AuctionTimer';
 import SoldCelebration from './SoldCelebration';
-import { UserPlus, Check, X, RotateCcw, Search, Zap } from 'lucide-react';
-
-// Dynamic bid increment based on current bid amount
-function getBidIncrement(currentBid: number): number {
-  if (currentBid >= 50000) return 5000;
-  if (currentBid >= 30000) return 3000;
-  if (currentBid >= 20000) return 2000;
-  return 1000;
-}
+import { getBidIncrement } from '../../config/budgetPresets';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Undo2 } from 'lucide-react';
+import RoleFilterDropdown from './RoleFilterDropdown';
 
 export default function AuctionPanel() {
   const { tournament } = useAuthStore();
@@ -30,6 +24,7 @@ export default function AuctionPanel() {
     currentTeam,
     status,
     selectedCategoryId,
+    selectedRoleCategory,
     setAuctionState,
   } = useAuctionStore();
 
@@ -38,6 +33,7 @@ export default function AuctionPanel() {
   const [playerSearch, setPlayerSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [lastAction, setLastAction] = useState<{ player: Player; type: 'sold' | 'unsold' } | null>(null);
   const timerResetKey = useRef(0);
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
@@ -97,7 +93,7 @@ export default function AuctionPanel() {
   const handleNewPlayer = async () => {
     setLoading(true);
     try {
-      const player = await api.getNextPlayer(selectedCategoryId || undefined) as any;
+      const player = await api.getNextPlayer(selectedCategoryId || undefined, selectedRoleCategory || undefined) as any;
       // Reset timer when new player is fetched
       timerResetKey.current += 1;
       // Also update state directly in case socket event is missed
@@ -111,7 +107,11 @@ export default function AuctionPanel() {
         });
       }
     } catch (error: any) {
-      alert(error.message || 'No available players');
+      const hasFilter = selectedCategoryId || selectedRoleCategory;
+      const defaultMsg = hasFilter
+        ? 'No players available in this category/role. Try clearing the filter.'
+        : 'No available players';
+      alert(error.message || defaultMsg);
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,9 @@ export default function AuctionPanel() {
   const handleTeamBid = useCallback(async (team: Team) => {
     if (!currentPlayer || status !== 'bidding') return;
 
-    const increment = getBidIncrement(currentBid);
+    // Use team budget to determine appropriate bid increment
+    const teamBudget = teams[0]?.total_budget;
+    const increment = getBidIncrement(currentBid, teamBudget);
     const newBid = currentTeam
       ? currentBid + increment
       : currentPlayer.base_price;
@@ -141,18 +143,46 @@ export default function AuctionPanel() {
     } catch (error: any) {
       alert(error.message || 'Failed to place bid');
     }
-  }, [currentPlayer, currentBid, currentTeam, status]);
+  }, [currentPlayer, currentBid, currentTeam, status, teams]);
 
   const handleIncrementBid = useCallback(async () => {
     if (!currentPlayer || status !== 'bidding') return;
 
-    const increment = getBidIncrement(currentBid);
+    // Use team budget to determine appropriate bid increment
+    const teamBudget = teams[0]?.total_budget;
+    const increment = getBidIncrement(currentBid, teamBudget);
     try {
       await api.incrementBid(currentBid + increment);
     } catch (error: any) {
       console.error('Failed to increment bid:', error);
     }
-  }, [currentPlayer, currentBid, status]);
+  }, [currentPlayer, currentBid, status, teams]);
+
+  const handleDecrementBid = useCallback(async () => {
+    if (!currentPlayer || status !== 'bidding') return;
+
+    // Get the base price - cannot go below this
+    const basePrice = currentPlayer.base_price || 0;
+
+    // Use team budget to determine appropriate bid increment
+    const teamBudget = teams[0]?.total_budget;
+    const increment = getBidIncrement(currentBid, teamBudget);
+
+    // Calculate new bid amount
+    const newBid = currentBid - increment;
+
+    // Constraint: Cannot go below base price
+    if (newBid < basePrice) {
+      console.log('Cannot decrease below base price:', basePrice);
+      return;
+    }
+
+    try {
+      await api.incrementBid(newBid);
+    } catch (error: any) {
+      console.error('Failed to decrement bid:', error);
+    }
+  }, [currentPlayer, currentBid, status, teams]);
 
   const handleSold = async () => {
     if (!currentPlayer || !currentTeam) {
@@ -161,9 +191,11 @@ export default function AuctionPanel() {
     }
 
     try {
+      setLastAction({ player: currentPlayer, type: 'sold' });
       await api.markSold();
       loadTeams();
     } catch (error: any) {
+      setLastAction(null);
       alert(error.message || 'Failed to mark as sold');
     }
   };
@@ -172,9 +204,39 @@ export default function AuctionPanel() {
     if (!currentPlayer) return;
 
     try {
+      setLastAction({ player: currentPlayer, type: 'unsold' });
       await api.markUnsold();
     } catch (error: any) {
+      setLastAction(null);
       alert(error.message || 'Failed to mark as unsold');
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!lastAction) return;
+
+    try {
+      // Reset the player in database
+      await api.resetPlayer(lastAction.player.id);
+      loadTeams();
+
+      // Bring the player back into auction/bidding mode
+      const player = await api.getPlayerForAuction(lastAction.player.id) as Player;
+      timerResetKey.current += 1;
+
+      // Update auction state to restart bidding for this player
+      setAuctionState({
+        currentPlayer: player,
+        currentBid: player.base_price,
+        currentTeam: null,
+        bidHistory: [],
+        status: 'bidding'
+      });
+
+      alert(`Undid ${lastAction.type} for ${lastAction.player.name} - Auction restarted`);
+      setLastAction(null);
+    } catch (error: any) {
+      alert(error.message || 'Failed to undo');
     }
   };
 
@@ -183,7 +245,7 @@ export default function AuctionPanel() {
     if (!playerSearch.trim()) return;
 
     try {
-      const player = await api.searchPlayerByNumber(playerSearch) as Player;
+      const player = await api.searchPlayerByUID(playerSearch) as Player;
       await api.getPlayerForAuction(player.id);
       setPlayerSearch('');
       setShowSearch(false);
@@ -196,6 +258,7 @@ export default function AuctionPanel() {
     teams,
     onTeamBid: handleTeamBid,
     onIncrementBid: handleIncrementBid,
+    onDecrementBid: handleDecrementBid,
     enabled: status === 'bidding',
   });
 
@@ -237,6 +300,7 @@ export default function AuctionPanel() {
                 currentBid={currentBid}
                 currentTeam={currentTeam ? teams.find(t => t.id === currentTeam.id) || currentTeam : null}
                 player={currentPlayer}
+                teamBudget={teams[0]?.total_budget}
               />
             </div>
           </div>
@@ -258,7 +322,7 @@ export default function AuctionPanel() {
 
             <div className="relative z-10 p-5">
               <div className="flex flex-wrap items-center justify-between gap-6">
-                {/* Left: New Player & Search */}
+                {/* Left: New Player & Role Filter & Search */}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleNewPlayer}
@@ -271,13 +335,15 @@ export default function AuctionPanel() {
                     <span className="relative text-white">New Player</span>
                   </button>
 
+                  <RoleFilterDropdown disabled={status === 'bidding'} />
+
                   {showSearch ? (
                     <form onSubmit={handleSearchPlayer} className="flex items-center gap-2">
                       <input
                         type="text"
                         value={playerSearch}
-                        onChange={(e) => setPlayerSearch(e.target.value)}
-                        placeholder="Jersey #"
+                        onChange={(e) => setPlayerSearch(e.target.value.toUpperCase())}
+                        placeholder="P001"
                         className="w-24 bg-slate-800/80 border border-slate-600/50 rounded-xl px-3 py-2.5 text-white text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all"
                         autoFocus
                       />
@@ -299,7 +365,7 @@ export default function AuctionPanel() {
                     <button
                       onClick={() => setShowSearch(true)}
                       className="flex items-center gap-2 bg-slate-700/80 hover:bg-slate-600 text-white p-3 rounded-xl transition-colors"
-                      title="Search by jersey number"
+                      title="Search by Player ID"
                     >
                       <Search size={20} />
                     </button>
@@ -338,6 +404,18 @@ export default function AuctionPanel() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
                     <X size={20} className="relative text-white" />
                     <span className="relative text-white">Unsold</span>
+                  </button>
+
+                  <button
+                    onClick={handleUndo}
+                    disabled={!lastAction}
+                    className="relative group flex items-center gap-2 px-5 py-3 rounded-xl font-bold transition-all overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={lastAction ? `Undo ${lastAction.type} for ${lastAction.player.name}` : 'No action to undo'}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-amber-600 to-orange-600 group-hover:from-amber-500 group-hover:to-orange-500 transition-all" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                    <Undo2 size={20} className="relative text-white" />
+                    <span className="relative text-white">Undo</span>
                   </button>
 
                   <button

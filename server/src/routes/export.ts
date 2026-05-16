@@ -26,7 +26,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
       .select(`
         *,
         players:players(
-          id, name, photo_url, jersey_number, base_price, sold_price, retention_price, status, is_retained,
+          id, name, photo_url, player_uid, jersey_number, base_price, sold_price, retention_price, status, is_retained,
           categories(name)
         )
       `)
@@ -110,6 +110,7 @@ router.get('/summary', authenticateToken, async (req: AuthRequest, res: Response
       players: players?.map(p => ({
         id: p.id,
         name: p.name,
+        player_uid: p.player_uid,
         jersey_number: p.jersey_number,
         category: (p.categories as any)?.name,
         base_price: p.base_price,
@@ -146,11 +147,12 @@ router.get('/csv/players', authenticateToken, async (req: AuthRequest, res: Resp
       return res.status(500).json({ error: error.message });
     }
 
-    // Create CSV header
-    const headers = ['Name', 'Jersey Number', 'Category', 'Base Price', 'Sold Price', 'Status', 'Team'];
+    // Create CSV header - Player ID first for easy lookup
+    const headers = ['Player ID', 'Name', 'Jersey Number', 'Category', 'Base Price', 'Sold Price', 'Status', 'Team'];
 
     // Create CSV rows
     const rows = players?.map(p => [
+      p.player_uid || '',
       `"${p.name.replace(/"/g, '""')}"`,
       p.jersey_number || '',
       (p.categories as any)?.name || '',
@@ -277,7 +279,7 @@ router.get('/pdf/summary', authenticateToken, async (req: AuthRequest, res: Resp
       .select(`
         id, name, short_name, logo_url, owner_name, total_budget, retention_spent,
         players:players(
-          id, name, jersey_number, sold_price, retention_price, status, is_retained,
+          id, name, player_uid, jersey_number, sold_price, retention_price, status, is_retained,
           categories(name)
         )
       `)
@@ -346,6 +348,7 @@ router.get('/pdf/summary', authenticateToken, async (req: AuthRequest, res: Resp
           players: [
             ...teamSoldPlayers.map((p: any) => ({
               name: p.name,
+              player_uid: p.player_uid,
               jersey: p.jersey_number,
               category: p.categories?.name,
               price: p.sold_price,
@@ -353,6 +356,7 @@ router.get('/pdf/summary', authenticateToken, async (req: AuthRequest, res: Resp
             })),
             ...teamRetainedPlayers.map((p: any) => ({
               name: p.name,
+              player_uid: p.player_uid,
               jersey: p.jersey_number,
               category: p.categories?.name,
               price: p.retention_price,

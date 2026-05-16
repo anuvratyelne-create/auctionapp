@@ -1,6 +1,6 @@
 import { Team, Player } from '../../types';
-import { TrendingUp, Wallet, Users, ArrowUp, Sparkles } from 'lucide-react';
-import { formatIndianNumber } from '../../utils/formatters';
+import { TrendingUp, Wallet, Users, ArrowUp, ArrowDown, Sparkles } from 'lucide-react';
+import { formatAmountCompact } from '../../utils/formatters';
 import AnimatedBidAmount from './AnimatedBidAmount';
 import { getBidIncrement, formatIncrement } from '../../config/budgetPresets';
 import { useUIStore } from '../../stores/uiStore';
@@ -116,7 +116,7 @@ export default function BidDisplay({ currentBid, currentTeam, player, teamBudget
                       <span className="text-[10px] uppercase tracking-wider">Balance</span>
                     </div>
                     <p className="text-lg font-bold text-white">
-                      {usePoints ? `${formatIndianNumber(currentTeam.remaining_budget)} pts` : `₹${formatIndianNumber(currentTeam.remaining_budget)}`}
+                      {formatAmountCompact(currentTeam.remaining_budget, usePoints)}
                     </p>
                   </div>
                   <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
@@ -146,10 +146,12 @@ export default function BidDisplay({ currentBid, currentTeam, player, teamBudget
             <div className="bg-gradient-to-r from-amber-900/30 to-orange-900/30 border border-amber-500/30 rounded-xl p-4 text-center">
               <div className="flex items-center justify-center gap-2 mb-1">
                 <TrendingUp size={16} className="text-amber-400" />
-                <span className="text-amber-400 font-bold">Next Bid: {formatIncrement(nextIncrement)}</span>
+                <span className="text-amber-400 font-bold">Bid Step: {formatIncrement(nextIncrement)}</span>
               </div>
               <p className="text-amber-200/50 text-xs">
-                Press <kbd className="px-1.5 py-0.5 rounded bg-slate-700/80 border border-slate-600 text-amber-300 font-mono mx-1">↑</kbd> to increment
+                Press <kbd className="px-1.5 py-0.5 rounded bg-slate-700/80 border border-slate-600 text-emerald-300 font-mono mx-1">↑</kbd> to increase
+                <span className="mx-2">|</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-slate-700/80 border border-slate-600 text-red-300 font-mono mx-1">↓</kbd> to decrease
               </p>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from './stores/authStore';
 import { api } from './utils/api';
 import Login from './pages/Login';
@@ -13,19 +13,44 @@ import PlayerRegister from './pages/PlayerRegister';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, token } = useAuthStore();
+  const [isReady, setIsReady] = useState(false);
+  const [hasStoredAuth, setHasStoredAuth] = useState(false);
 
-  // Set token immediately
-  if (token) {
-    api.setToken(token);
-  }
+  useEffect(() => {
+    // Check localStorage directly - faster than waiting for zustand rehydration
+    try {
+      const stored = localStorage.getItem('auction-auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.state?.token && parsed?.state?.isAuthenticated) {
+          setHasStoredAuth(true);
+          api.setToken(parsed.state.token);
+        }
+      }
+    } catch (e) {
+      console.error('Error reading auth:', e);
+    }
+    setIsReady(true);
+  }, []);
 
+  // Also update when zustand state changes
   useEffect(() => {
     if (token) {
       api.setToken(token);
     }
   }, [token]);
 
-  if (!isAuthenticated) {
+  // Show loading spinner while checking
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Allow access if either zustand OR localStorage says authenticated
+  if (!isAuthenticated && !hasStoredAuth) {
     return <Navigate to="/login" replace />;
   }
 

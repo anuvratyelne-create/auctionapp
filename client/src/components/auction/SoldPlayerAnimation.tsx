@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Player, Team } from '../../types';
-import { formatAmount } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 import { useUIStore } from '../../stores/uiStore';
 
 interface SoldPlayerAnimationProps {
@@ -407,7 +407,7 @@ export default function SoldPlayerAnimation({
                 filter: `drop-shadow(0 0 20px ${teamColor}60)`,
               }}
             >
-              {formatAmount(displayPrice, usePoints)}
+              {formatAmountCompact(displayPrice, usePoints)}
             </p>
 
             {/* Stats row */}
@@ -416,7 +416,7 @@ export default function SoldPlayerAnimation({
             }`}>
               <div>
                 <p className="text-white/40 text-xs uppercase tracking-wider">Base</p>
-                <p className="text-white/70 text-lg font-bold">{formatAmount(player.base_price, usePoints)}</p>
+                <p className="text-white/70 text-lg font-bold">{formatAmountCompact(player.base_price, usePoints)}</p>
               </div>
               {parseFloat(multiplier) > 1 && (
                 <div

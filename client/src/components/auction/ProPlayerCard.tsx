@@ -1,6 +1,6 @@
 import { Player, AuctionState, Team } from '../../types';
-import { User, Wallet, Users, ArrowUp } from 'lucide-react';
-import { formatIndianNumber } from '../../utils/formatters';
+import { User, Wallet, Users, ArrowUp, MapPin } from 'lucide-react';
+import { formatAmountCompact } from '../../utils/formatters';
 import AnimatedBidAmount from './AnimatedBidAmount';
 import { getRoleLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
 import StatusSticker from './StatusSticker';
@@ -61,7 +61,7 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
           {/* Player UID Badge */}
           {player.player_uid && (
             <div
-              className="absolute -top-4 -left-4 z-20 w-16 h-16 rounded-full flex items-center justify-center text-white font-black text-2xl shadow-2xl"
+              className="absolute -top-4 -left-4 z-20 w-20 h-20 rounded-full flex items-center justify-center text-white font-black text-2xl shadow-2xl"
               style={{
                 background: `linear-gradient(135deg, ${accentColor}, ${accentColor}dd)`,
                 boxShadow: `0 0 30px ${accentColor}60`
@@ -73,7 +73,7 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
 
           {/* Circular Frame with glow */}
           <div
-            className="relative w-56 h-56 lg:w-64 lg:h-64 rounded-full p-1.5"
+            className="relative w-72 h-72 lg:w-80 lg:h-80 xl:w-96 xl:h-96 rounded-full p-1.5"
             style={{
               background: `linear-gradient(135deg, ${accentColor}, ${accentColor}80)`,
               boxShadow: `0 0 60px ${accentColor}40, inset 0 0 30px ${accentColor}20`
@@ -143,6 +143,24 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
             </div>
           )}
 
+          {/* City - Styled bar */}
+          {(player.city || player.stats?.city) && (
+            <div
+              className="relative px-8 py-2 rounded-r-full"
+              style={{
+                background: `linear-gradient(90deg, transparent, ${accentColor}10, ${accentColor}20)`,
+                borderLeft: `4px solid ${accentColor}60`
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <MapPin size={24} style={{ color: accentColor }} />
+                <span className="text-lg lg:text-xl font-semibold text-white/80 uppercase tracking-wide">
+                  {player.city || player.stats?.city}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Category Badge */}
           {player.categories && (
             <div className="px-8 py-2">
@@ -205,7 +223,7 @@ export default function ProPlayerCard({ player, status, currentBid, currentTeam,
                   <div className="flex items-center gap-4 text-sm text-white/60">
                     <span className="flex items-center gap-1">
                       <Wallet size={12} />
-                      {usePoints ? `${formatIndianNumber(currentTeam.remaining_budget)} pts` : `₹${formatIndianNumber(currentTeam.remaining_budget)}`}
+                      {formatAmountCompact(currentTeam.remaining_budget, usePoints)}
                     </span>
                     <span className="flex items-center gap-1">
                       <Users size={12} />

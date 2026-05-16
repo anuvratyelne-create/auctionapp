@@ -76,7 +76,7 @@ export default function ThemeSelector({ onClose }: ThemeSelectorProps) {
         </div>
 
         {/* Themes Grid */}
-        <div className="p-6 overflow-y-auto max-h-[calc(85vh-200px)]">
+        <div className="scrollbar-visible p-6 max-h-[calc(85vh-200px)]">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredTemplates.map((template) => (
               <ThemeCard

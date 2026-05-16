@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { Team, Player } from '../../../types';
 import { getRoleLabel } from '../../../config/playerRoles';
-import { formatAmount } from '../../../utils/formatters';
+import { formatAmountCompact } from '../../../utils/formatters';
 import { soundManager } from '../../../utils/soundManager';
 import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
 import { User, Flame } from 'lucide-react';
+import FireIdleScreen from './FireIdleScreen';
 
 interface Sponsor {
   id: string;
@@ -23,6 +24,8 @@ interface FireBroadcastLayoutProps {
   status: string;
   timerSeconds?: number;
   timerKey?: number;
+  onNewPlayer?: () => void;
+  loading?: boolean;
 }
 
 // Fire colors
@@ -112,10 +115,10 @@ function FireTimer({ duration = 15, isActive = true, resetKey = 0 }: { duration?
 // Sized for LED screens and big projectors
 function FireFrame({ children, size = 'large' }: { children: React.ReactNode; size?: 'large' | 'medium' }) {
   // Extra large frames for projector/LED display visibility
-  const sizeClasses = size === 'large' ? 'w-[22rem] h-[22rem] md:w-[28rem] md:h-[28rem]' : 'w-80 h-80 md:w-96 md:h-96';
+  const sizeClasses = size === 'large' ? 'w-[26rem] h-[26rem] md:w-[32rem] md:h-[32rem]' : 'w-[22rem] h-[22rem] md:w-[26rem] md:h-[26rem]';
   // Larger photos to fill more of the ring
-  const photoSize = size === 'large' ? 'w-56 h-56 md:w-72 md:h-72' : 'w-48 h-48 md:w-56 md:h-56';
-  const emberCount = size === 'large' ? 25 : 15;
+  const photoSize = size === 'large' ? 'w-64 h-64 md:w-80 md:h-80' : 'w-56 h-56 md:w-72 md:h-72';
+  const emberCount = size === 'large' ? 10 : 6;
 
   return (
     <div className={`relative ${sizeClasses} flex items-center justify-center`}>
@@ -135,16 +138,15 @@ function FireFrame({ children, size = 'large' }: { children: React.ReactNode; si
         {[...Array(emberCount)].map((_, i) => (
           <div
             key={i}
-            className="absolute rounded-full animate-ember-rise"
+            className="absolute rounded-full animate-ember-rise will-change-transform"
             style={{
-              left: `${20 + Math.random() * 60}%`,
+              left: `${20 + (i * 6) % 60}%`,
               bottom: '15%',
-              width: `${2 + Math.random() * 3}px`,
-              height: `${2 + Math.random() * 3}px`,
+              width: `${2 + (i % 2)}px`,
+              height: `${2 + (i % 2)}px`,
               background: i % 3 === 0 ? FIRE_COLORS.yellow : i % 3 === 1 ? FIRE_COLORS.orange : FIRE_COLORS.ember,
-              boxShadow: `0 0 ${4 + Math.random() * 4}px ${i % 3 === 0 ? FIRE_COLORS.yellow : FIRE_COLORS.orange}`,
-              animationDuration: `${2 + Math.random() * 2}s`,
-              animationDelay: `${Math.random() * 3}s`,
+              animationDuration: `${3 + (i % 2)}s`,
+              animationDelay: `${i * 0.2}s`,
               zIndex: 1,
             }}
           />
@@ -179,29 +181,37 @@ function FireFrame({ children, size = 'large' }: { children: React.ReactNode; si
   );
 }
 
-// Rising embers component
-function RisingEmbers() {
+// Rising embers component (memoized for performance)
+const RisingEmbers = memo(function RisingEmbers() {
+  const embers = useMemo(() => [...Array(15)].map((_, i) => ({
+    id: i,
+    left: `${5 + (i * 6) % 90}%`,
+    size: `${2 + (i % 2)}px`,
+    color: i % 3 === 0 ? FIRE_COLORS.yellow : i % 3 === 1 ? FIRE_COLORS.orange : FIRE_COLORS.ember,
+    duration: `${4 + (i % 3)}s`,
+    delay: `${i * 0.25}s`,
+  })), []);
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(40)].map((_, i) => (
+      {embers.map((e) => (
         <div
-          key={i}
-          className="absolute rounded-full animate-ember-rise"
+          key={e.id}
+          className="absolute rounded-full animate-ember-rise will-change-transform"
           style={{
-            left: `${5 + Math.random() * 90}%`,
+            left: e.left,
             bottom: '-10px',
-            width: `${2 + Math.random() * 4}px`,
-            height: `${2 + Math.random() * 4}px`,
-            background: i % 3 === 0 ? FIRE_COLORS.yellow : i % 3 === 1 ? FIRE_COLORS.orange : FIRE_COLORS.ember,
-            boxShadow: `0 0 ${4 + Math.random() * 6}px ${i % 3 === 0 ? FIRE_COLORS.yellow : FIRE_COLORS.orange}`,
-            animationDuration: `${3 + Math.random() * 4}s`,
-            animationDelay: `${Math.random() * 5}s`,
+            width: e.size,
+            height: e.size,
+            background: e.color,
+            animationDuration: e.duration,
+            animationDelay: e.delay,
           }}
         />
       ))}
     </div>
   );
-}
+});
 
 // Bottom flames component - Real fire video flowing freely up to player level
 function BottomFlames() {
@@ -251,6 +261,8 @@ export default function FireBroadcastLayout({
   status,
   timerSeconds = 15,
   timerKey = 0,
+  onNewPlayer,
+  loading,
 }: FireBroadcastLayoutProps) {
   const { showSponsors, sponsorRotationInterval, displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -283,6 +295,14 @@ export default function FireBroadcastLayout({
 
   return (
     <div className="relative w-full h-full min-h-screen overflow-x-hidden" style={{ background: '#0a0505' }}>
+      {/* Full Screen Idle Welcome Screen when no player selected */}
+      {!currentPlayer && tournament && (
+        <FireIdleScreen
+          tournament={tournament}
+          onNewPlayer={onNewPlayer}
+          loading={loading}
+        />
+      )}
 
       {/* Dark gradient background */}
       <div
@@ -305,22 +325,22 @@ export default function FireBroadcastLayout({
       <div className="relative z-10 flex flex-col h-full p-6">
 
         {/* Header */}
-        <div className="flex items-center justify-center mb-4">
+        <div className="flex items-center justify-center mb-6">
           {/* Tournament Logo + Name together in center */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-8">
             {tournament?.logo_url && (
               <img
                 src={tournament.logo_url}
                 alt=""
-                className="w-32 h-32 md:w-40 md:h-40 object-contain"
-                style={{ filter: `drop-shadow(0 0 25px ${FIRE_COLORS.orange})` }}
+                className="w-40 h-40 md:w-52 md:h-52 object-contain"
+                style={{ filter: `drop-shadow(0 0 30px ${FIRE_COLORS.orange})` }}
               />
             )}
 
             {/* Tournament Name */}
             <div className="text-left">
               <h1
-                className="text-5xl md:text-7xl font-black uppercase tracking-wider"
+                className="text-6xl md:text-8xl font-black uppercase tracking-wider"
                 style={{
                   background: `linear-gradient(180deg, ${FIRE_COLORS.yellow} 0%, ${FIRE_COLORS.orange} 50%, ${FIRE_COLORS.red} 100%)`,
                   WebkitBackgroundClip: 'text',
@@ -330,12 +350,12 @@ export default function FireBroadcastLayout({
               >
                 {tournament?.name || 'AUCTION'}
               </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Flame size={18} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
-                <span className="text-base uppercase tracking-[0.3em] font-medium" style={{ color: FIRE_COLORS.ember }}>
+              <div className="flex items-center gap-3 mt-2">
+                <Flame size={24} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
+                <span className="text-lg uppercase tracking-[0.3em] font-medium" style={{ color: FIRE_COLORS.ember }}>
                   Fire Mode Auction
                 </span>
-                <Flame size={18} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
+                <Flame size={24} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
               </div>
             </div>
           </div>
@@ -419,34 +439,41 @@ export default function FireBroadcastLayout({
             <div className="flex flex-col items-center">
               <FireFrame size="large">
                 {currentPlayer.photo_url ? (
-                  <img src={currentPlayer.photo_url} alt={currentPlayer.name} className="w-full h-full object-cover" />
+                  <div className="w-full h-full flex items-center justify-center">
+                    <img src={currentPlayer.photo_url} alt={currentPlayer.name} className="w-full h-full object-contain" />
+                  </div>
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                    <User size={80} className="text-slate-600" />
+                  <div
+                    className="w-full h-full flex items-center justify-center"
+                    style={{
+                      background: 'radial-gradient(circle at center, #2d1810 0%, #1a0c08 50%, #0d0503 100%)',
+                    }}
+                  >
+                    <User size={100} style={{ color: FIRE_COLORS.ember }} />
                   </div>
                 )}
               </FireFrame>
 
-              <div className="mt-5 text-center max-w-md">
+              <div className="mt-6 text-center max-w-lg">
                 {/* Player Name */}
                 <h2
-                  className="text-3xl md:text-4xl font-black uppercase tracking-wide"
+                  className="text-4xl md:text-5xl font-black uppercase tracking-wide"
                   style={{ color: FIRE_COLORS.yellow, textShadow: `0 0 30px ${FIRE_COLORS.orange}` }}
                 >
                   {currentPlayer.name}
                 </h2>
 
-                {/* Role + Category + Jersey in one row */}
-                <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+                {/* Role + Category + Jersey + City in one row */}
+                <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
                   <span
-                    className="px-3 py-1 rounded-full text-sm font-semibold uppercase"
+                    className="px-4 py-1.5 rounded-full text-base font-semibold uppercase"
                     style={{ background: `${FIRE_COLORS.red}30`, color: FIRE_COLORS.ember, border: `1px solid ${FIRE_COLORS.red}50` }}
                   >
                     {getRoleLabel(currentPlayer.stats?.role || currentPlayer.role) || 'Player'}
                   </span>
                   {currentPlayer.categories && (
                     <span
-                      className="px-3 py-1 rounded-full text-sm font-bold uppercase"
+                      className="px-4 py-1.5 rounded-full text-base font-bold uppercase"
                       style={{ background: `${FIRE_COLORS.orange}25`, color: FIRE_COLORS.yellow, border: `1px solid ${FIRE_COLORS.orange}50` }}
                     >
                       {currentPlayer.categories.name}
@@ -454,55 +481,56 @@ export default function FireBroadcastLayout({
                   )}
                   {currentPlayer.player_uid && (
                     <span
-                      className="px-3 py-1 rounded-full font-black text-white text-sm"
+                      className="px-4 py-1.5 rounded-full font-black text-white text-base"
                       style={{ background: `linear-gradient(135deg, ${FIRE_COLORS.orange}, ${FIRE_COLORS.red})` }}
                     >
                       {currentPlayer.player_uid}
                     </span>
                   )}
-                </div>
-
-                {/* Stats Row - Compact */}
-                <div className="flex items-center justify-center gap-3 mt-3">
-                  {currentPlayer.stats?.battingStyle && (
-                    <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
-                      <span style={{ color: `${FIRE_COLORS.ember}80` }}>Bat:</span> {currentPlayer.stats.battingStyle}
+                  {(currentPlayer.city || currentPlayer.stats?.city) && (
+                    <span
+                      className="px-4 py-1.5 rounded-full text-base font-bold uppercase flex items-center gap-1"
+                      style={{ background: `${FIRE_COLORS.darkRed}40`, color: FIRE_COLORS.ember, border: `1px solid ${FIRE_COLORS.red}50` }}
+                    >
+                      📍 {currentPlayer.city || currentPlayer.stats?.city}
                     </span>
                   )}
-                  {currentPlayer.stats?.bowlingStyle && (
-                    <>
-                      <span style={{ color: `${FIRE_COLORS.orange}50` }}>•</span>
-                      <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
-                        <span style={{ color: `${FIRE_COLORS.ember}80` }}>Bowl:</span> {currentPlayer.stats.bowlingStyle}
-                      </span>
-                    </>
-                  )}
-                  {currentPlayer.stats?.age && (
-                    <>
-                      <span style={{ color: `${FIRE_COLORS.orange}50` }}>•</span>
-                      <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
-                        <span style={{ color: `${FIRE_COLORS.ember}80` }}>Age:</span> {currentPlayer.stats.age}
-                      </span>
-                    </>
-                  )}
                 </div>
 
+                {/* Stats Row - Compact (only if stats exist) */}
+                {(currentPlayer.stats?.battingStyle || currentPlayer.stats?.bowlingStyle || currentPlayer.stats?.age) && (
+                  <div className="flex items-center justify-center gap-4 mt-4">
+                    {currentPlayer.stats?.battingStyle && (
+                      <span className="text-base" style={{ color: FIRE_COLORS.ember }}>
+                        <span style={{ color: `${FIRE_COLORS.ember}80` }}>Bat:</span> {currentPlayer.stats.battingStyle}
+                      </span>
+                    )}
+                    {currentPlayer.stats?.bowlingStyle && (
+                      <>
+                        <span style={{ color: `${FIRE_COLORS.orange}50` }}>•</span>
+                        <span className="text-base" style={{ color: FIRE_COLORS.ember }}>
+                          <span style={{ color: `${FIRE_COLORS.ember}80` }}>Bowl:</span> {currentPlayer.stats.bowlingStyle}
+                        </span>
+                      </>
+                    )}
+                    {currentPlayer.stats?.age && (
+                      <>
+                        <span style={{ color: `${FIRE_COLORS.orange}50` }}>•</span>
+                        <span className="text-base" style={{ color: FIRE_COLORS.ember }}>
+                          <span style={{ color: `${FIRE_COLORS.ember}80` }}>Age:</span> {currentPlayer.stats.age}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {/* Base Price */}
-                <p className="mt-3 text-base" style={{ color: FIRE_COLORS.ember }}>
-                  Base: <span className="font-bold text-lg" style={{ color: FIRE_COLORS.yellow }}>{formatAmount(currentPlayer.base_price, usePoints)}</span>
+                <p className="mt-4 text-lg" style={{ color: FIRE_COLORS.ember }}>
+                  Base: <span className="font-bold text-xl" style={{ color: FIRE_COLORS.yellow }}>{formatAmountCompact(currentPlayer.base_price, usePoints)}</span>
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center opacity-50">
-              <FireFrame size="large">
-                <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                  <User size={80} className="text-slate-600" />
-                </div>
-              </FireFrame>
-              <p className="mt-6 text-xl" style={{ color: FIRE_COLORS.ember }}>No Player Selected</p>
-            </div>
-          )}
+          ) : null}
 
           {/* Center - Timer/Stamp and Bid */}
           <div className="flex flex-col items-center gap-4">
@@ -548,7 +576,7 @@ export default function FireBroadcastLayout({
                     WebkitTextFillColor: 'transparent',
                   }}
                 >
-                  {formatAmount(currentBid, usePoints)}
+                  {formatAmountCompact(currentBid, usePoints)}
                 </p>
               </div>
             </div>
@@ -557,35 +585,40 @@ export default function FireBroadcastLayout({
           {/* Team Section (when has team) */}
           {currentTeam && (
             <div className="flex flex-col items-center">
-              <FireFrame size="medium">
+              <FireFrame size="large">
                 {currentTeam.logo_url ? (
-                  <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center p-4 overflow-hidden">
-                    <img src={currentTeam.logo_url} alt={currentTeam.name} className="max-w-full max-h-full object-contain" />
+                  <div className="w-full h-full flex items-center justify-center p-6 overflow-hidden">
+                    <img src={currentTeam.logo_url} alt={currentTeam.name} className="w-4/5 h-4/5 object-contain" />
                   </div>
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                    <span className="text-4xl font-black" style={{ color: FIRE_COLORS.orange }}>
+                  <div
+                    className="w-full h-full flex items-center justify-center"
+                    style={{
+                      background: 'radial-gradient(circle at center, #2d1810 0%, #1a0c08 50%, #0d0503 100%)',
+                    }}
+                  >
+                    <span className="text-6xl font-black" style={{ color: FIRE_COLORS.orange }}>
                       {currentTeam.short_name}
                     </span>
                   </div>
                 )}
               </FireFrame>
 
-              <div className="mt-5 text-center">
+              <div className="mt-6 text-center">
                 <h2
-                  className="text-2xl md:text-3xl font-black uppercase tracking-wide"
+                  className="text-3xl md:text-4xl font-black uppercase tracking-wide"
                   style={{ color: FIRE_COLORS.yellow, textShadow: `0 0 25px ${FIRE_COLORS.orange}` }}
                 >
                   {currentTeam.name}
                 </h2>
 
                 {/* Team Stats - Compact */}
-                <div className="flex items-center justify-center gap-3 mt-3">
-                  <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
-                    <span style={{ color: `${FIRE_COLORS.ember}80` }}>Budget:</span> {formatAmount(currentTeam.remaining_budget || 0, usePoints)}
+                <div className="flex items-center justify-center gap-4 mt-4">
+                  <span className="text-base" style={{ color: FIRE_COLORS.ember }}>
+                    <span style={{ color: `${FIRE_COLORS.ember}80` }}>Budget:</span> {formatAmountCompact(currentTeam.remaining_budget || 0, usePoints)}
                   </span>
                   <span style={{ color: `${FIRE_COLORS.orange}50` }}>•</span>
-                  <span className="text-sm" style={{ color: FIRE_COLORS.ember }}>
+                  <span className="text-base" style={{ color: FIRE_COLORS.ember }}>
                     <span style={{ color: `${FIRE_COLORS.ember}80` }}>Players:</span> {currentTeam.player_count || 0}
                   </span>
                 </div>

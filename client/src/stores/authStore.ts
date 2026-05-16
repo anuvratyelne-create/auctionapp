@@ -8,7 +8,7 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   setAuth: (user: User, tournament: Tournament, token: string) => void;
-  updateTournament: (tournament: Tournament) => void;
+  updateTournament: (tournament: Tournament | null) => void;
   logout: () => void;
 }
 

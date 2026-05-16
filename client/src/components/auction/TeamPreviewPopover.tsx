@@ -1,5 +1,5 @@
 import { Team } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import { Users, Wallet, TrendingDown, Crown } from 'lucide-react';
 
 interface TeamPreviewPopoverProps {
@@ -94,21 +94,21 @@ export default function TeamPreviewPopover({
                 <Wallet size={12} />
                 <span>Total Budget</span>
               </div>
-              <p className="text-white font-bold">{formatIndianNumber(team.total_budget)}</p>
+              <p className="text-white font-bold">{formatCompactIndian(team.total_budget)}</p>
             </div>
             <div className="bg-slate-700/30 rounded-lg p-2.5">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                 <TrendingDown size={12} />
                 <span>Spent</span>
               </div>
-              <p className="text-amber-400 font-bold">{formatIndianNumber(team.spent_points)}</p>
+              <p className="text-amber-400 font-bold">{formatCompactIndian(team.spent_points)}</p>
             </div>
             <div className="bg-slate-700/30 rounded-lg p-2.5">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
                 <Wallet size={12} className="text-emerald-500" />
                 <span>Remaining</span>
               </div>
-              <p className="text-emerald-400 font-bold">{formatIndianNumber(team.remaining_budget)}</p>
+              <p className="text-emerald-400 font-bold">{formatCompactIndian(team.remaining_budget)}</p>
             </div>
             <div className="bg-slate-700/30 rounded-lg p-2.5">
               <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
@@ -129,7 +129,7 @@ export default function TeamPreviewPopover({
           `}>
             <p className="text-xs text-slate-400 mb-0.5">Max Bid Available</p>
             <p className={`text-lg font-bold ${canAffordMore ? 'text-emerald-400' : 'text-red-400'}`}>
-              {formatIndianNumber(team.max_bid)}
+              {formatCompactIndian(team.max_bid)}
             </p>
           </div>
 

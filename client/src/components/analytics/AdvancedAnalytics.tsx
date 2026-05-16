@@ -4,7 +4,7 @@ import {
   ArrowUpRight, ArrowDownRight, Minus
 } from 'lucide-react';
 import { Team, Player, Category } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 
 interface AdvancedAnalyticsProps {
   teams: Team[];
@@ -271,7 +271,7 @@ export default function AdvancedAnalytics({
                   </div>
                   <div className="bg-slate-800/50 rounded-lg p-3">
                     <p className="text-xs text-slate-400 mb-1">Avg/Player</p>
-                    <p className="font-semibold text-white">{formatIndianNumber(te.valuePerPlayer)}</p>
+                    <p className="font-semibold text-white">{formatCompactIndian(te.valuePerPlayer)}</p>
                   </div>
                 </div>
               </div>
@@ -295,11 +295,11 @@ export default function AdvancedAnalytics({
                 <p className="text-sm text-slate-400">Players Sold</p>
               </div>
               <div className="bg-slate-800/50 rounded-xl p-4 text-center">
-                <p className="text-3xl font-bold text-emerald-400">{formatIndianNumber(auctionTrends.totalValue)}</p>
+                <p className="text-3xl font-bold text-emerald-400">{formatCompactIndian(auctionTrends.totalValue)}</p>
                 <p className="text-sm text-slate-400">Total Value</p>
               </div>
               <div className="bg-slate-800/50 rounded-xl p-4 text-center">
-                <p className="text-3xl font-bold text-amber-400">{formatIndianNumber(auctionTrends.avgPrice)}</p>
+                <p className="text-3xl font-bold text-amber-400">{formatCompactIndian(auctionTrends.avgPrice)}</p>
                 <p className="text-sm text-slate-400">Avg Price</p>
               </div>
               <div className="bg-slate-800/50 rounded-xl p-4 text-center">
@@ -358,13 +358,13 @@ export default function AdvancedAnalytics({
               <div className="flex justify-between items-center p-3 bg-slate-800/50 rounded-xl">
                 <span className="text-slate-400">Est. Remaining Value</span>
                 <span className="text-xl font-bold text-emerald-400">
-                  {formatIndianNumber(predictions.estimatedRemainingValue)}
+                  {formatCompactIndian(predictions.estimatedRemainingValue)}
                 </span>
               </div>
               <div className="flex justify-between items-center p-3 bg-slate-800/50 rounded-xl">
                 <span className="text-slate-400">Avg Sold Price</span>
                 <span className="text-xl font-bold text-amber-400">
-                  {formatIndianNumber(predictions.avgSoldPrice)}
+                  {formatCompactIndian(predictions.avgSoldPrice)}
                 </span>
               </div>
             </div>
@@ -388,7 +388,7 @@ export default function AdvancedAnalytics({
                   )}
                   <span className="flex-1 text-white font-medium">{team.short_name}</span>
                   <span className="text-emerald-400 font-semibold">
-                    {formatIndianNumber(team.remaining_budget)}
+                    {formatCompactIndian(team.remaining_budget)}
                   </span>
                 </div>
               ))}

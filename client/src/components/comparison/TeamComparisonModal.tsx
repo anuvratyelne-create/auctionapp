@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import { X, Users, Wallet, Trophy, TrendingUp, Sparkles } from 'lucide-react';
 
 interface TeamComparisonData {
@@ -163,7 +163,7 @@ export default function TeamComparisonModal({ teamIds, onClose }: TeamComparison
                       {teams.map((team) => (
                         <div key={team.id} className="text-center">
                           <span className="text-2xl font-bold text-amber-400">
-                            {formatIndianNumber(team.spent_points)}
+                            {formatCompactIndian(team.spent_points)}
                           </span>
                         </div>
                       ))}
@@ -177,7 +177,7 @@ export default function TeamComparisonModal({ teamIds, onClose }: TeamComparison
                       {teams.map((team) => (
                         <div key={team.id} className="text-center">
                           <span className="text-2xl font-bold text-emerald-400">
-                            {formatIndianNumber(team.remaining_budget)}
+                            {formatCompactIndian(team.remaining_budget)}
                           </span>
                         </div>
                       ))}
@@ -191,7 +191,7 @@ export default function TeamComparisonModal({ teamIds, onClose }: TeamComparison
                       {teams.map((team) => (
                         <div key={team.id} className="text-center">
                           <span className="text-2xl font-bold text-blue-400">
-                            {formatIndianNumber(team.avg_per_player)}
+                            {formatCompactIndian(team.avg_per_player)}
                           </span>
                         </div>
                       ))}
@@ -221,7 +221,7 @@ export default function TeamComparisonModal({ teamIds, onClose }: TeamComparison
                                 {catData?.count || 0}
                               </span>
                               <span className="text-sm text-slate-400 ml-2">
-                                ({formatIndianNumber(catData?.total_spent || 0)})
+                                ({formatCompactIndian(catData?.total_spent || 0)})
                               </span>
                             </div>
                           );
@@ -259,7 +259,7 @@ export default function TeamComparisonModal({ teamIds, onClose }: TeamComparison
                           <p className="font-semibold text-white truncate">{team.top_purchase.name}</p>
                           <p className="text-xs text-slate-400 mt-1">{team.top_purchase.category}</p>
                           <p className="text-xl font-bold text-emerald-400 mt-2">
-                            {formatIndianNumber(team.top_purchase.sold_price)}
+                            {formatCompactIndian(team.top_purchase.sold_price)}
                           </p>
                         </div>
                       ) : (
@@ -305,7 +305,7 @@ export default function TeamComparisonModal({ teamIds, onClose }: TeamComparison
                                   <p className="text-xs text-slate-500">{player.category}</p>
                                 </div>
                                 <span className="text-sm font-bold text-emerald-400">
-                                  {formatIndianNumber(player.sold_price)}
+                                  {formatCompactIndian(player.sold_price)}
                                 </span>
                               </div>
                             ))}

@@ -1,18 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
 import { Player } from '../types';
-import { Trophy, Filter, Users, ArrowLeft } from 'lucide-react';
+import { Trophy, Filter, Users, ArrowLeft, Sparkles, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import TopPlayersPreview from '../components/stats/TopPlayersPreview';
+import TopPlayersModal from '../components/stats/TopPlayersModal';
 
 type RoleFilter = 'all' | 'batsman' | 'bowler' | 'all-rounder' | 'wicket-keeper';
 
-const roleFilters: { value: RoleFilter; label: string }[] = [
-  { value: 'all', label: 'All Players' },
-  { value: 'batsman', label: 'Batsmen' },
-  { value: 'bowler', label: 'Bowlers' },
-  { value: 'all-rounder', label: 'All-Rounders' },
-  { value: 'wicket-keeper', label: 'Wicket-Keepers' },
+const roleFilters: { value: RoleFilter; label: string; color: string }[] = [
+  { value: 'all', label: 'All Players', color: 'amber' },
+  { value: 'batsman', label: 'Batsmen', color: 'blue' },
+  { value: 'bowler', label: 'Bowlers', color: 'red' },
+  { value: 'all-rounder', label: 'All-Rounders', color: 'green' },
+  { value: 'wicket-keeper', label: 'Wicket-Keepers', color: 'purple' },
 ];
 
 export default function TopPlayers() {
@@ -30,6 +32,70 @@ export default function TopPlayers() {
   useEffect(() => {
     filterPlayers();
   }, [players, activeFilter]);
+
+  // State for showing all previews
+  const [showAllPreviews, setShowAllPreviews] = useState(true);
+
+  // State for full-screen modal
+  const [modalCategory, setModalCategory] = useState<RoleFilter | null>(null);
+
+  // Helper to check if a role is all-rounder
+  const isAllRounder = (role: string) => {
+    const lower = role.toLowerCase();
+    // Check for 'ar-' prefix (e.g., ar-bat-sla, ar-bat-rf)
+    if (lower.startsWith('ar-') || lower.startsWith('ar ')) return true;
+    // Check for explicit all-rounder mentions
+    if (lower.includes('allround') || lower.includes('all-round') || lower.includes('all round')) return true;
+    // Check if role contains both batting and bowling indicators
+    const hasBat = lower.includes('bat');
+    const hasBowl = lower.includes('bowl') || lower.includes('spin') || lower.includes('fast') || lower.includes('medium') || lower.includes('pace');
+    if (hasBat && hasBowl) return true;
+    return false;
+  };
+
+  // Memoized filtered lists for each category
+  const categoryPlayers = useMemo(() => {
+    const filterByRole = (role: RoleFilter) => {
+      if (role === 'all') return players;
+      return players.filter((player) => {
+        const playerRole = (player.stats?.role || player.categories?.name || '').toLowerCase();
+        const normalizedRole = playerRole.replace(/[-\s]/g, '');
+
+        // Check all-rounder FIRST (has priority over batsman/bowler)
+        if (role === 'all-rounder') {
+          return isAllRounder(playerRole);
+        }
+
+        // For batsman: exclude all-rounders
+        if (role === 'batsman') {
+          if (isAllRounder(playerRole)) return false;
+          return normalizedRole.includes('bat') || playerRole.includes('batsman') || playerRole.includes('batter');
+        }
+
+        // For bowler: exclude all-rounders
+        if (role === 'bowler') {
+          if (isAllRounder(playerRole)) return false;
+          return normalizedRole.includes('bowl') || playerRole.includes('bowler') ||
+                 playerRole.includes('spin') || playerRole.includes('fast') ||
+                 playerRole.includes('medium') || playerRole.includes('pace');
+        }
+
+        if (role === 'wicket-keeper') {
+          return normalizedRole.includes('wicket') || normalizedRole.includes('keeper') ||
+                 playerRole.includes('wk') || playerRole.startsWith('wk-');
+        }
+        return false;
+      });
+    };
+
+    return {
+      all: filterByRole('all'),
+      batsman: filterByRole('batsman'),
+      bowler: filterByRole('bowler'),
+      'all-rounder': filterByRole('all-rounder'),
+      'wicket-keeper': filterByRole('wicket-keeper'),
+    };
+  }, [players]);
 
   const loadSoldPlayers = async () => {
     try {
@@ -50,24 +116,32 @@ export default function TopPlayers() {
     } else {
       const filtered = players.filter((player) => {
         const role = (player.stats?.role || player.categories?.name || '').toLowerCase();
-        // Normalize the role string for comparison (remove hyphens, spaces)
         const normalizedRole = role.replace(/[-\s]/g, '');
-        const normalizedFilter = activeFilter.replace(/[-\s]/g, '');
 
-        // Check various possible matches
+        // Check all-rounder FIRST (has priority)
+        if (activeFilter === 'all-rounder') {
+          return isAllRounder(role);
+        }
+
+        // For batsman: exclude all-rounders
         if (activeFilter === 'batsman') {
+          if (isAllRounder(role)) return false;
           return normalizedRole.includes('bat') || role.includes('batsman') || role.includes('batter');
         }
+
+        // For bowler: exclude all-rounders
         if (activeFilter === 'bowler') {
-          return normalizedRole.includes('bowl') || role.includes('bowler');
+          if (isAllRounder(role)) return false;
+          return normalizedRole.includes('bowl') || role.includes('bowler') ||
+                 role.includes('spin') || role.includes('fast') ||
+                 role.includes('medium') || role.includes('pace');
         }
-        if (activeFilter === 'all-rounder') {
-          return normalizedRole.includes('allround') || role.includes('all-round') || role.includes('all round');
-        }
+
         if (activeFilter === 'wicket-keeper') {
-          return normalizedRole.includes('wicket') || normalizedRole.includes('keeper') || role.includes('wk');
+          return normalizedRole.includes('wicket') || normalizedRole.includes('keeper') ||
+                 role.includes('wk') || role.startsWith('wk-');
         }
-        return normalizedRole.includes(normalizedFilter);
+        return false;
       });
       setFilteredPlayers(filtered);
     }
@@ -168,6 +242,71 @@ export default function TopPlayers() {
           </div>
         </div>
 
+        {/* Animated Top 5 Preview Section */}
+        {showAllPreviews && activeFilter === 'all' && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 via-amber-500 to-orange-500 rounded-xl flex items-center justify-center">
+                  <Sparkles size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Top 5 Champions</h2>
+                  <p className="text-slate-400 text-sm">Most expensive players by category</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAllPreviews(false)}
+                className="text-slate-400 hover:text-white text-sm transition-colors"
+              >
+                Hide Previews
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {roleFilters.map((filter) => (
+                <div
+                  key={filter.value}
+                  className="bg-auction-card border border-auction-border rounded-xl p-4 cursor-pointer hover:border-primary-500/50 transition-colors group relative"
+                  onClick={() => setModalCategory(filter.value)}
+                >
+                  {/* View full screen hint */}
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs text-primary-400 bg-primary-500/10 px-2 py-1 rounded-full">
+                    <Eye size={12} />
+                    <span>Full Screen</span>
+                  </div>
+                  <TopPlayersPreview
+                    players={categoryPlayers[filter.value]}
+                    title={`Top ${filter.label}`}
+                    accentColor={filter.color}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!showAllPreviews && activeFilter === 'all' && (
+          <button
+            onClick={() => setShowAllPreviews(true)}
+            className="mb-6 flex items-center gap-2 text-primary-400 hover:text-primary-300 transition-colors"
+          >
+            <Sparkles size={18} />
+            Show Top 5 Previews
+          </button>
+        )}
+
+        {/* Single Category Preview when filtered */}
+        {activeFilter !== 'all' && (
+          <div className="mb-8 bg-auction-card border border-auction-border rounded-xl p-6">
+            <TopPlayersPreview
+              players={filteredPlayers}
+              title={`Top ${roleFilters.find(f => f.value === activeFilter)?.label || 'Players'}`}
+              accentColor={roleFilters.find(f => f.value === activeFilter)?.color || 'amber'}
+            />
+          </div>
+        )}
+
         {/* Players List */}
         <div className="bg-auction-card border border-auction-border rounded-xl overflow-hidden">
           <div className="p-4 border-b border-auction-border">
@@ -216,10 +355,10 @@ export default function TopPlayers() {
                     <h3 className="font-semibold text-white truncate">{player.name}</h3>
                     <div className="flex items-center gap-2 text-sm text-slate-400">
                       <span>{player.stats?.role || player.categories?.name || 'Unknown'}</span>
-                      {player.jersey_number && (
+                      {player.player_uid && (
                         <>
                           <span className="text-slate-600">•</span>
-                          <span>#{player.jersey_number}</span>
+                          <span className="text-cyan-400">{player.player_uid}</span>
                         </>
                       )}
                     </div>
@@ -258,6 +397,23 @@ export default function TopPlayers() {
           )}
         </div>
       </main>
+
+      {/* Full-screen modal for category preview */}
+      {modalCategory && (
+        <TopPlayersModal
+          players={categoryPlayers[modalCategory]}
+          title={`Top ${roleFilters.find(f => f.value === modalCategory)?.label || 'Players'}`}
+          accentColor={(roleFilters.find(f => f.value === modalCategory)?.color as 'amber' | 'blue' | 'red' | 'green' | 'purple') || 'amber'}
+          categoryIcon={
+            modalCategory === 'batsman' ? '🏏' :
+            modalCategory === 'bowler' ? '🎯' :
+            modalCategory === 'all-rounder' ? '⭐' :
+            modalCategory === 'wicket-keeper' ? '🧤' :
+            undefined
+          }
+          onClose={() => setModalCategory(null)}
+        />
+      )}
     </div>
   );
 }

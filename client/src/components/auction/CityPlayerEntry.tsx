@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Player } from '../../types';
 import { User } from 'lucide-react';
-import { formatAmount } from '../../utils/formatters';
+import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { getRoleLabel } from '../../config/playerRoles';
 import { useUIStore } from '../../stores/uiStore';
@@ -530,6 +530,19 @@ export default function CityPlayerEntry({ player, onComplete }: CityPlayerEntryP
                 {player.categories.name}
               </span>
             )}
+            {(player.city || player.stats?.city) && (
+              <span
+                className="px-6 py-2.5 text-sm font-bold uppercase tracking-wider flex items-center gap-1"
+                style={{
+                  background: `linear-gradient(135deg, ${CITY_COLORS.pink}40, ${CITY_COLORS.magenta}20)`,
+                  color: CITY_COLORS.pink,
+                  border: `2px solid ${CITY_COLORS.pink}50`,
+                  clipPath: 'polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0% 50%)',
+                }}
+              >
+                📍 {player.city || player.stats?.city}
+              </span>
+            )}
           </div>
         </div>
 
@@ -581,7 +594,7 @@ export default function CityPlayerEntry({ player, onComplete }: CityPlayerEntryP
                 filter: `drop-shadow(0 0 15px ${CITY_COLORS.gold}80)`,
               }}
             >
-              {formatAmount(player.base_price, usePoints)}
+              {formatAmountCompact(player.base_price, usePoints)}
             </span>
           </div>
         </div>

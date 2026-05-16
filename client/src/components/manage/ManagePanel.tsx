@@ -4,12 +4,14 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../utils/api';
 import { useAuthStore } from '../../stores/authStore';
 import { Team, Category, Player } from '../../types';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 import { PLAYER_CATEGORIES, getRoleShortLabel, getRoleIcon, getRoleLabel, convertLegacyRole } from '../../config/playerRoles';
 import ExportSection from '../export/ExportSection';
 import ImageUpload from '../common/ImageUpload';
 import LayoutSelector from '../auction/LayoutSelector';
 import ThemeSelector from '../auction/ThemeSelector';
+import { cityBackgrounds } from '../../config/cityBackgrounds';
+import { premiumBackgrounds } from '../../config/premiumBackgrounds';
 import {
   Users,
   UserPlus,
@@ -33,7 +35,11 @@ import {
   Volume2,
   Palette,
   Layout,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
+import ExcelImportModal from '../import/ExcelImportModal';
+import { downloadExcelTemplate } from '../import/ExcelTemplateGenerator';
 import { useUIStore } from '../../stores/uiStore';
 
 type Tab = 'teams' | 'players' | 'categories' | 'settings';
@@ -408,15 +414,15 @@ function TeamsTab({ teams, onRefresh }: { teams: Team[]; onRefresh: () => void }
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-slate-900/50 rounded-lg p-2.5">
                   <p className="text-slate-500 text-xs">Budget</p>
-                  <p className="text-emerald-400 font-semibold">{formatIndianNumber(team.total_budget)}</p>
+                  <p className="text-emerald-400 font-semibold">{formatCompactIndian(team.total_budget)}</p>
                 </div>
                 <div className="bg-slate-900/50 rounded-lg p-2.5">
                   <p className="text-slate-500 text-xs">Spent</p>
-                  <p className="text-amber-400 font-semibold">{formatIndianNumber(team.spent_points)}</p>
+                  <p className="text-amber-400 font-semibold">{formatCompactIndian(team.spent_points)}</p>
                 </div>
                 <div className="bg-slate-900/50 rounded-lg p-2.5">
                   <p className="text-slate-500 text-xs">Remaining</p>
-                  <p className="text-blue-400 font-semibold">{formatIndianNumber(team.remaining_budget)}</p>
+                  <p className="text-blue-400 font-semibold">{formatCompactIndian(team.remaining_budget)}</p>
                 </div>
                 <div className="bg-slate-900/50 rounded-lg p-2.5">
                   <p className="text-slate-500 text-xs">Players</p>
@@ -444,6 +450,7 @@ function TeamsTab({ teams, onRefresh }: { teams: Team[]; onRefresh: () => void }
 interface PendingPlayer {
   id: string;
   name: string;
+  player_uid?: string;
   jersey_number?: string;
   photo_url?: string;
   stats?: { role?: string };
@@ -461,6 +468,8 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
   const [selectedRoleCategory, setSelectedRoleCategory] = useState('');
   const [approvingPlayer, setApprovingPlayer] = useState<PendingPlayer | null>(null);
   const [approvalData, setApprovalData] = useState({ category_id: '', base_price: '' });
+  const [showExcelImport, setShowExcelImport] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -583,7 +592,6 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this player?')) return;
     try {
       await api.deletePlayer(id);
       loadPlayers();
@@ -640,17 +648,54 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
               <h3 className="font-semibold text-white text-lg">Players ({players.length})</h3>
               <p className="text-sm text-slate-400">Add players with detailed role information</p>
             </div>
-            <button
-              onClick={() => { setShowForm(!showForm); resetForm(); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all ${
-                showForm
-                  ? 'bg-slate-700 text-slate-300'
-                  : 'bg-gradient-to-r from-primary-600 to-purple-600 text-white'
-              }`}
-            >
-              {showForm ? <X size={18} /> : <Plus size={18} />}
-              {showForm ? 'Cancel' : 'Add Player'}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Download Template Button */}
+              <button
+                onClick={async () => {
+                  setDownloadingTemplate(true);
+                  try {
+                    await downloadExcelTemplate(categories);
+                  } catch (err) {
+                    console.error('Failed to download template:', err);
+                  } finally {
+                    setDownloadingTemplate(false);
+                  }
+                }}
+                disabled={downloadingTemplate}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 hover:text-white border border-slate-600/50"
+                title="Download Excel template with dropdowns"
+              >
+                {downloadingTemplate ? (
+                  <RefreshCw size={16} className="animate-spin" />
+                ) : (
+                  <Download size={16} />
+                )}
+                Template
+              </button>
+
+              {/* Import Excel Button */}
+              <button
+                onClick={() => setShowExcelImport(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30"
+                title="Import players from Excel file"
+              >
+                <FileSpreadsheet size={16} />
+                Import Excel
+              </button>
+
+              {/* Add Player Button */}
+              <button
+                onClick={() => { setShowForm(!showForm); resetForm(); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all ${
+                  showForm
+                    ? 'bg-slate-700 text-slate-300'
+                    : 'bg-gradient-to-r from-primary-600 to-purple-600 text-white'
+                }`}
+              >
+                {showForm ? <X size={18} /> : <Plus size={18} />}
+                {showForm ? 'Cancel' : 'Add Player'}
+              </button>
+            </div>
           </div>
 
           {/* Filters */}
@@ -719,7 +764,8 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                           <div>
                             <p className="font-semibold text-white">{player.name}</p>
                             <p className="text-xs text-slate-400">
-                              {player.jersey_number && `#${player.jersey_number} • `}
+                              {player.player_uid && <span className="text-cyan-400 font-medium">{player.player_uid}</span>}
+                              {player.player_uid && roleValue && ' • '}
                               {roleValue && <span>{getRoleLabel(roleValue)}</span>}
                             </p>
                           </div>
@@ -737,7 +783,7 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                               <option value="">Select Category</option>
                               {categories.map((cat) => (
                                 <option key={cat.id} value={cat.id}>
-                                  {cat.name} ({formatIndianNumber(cat.base_price)} pts)
+                                  {cat.name} ({formatCompactIndian(cat.base_price)} pts)
                                 </option>
                               ))}
                             </select>
@@ -784,7 +830,8 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                           <div>
                             <p className="font-semibold text-white">{player.name}</p>
                             <p className="text-xs text-slate-400">
-                              {player.jersey_number && `#${player.jersey_number} • `}
+                              {player.player_uid && <span className="text-cyan-400 font-medium">{player.player_uid}</span>}
+                              {player.player_uid && roleValue && ' • '}
                               {roleValue && <span>{getRoleIcon(roleValue)} {getRoleLabel(roleValue)}</span>}
                             </p>
                           </div>
@@ -851,7 +898,7 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                   <option value="">Select Category</option>
                   {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
-                      {cat.name} ({formatIndianNumber(cat.base_price)} pts)
+                      {cat.name} ({formatCompactIndian(cat.base_price)} pts)
                     </option>
                   ))}
                 </select>
@@ -961,7 +1008,8 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                         <div>
                           <p className="font-semibold text-white truncate">{player.name}</p>
                           <p className="text-xs text-slate-400">
-                            {player.jersey_number && `#${player.jersey_number} • `}
+                            {player.player_uid && <span className="text-cyan-400 font-medium">{player.player_uid}</span>}
+                            {player.player_uid && player.categories?.name && ' • '}
                             {player.categories?.name}
                           </p>
                         </div>
@@ -994,7 +1042,7 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                       <div className="mt-2 space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-amber-400">
-                            {formatIndianNumber(player.base_price)} pts
+                            {formatCompactIndian(player.base_price)} pts
                           </span>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                             player.stats?.pending ? 'bg-orange-500/20 text-orange-400' :
@@ -1036,6 +1084,18 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
           )}
         </div>
       </div>
+
+      {/* Excel Import Modal */}
+      {showExcelImport && (
+        <ExcelImportModal
+          categories={categories}
+          onClose={() => setShowExcelImport(false)}
+          onSuccess={() => {
+            loadPlayers();
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1124,7 +1184,7 @@ function CategoriesTab({ categories, onRefresh }: { categories: Category[]; onRe
               <div>
                 <p className="font-semibold text-white text-lg">{cat.name}</p>
                 <p className="text-sm text-slate-400">
-                  Base: {formatIndianNumber(cat.base_price)} pts • {cat.total_players} players
+                  Base: {formatCompactIndian(cat.base_price)} pts • {cat.total_players} players
                 </p>
               </div>
               <button
@@ -1496,7 +1556,10 @@ function AuctionSettingsCard() {
     acceleratedTimerDuration, setAcceleratedTimerDuration,
     showLayoutSelector, toggleLayoutSelector,
     showThemeSelector, toggleThemeSelector,
-    showSponsors, toggleSponsors
+    showSponsors, toggleSponsors,
+    selectedLayout,
+    cityBackgroundId, setCityBackground,
+    premiumBackgroundId, setPremiumBackground
   } = useUIStore();
 
   const timerOptions = [15, 20, 30, 45, 60, 90];
@@ -1686,25 +1749,159 @@ function AuctionSettingsCard() {
                 </button>
               </div>
 
-              {/* Theme Selector */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Palette size={18} className="text-purple-400" />
-                  <label className="text-sm text-slate-400">Visual Theme</label>
-                </div>
-                <button
-                  onClick={toggleThemeSelector}
-                  className="w-full flex items-center gap-3 px-6 py-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 text-white hover:from-purple-600/30 hover:to-pink-600/30 transition-all hover:scale-[1.02]"
-                >
-                  <Palette size={24} className="text-purple-400" />
-                  <div className="text-left">
-                    <span className="font-bold block">Change Theme</span>
-                    <span className="text-xs text-slate-400">Backgrounds and colors</span>
+              {/* Theme Selector - Only shows when Classic layout is selected */}
+              {selectedLayout === 'classic' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Palette size={18} className="text-purple-400" />
+                    <label className="text-sm text-slate-400">Visual Theme</label>
                   </div>
-                </button>
-              </div>
+                  <button
+                    onClick={toggleThemeSelector}
+                    className="w-full flex items-center gap-3 px-6 py-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 text-white hover:from-purple-600/30 hover:to-pink-600/30 transition-all hover:scale-[1.02]"
+                  >
+                    <Palette size={24} className="text-purple-400" />
+                    <div className="text-left">
+                      <span className="font-bold block">Change Theme</span>
+                      <span className="text-xs text-slate-400">Backgrounds and colors</span>
+                    </div>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* City Background Selector - Only shows when City layout is selected */}
+          {selectedLayout === 'city' && (
+            <div className="md:col-span-2 pt-4 border-t border-slate-700/50">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-2xl">🌃</span>
+                <div>
+                  <label className="text-sm text-white font-medium">City Background</label>
+                  <p className="text-xs text-slate-500">Choose a background for the City layout</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {cityBackgrounds.map((bg) => (
+                  <button
+                    key={bg.id}
+                    onClick={() => setCityBackground(bg.id)}
+                    className={`relative group rounded-xl overflow-hidden transition-all ${
+                      cityBackgroundId === bg.id
+                        ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-900 scale-105'
+                        : 'hover:scale-105 hover:ring-1 hover:ring-slate-500'
+                    }`}
+                  >
+                    {/* Thumbnail */}
+                    <div className="aspect-video relative">
+                      <img
+                        src={bg.thumbnail}
+                        alt={bg.name}
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Video indicator */}
+                      {bg.type === 'video' && (
+                        <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-white font-medium flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
+                          Video
+                        </div>
+                      )}
+                      {/* Selected indicator */}
+                      {cityBackgroundId === bg.id && (
+                        <div className="absolute inset-0 bg-cyan-500/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center">
+                            <Check size={14} className="text-white" />
+                          </div>
+                        </div>
+                      )}
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+
+                    {/* Name */}
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
+                      <p className="text-xs text-white font-medium truncate">{bg.name}</p>
+                      {bg.description && (
+                        <p className="text-[10px] text-slate-400 truncate">{bg.description}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Select an image or video background for the City layout. Video backgrounds will loop continuously.
+              </p>
+            </div>
+          )}
+
+          {/* Premium Background Selector - Only shows when Premium Broadcast layout is selected */}
+          {selectedLayout === 'premium-broadcast' && (
+            <div className="md:col-span-2 pt-4 border-t border-slate-700/50">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-2xl">✨</span>
+                <div>
+                  <label className="text-sm text-white font-medium">Premium Background</label>
+                  <p className="text-xs text-slate-500">Choose a luxury background for the Premium layout</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {premiumBackgrounds.map((bg) => (
+                  <button
+                    key={bg.id}
+                    onClick={() => setPremiumBackground(bg.id)}
+                    className={`relative group rounded-xl overflow-hidden transition-all ${
+                      premiumBackgroundId === bg.id
+                        ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900 scale-105'
+                        : 'hover:scale-105 hover:ring-1 hover:ring-slate-500'
+                    }`}
+                  >
+                    {/* Background Preview */}
+                    <div
+                      className="aspect-video relative"
+                      style={{
+                        background: bg.type === 'gradient' ? bg.value : `url(${bg.value})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        filter: bg.type === 'image' ? `brightness(${bg.brightness || 0.5})` : undefined,
+                      }}
+                    >
+                      {/* Gold particle preview overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-amber-400/40" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-300/30 absolute top-2 left-3" />
+                        <div className="w-1 h-1 rounded-full bg-amber-500/50 absolute bottom-3 right-2" />
+                      </div>
+
+                      {/* Selected indicator */}
+                      {premiumBackgroundId === bg.id && (
+                        <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center">
+                            <Check size={14} className="text-white" />
+                          </div>
+                        </div>
+                      )}
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+
+                    {/* Name */}
+                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
+                      <p className="text-xs text-white font-medium truncate">{bg.name}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Select a luxury background for the Premium layout. Image backgrounds include Trophy Room, Grand Ballroom, VIP Lounge, Award Stage & Dark Marble.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

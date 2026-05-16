@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Layers, Plus, Play, CheckCircle, Clock, ChevronRight } from 'lucide-react';
 import { api } from '../../utils/api';
 import { useSocket } from '../../hooks/useSocket';
-import { formatIndianNumber } from '../../utils/formatters';
+import { formatCompactIndian } from '../../utils/formatters';
 
 interface Round {
   id: string;
@@ -161,7 +161,7 @@ export default function MultiRoundPanel({ tournamentId, onRoundChange }: MultiRo
               </div>
               <div className="bg-slate-800/50 rounded-xl p-3 text-center">
                 <p className="text-xs text-slate-400 mb-1">Total Value</p>
-                <p className="text-xl font-bold text-amber-400">{formatIndianNumber(currentRound.totalValue)}</p>
+                <p className="text-xl font-bold text-amber-400">{formatCompactIndian(currentRound.totalValue)}</p>
               </div>
             </div>
           </div>
@@ -216,7 +216,7 @@ export default function MultiRoundPanel({ tournamentId, onRoundChange }: MultiRo
                         )}
                         {round.status === 'completed' && round.totalValue > 0 && (
                           <span className="text-slate-500">
-                            | {round.playersSold} sold for {formatIndianNumber(round.totalValue)}
+                            | {round.playersSold} sold for {formatCompactIndian(round.totalValue)}
                           </span>
                         )}
                       </div>

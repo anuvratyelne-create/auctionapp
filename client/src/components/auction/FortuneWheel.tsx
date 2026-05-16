@@ -330,8 +330,8 @@ export default function FortuneWheel({
           >
             <p className="text-slate-400 text-sm mb-1">Selected Player</p>
             <p className="text-2xl font-bold text-white">{selectedPlayer.name}</p>
-            {selectedPlayer.jersey_number && (
-              <p className="text-slate-400">#{selectedPlayer.jersey_number}</p>
+            {selectedPlayer.player_uid && (
+              <p className="text-cyan-400 font-medium">{selectedPlayer.player_uid}</p>
             )}
           </div>
         )}
