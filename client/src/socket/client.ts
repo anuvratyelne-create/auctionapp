@@ -15,9 +15,13 @@ class SocketClient {
     this.disconnect();
     this.tournamentId = tournamentId;
 
+    // Get auth token from localStorage for authenticated socket connections
+    const token = localStorage.getItem('token');
+
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       autoConnect: true,
+      auth: token ? { token } : undefined,
     });
 
     this.socket.on('connect', () => {
@@ -31,6 +35,14 @@ class SocketClient {
 
     this.socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
+    });
+
+    this.socket.on('error', (error: { message: string }) => {
+      console.warn('Socket error:', error.message);
+    });
+
+    this.socket.on('server:shutdown', () => {
+      console.log('Server is shutting down, will reconnect automatically');
     });
   }
 

@@ -153,10 +153,10 @@ router.get('/player/:playerId', authenticateToken, async (req: AuthRequest, res:
   }
 });
 
-// Place bid
+// Place bid (with optimistic locking)
 router.post('/bid', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { team_id, amount } = req.body;
+    const { team_id, amount, expectedBid } = req.body;
 
     // Get tournament settings
     const { data: tournament } = await supabase
@@ -206,6 +206,14 @@ router.post('/bid', authenticateToken, async (req: AuthRequest, res: Response) =
 
     if (!state.currentPlayer) {
       return res.status(400).json({ error: 'No player in auction' });
+    }
+
+    // Optimistic locking: if expectedBid is provided, verify it matches current bid
+    if (expectedBid !== undefined && state.currentBid !== expectedBid) {
+      return res.status(409).json({
+        error: 'Bid state changed. Please refresh and try again.',
+        currentBid: state.currentBid
+      });
     }
 
     // Check if this is the first bid for this player (bidHistory is empty)
@@ -294,7 +302,7 @@ router.post('/increment', authenticateToken, async (req: AuthRequest, res: Respo
   }
 });
 
-// Mark player as sold
+// Mark player as sold (with race condition protection)
 router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { player_id, team_id, amount } = req.body;
@@ -308,7 +316,8 @@ router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'Player and team required' });
     }
 
-    // Update player
+    // Update player with optimistic locking - only update if status is still 'bidding'
+    // This prevents double-sell race conditions
     const { data: player, error } = await supabase
       .from('players')
       .update({
@@ -317,6 +326,7 @@ router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) 
         sold_price: soldAmount
       })
       .eq('id', playerId)
+      .eq('status', 'bidding') // Only update if still in bidding state
       .select(`
         *,
         categories(id, name),
@@ -325,7 +335,15 @@ router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) 
       .single();
 
     if (error) {
+      // Check if this is because the player was already sold
+      if (error.code === 'PGRST116') { // No rows returned
+        return res.status(409).json({ error: 'Player already sold or state changed' });
+      }
       return res.status(500).json({ error: 'Failed to update player' });
+    }
+
+    if (!player) {
+      return res.status(409).json({ error: 'Player already sold or state changed' });
     }
 
     // Record final bid
