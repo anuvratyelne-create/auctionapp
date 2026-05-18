@@ -1332,7 +1332,9 @@ function SettingsTab() {
                 placeholder="Upload tournament logo"
               />
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
             <div>
               <label className="block text-sm text-slate-400 mb-2">Team Budget (Points)</label>
               <input

@@ -5,10 +5,15 @@ import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { getRoleLabel } from '../../config/playerRoles';
 import { useUIStore } from '../../stores/uiStore';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface CityPlayerEntryProps {
   player: Player;
   onComplete: () => void;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 const CITY_COLORS = {
@@ -49,7 +54,7 @@ function DigitalRain({ delay, left }: { delay: number; left: string }) {
   );
 }
 
-export default function CityPlayerEntry({ player, onComplete }: CityPlayerEntryProps) {
+export default function CityPlayerEntry({ player, onComplete, tournament }: CityPlayerEntryProps) {
   const [phase, setPhase] = useState<'blackout' | 'scan' | 'glitch' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('blackout');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { displayMode } = useUIStore();
@@ -159,6 +164,19 @@ export default function CityPlayerEntry({ player, onComplete }: CityPlayerEntryP
           phase === 'blackout' ? 'opacity-0' : 'opacity-100'
         }`}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="city"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* City skyline silhouette */}
       <div

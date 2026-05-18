@@ -38,19 +38,38 @@ export default function AuctionPanel() {
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
 
+  // Debounced loadTeams to prevent multiple rapid calls
+  const loadTeamsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadTeamsDebounced = useCallback(() => {
+    if (loadTeamsTimeoutRef.current) {
+      clearTimeout(loadTeamsTimeoutRef.current);
+    }
+    loadTeamsTimeoutRef.current = setTimeout(async () => {
+      try {
+        const data = await api.getTeams() as Team[];
+        setTeams(data);
+      } catch (error) {
+        console.error('Failed to load teams:', error);
+      }
+    }, 300);
+  }, []);
+
   useEffect(() => {
-    loadTeams();
+    // Initial load (immediate)
+    api.getTeams().then(data => setTeams(data as Team[])).catch(console.error);
     loadAuctionState();
 
-    // Listen for team updates via socket
-    socketClient.onTeamsUpdated(() => {
-      loadTeams();
-    });
+    // Listen for team updates via socket (debounced)
+    const handleTeamsUpdated = () => loadTeamsDebounced();
+    socketClient.onTeamsUpdated(handleTeamsUpdated);
 
     return () => {
       socketClient.off('teams:updated');
+      if (loadTeamsTimeoutRef.current) {
+        clearTimeout(loadTeamsTimeoutRef.current);
+      }
     };
-  }, []);
+  }, [loadTeamsDebounced]);
 
   // Reset timer when a new bid is placed (like real IPL auction)
   useEffect(() => {
@@ -71,15 +90,6 @@ export default function AuctionPanel() {
     }
     previousStatusRef.current = status;
   }, [status]);
-
-  const loadTeams = async () => {
-    try {
-      const data = await api.getTeams() as Team[];
-      setTeams(data);
-    } catch (error) {
-      console.error('Failed to load teams:', error);
-    }
-  };
 
   const loadAuctionState = async () => {
     try {
@@ -139,7 +149,7 @@ export default function AuctionPanel() {
 
     try {
       await api.placeBid(team.id, newBid);
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
     } catch (error: any) {
       alert(error.message || 'Failed to place bid');
     }
@@ -193,7 +203,7 @@ export default function AuctionPanel() {
     try {
       setLastAction({ player: currentPlayer, type: 'sold' });
       await api.markSold();
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
     } catch (error: any) {
       setLastAction(null);
       alert(error.message || 'Failed to mark as sold');
@@ -218,7 +228,7 @@ export default function AuctionPanel() {
     try {
       // Reset the player in database
       await api.resetPlayer(lastAction.player.id);
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
 
       // Bring the player back into auction/bidding mode
       const player = await api.getPlayerForAuction(lastAction.player.id) as Player;

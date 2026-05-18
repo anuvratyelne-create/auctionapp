@@ -4,12 +4,17 @@ import { User } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { useUIStore } from '../../stores/uiStore';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface FireSoldAnimationProps {
   player: Player;
   team: Team;
   soldPrice: number;
   onComplete: () => void;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 const FIRE_COLORS = {
@@ -25,6 +30,7 @@ export default function FireSoldAnimation({
   team,
   soldPrice,
   onComplete,
+  tournament,
 }: FireSoldAnimationProps) {
   const [phase, setPhase] = useState<'blackout' | 'stamp' | 'reveal' | 'merge' | 'price' | 'celebrate' | 'exit'>('blackout');
   const [displayPrice, setDisplayPrice] = useState(0);
@@ -92,6 +98,19 @@ export default function FireSoldAnimation({
           background: 'radial-gradient(ellipse at center, #1a0a0a 0%, #0a0505 60%, #050202 100%)',
         }}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="fire"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* Heat shimmer effect */}
       <div className="absolute inset-0 animate-heat-shimmer opacity-20 pointer-events-none" />

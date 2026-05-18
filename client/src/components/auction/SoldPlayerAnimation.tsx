@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Player, Team } from '../../types';
 import { formatAmountCompact } from '../../utils/formatters';
 import { useUIStore } from '../../stores/uiStore';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface SoldPlayerAnimationProps {
   player: Player;
@@ -9,6 +10,10 @@ interface SoldPlayerAnimationProps {
   soldPrice: number;
   onComplete: () => void;
   teamColor?: string;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 export default function SoldPlayerAnimation({
@@ -16,7 +21,8 @@ export default function SoldPlayerAnimation({
   team,
   soldPrice,
   onComplete,
-  teamColor = '#22c55e'
+  teamColor = '#22c55e',
+  tournament
 }: SoldPlayerAnimationProps) {
   const [phase, setPhase] = useState<'intro' | 'reveal' | 'merge' | 'price' | 'celebrate' | 'exit'>('intro');
   const [displayPrice, setDisplayPrice] = useState(0);
@@ -149,6 +155,19 @@ export default function SoldPlayerAnimation({
     <div className={`fixed inset-0 z-[100] overflow-hidden ${phase === 'exit' ? 'animate-sold-fade-out' : ''}`}>
       {/* Dark cinematic background */}
       <div className="absolute inset-0 bg-[#030308]" />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="premium"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* Animated grid background */}
       <div

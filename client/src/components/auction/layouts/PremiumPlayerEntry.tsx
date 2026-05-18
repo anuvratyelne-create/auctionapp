@@ -4,13 +4,18 @@ import { soundManager } from '../../../utils/soundManager';
 import { getRoleLabel } from '../../../config/playerRoles';
 import { formatAmountCompact } from '../../../utils/formatters';
 import { useUIStore } from '../../../stores/uiStore';
+import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface PremiumPlayerEntryProps {
   player: Player;
   onComplete: () => void;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
-export default function PremiumPlayerEntry({ player, onComplete }: PremiumPlayerEntryProps) {
+export default function PremiumPlayerEntry({ player, onComplete, tournament }: PremiumPlayerEntryProps) {
   const [phase, setPhase] = useState<'intro' | 'photo' | 'name' | 'stats' | 'ready' | 'exit'>('intro');
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -34,6 +39,19 @@ export default function PremiumPlayerEntry({ player, onComplete }: PremiumPlayer
     <div className={`fixed inset-0 z-[100] overflow-hidden ${phase === 'exit' ? 'animate-premium-fade-out' : ''}`}>
       {/* Dark cinematic background */}
       <div className="absolute inset-0 bg-[#030308]" />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="premium"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* Animated grid background */}
       <div

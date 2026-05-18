@@ -1,10 +1,13 @@
 import { memo, useMemo } from 'react';
 import { Trophy, Sparkles, Play } from 'lucide-react';
+import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface BreakScreenProps {
   tournament: {
     name?: string;
     logo_url?: string;
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
   };
   theme?: 'classic' | 'premium' | 'fire' | 'city';
   accentColor?: string;
@@ -74,6 +77,18 @@ export default memo(function BreakScreen({ tournament, theme = 'classic', accent
       className="fixed inset-0 flex flex-col items-center justify-center z-50"
       style={{ background: themeConfig.bg }}
     >
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme={theme}
+          showName={false}
+        />
+      )}
+
       {/* Floating particles */}
       <FloatingParticles color={accent} />
 

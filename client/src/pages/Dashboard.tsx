@@ -16,6 +16,9 @@ const StatsPanel = lazy(() => import('../components/stats/StatsPanel'));
 const RetentionPanel = lazy(() => import('../components/retention/RetentionPanel'));
 const TeamComparisonModal = lazy(() => import('../components/comparison/TeamComparisonModal'));
 import { auctionTemplates } from '../config/auctionTemplates';
+import { layoutTemplates } from '../config/auctionLayouts';
+import { premiumBackgrounds } from '../config/premiumBackgrounds';
+import { cityBackgrounds } from '../config/cityBackgrounds';
 import { PLAYER_CATEGORIES } from '../config/playerRoles';
 import { budgetPresets, formatBudgetLabel } from '../config/budgetPresets';
 import AnimatedBackground from '../components/auction/AnimatedBackground';
@@ -3650,9 +3653,13 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
 }
 
 // Customize Theme Panel
-function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tournament: any; onNavigate: (panel: SidebarPanel) => void }) {
+function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNavigate: (panel: SidebarPanel) => void }) {
+  const { updateTournament } = useAuthStore();
   const {
+    selectedLayout, setSelectedLayout,
     selectedThemeId, setSelectedTheme,
+    cityBackgroundId, setCityBackground,
+    premiumBackgroundId, setPremiumBackground,
     soundEnabled, toggleSound,
     showSponsors, toggleSponsors,
     sponsorRotationInterval, setSponsorRotationInterval
@@ -3666,10 +3673,21 @@ function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tourname
   const [newSponsorPhoto, setNewSponsorPhoto] = useState('');
   const [addingSponsor, setAddingSponsor] = useState(false);
 
+  // Broadcaster settings state
+  const [broadcasterLogoUrl, setBroadcasterLogoUrl] = useState(tournament?.broadcaster_logo_url || '');
+  const [broadcasterName, setBroadcasterName] = useState(tournament?.broadcaster_name || '');
+  const [savingBroadcaster, setSavingBroadcaster] = useState(false);
+
   // Load sponsors
   useEffect(() => {
     loadSponsors();
   }, []);
+
+  // Sync broadcaster state when tournament changes
+  useEffect(() => {
+    setBroadcasterLogoUrl(tournament?.broadcaster_logo_url || '');
+    setBroadcasterName(tournament?.broadcaster_name || '');
+  }, [tournament?.broadcaster_logo_url, tournament?.broadcaster_name]);
 
   const loadSponsors = async () => {
     setLoadingSponsors(true);
@@ -3708,6 +3726,23 @@ function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tourname
       await loadSponsors();
     } catch (error) {
       console.error('Failed to delete sponsor:', error);
+    }
+  };
+
+  // Save broadcaster settings
+  const handleSaveBroadcaster = async () => {
+    setSavingBroadcaster(true);
+    try {
+      const updated = await api.updateTournament({
+        broadcaster_logo_url: broadcasterLogoUrl || undefined,
+        broadcaster_name: broadcasterName || undefined,
+      }) as any;
+      updateTournament(updated);
+    } catch (error: any) {
+      console.error('Failed to save broadcaster settings:', error);
+      alert(error.message || 'Failed to save broadcaster settings');
+    } finally {
+      setSavingBroadcaster(false);
     }
   };
 
@@ -3761,90 +3796,219 @@ function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tourname
         <p className="text-slate-400 mt-2">Personalize the look and feel of your auction</p>
       </div>
 
-      {/* Background Theme Section */}
+      {/* Layout Selection Section */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
+            <LayoutDashboard size={20} className="text-blue-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Layout Style</h3>
+            <p className="text-sm text-slate-500">Choose your auction broadcast layout</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {layoutTemplates.map((layout) => (
+            <button
+              key={layout.id}
+              onClick={() => setSelectedLayout(layout.id)}
+              className={`relative rounded-xl p-4 transition-all border-2 ${
+                selectedLayout === layout.id
+                  ? 'border-blue-500 ring-4 ring-blue-500/20 bg-blue-500/10'
+                  : 'border-slate-700/50 hover:border-slate-500 bg-slate-800/30'
+              }`}
+            >
+              {/* Layout Icon */}
+              <div className={`w-12 h-12 mx-auto mb-3 rounded-xl flex items-center justify-center ${
+                layout.id === 'classic' ? 'bg-slate-600' :
+                layout.id === 'premium-broadcast' ? 'bg-gradient-to-br from-amber-500 to-yellow-600' :
+                layout.id === 'fire' ? 'bg-gradient-to-br from-orange-500 to-red-600' :
+                'bg-gradient-to-br from-cyan-500 to-blue-600'
+              }`}>
+                <span className="text-2xl">
+                  {layout.id === 'classic' ? '📺' :
+                   layout.id === 'premium-broadcast' ? '👑' :
+                   layout.id === 'fire' ? '🔥' : '🌃'}
+                </span>
+              </div>
+
+              {/* Layout name */}
+              <p className="text-sm font-semibold text-white text-center">{layout.name}</p>
+              <p className="text-xs text-slate-400 text-center mt-1 line-clamp-2">{layout.description}</p>
+
+              {/* Selected checkmark */}
+              {selectedLayout === layout.id && (
+                <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                  <Check size={14} className="text-white" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Background Theme Section - Layout Specific */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
             <Image size={20} className="text-purple-400" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white">Background Theme</h3>
-            <p className="text-sm text-slate-500">Choose your auction panel background</p>
+            <h3 className="text-lg font-semibold text-white">
+              Background Theme
+              <span className="ml-2 text-xs font-normal px-2 py-1 rounded-full bg-slate-700 text-slate-300">
+                {layoutTemplates.find(l => l.id === selectedLayout)?.name || 'Classic'}
+              </span>
+            </h3>
+            <p className="text-sm text-slate-500">
+              {selectedLayout === 'classic' && 'Choose from animated or image backgrounds'}
+              {selectedLayout === 'premium-broadcast' && 'Luxury backgrounds for premium auctions'}
+              {selectedLayout === 'fire' && 'Fire theme has a built-in dramatic background'}
+              {selectedLayout === 'city' && 'City skyline backgrounds with neon effects'}
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {auctionTemplates.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setSelectedTheme(t.id)}
-              className={`relative rounded-xl transition-all overflow-hidden border-2 ${
-                selectedThemeId === t.id
-                  ? 'border-amber-500 ring-4 ring-amber-500/20 scale-[1.02]'
-                  : 'border-slate-700/50 hover:border-slate-500 hover:scale-[1.02]'
-              }`}
-            >
-              {/* Theme Preview */}
-              <div className="h-24 relative pointer-events-none">
-                {/* Animated Background Preview */}
-                {t.animatedBg ? (
-                  <div className="w-full h-full bg-slate-950 relative overflow-hidden pointer-events-none">
-                    <AnimatedBackground
-                      type={t.animatedBg}
-                      accentColor={t.accentColor}
-                      intensity="low"
-                    />
-                  </div>
-                ) : t.background ? (
-                  <img
-                    src={t.background}
-                    alt={t.name}
-                    className="w-full h-full object-cover pointer-events-none"
-                  />
-                ) : (
-                  <div
-                    className="w-full h-full pointer-events-none"
-                    style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)' }}
-                  >
-                    <div
-                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full opacity-30"
-                      style={{ background: t.accentColor, filter: 'blur(15px)' }}
-                    />
-                  </div>
-                )}
-
-                {/* Overlay gradient */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-
-                {/* LIVE Badge for animated */}
-                {t.isAnimated && (
-                  <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-red-600 rounded-lg shadow-lg">
-                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                    <span className="text-[10px] font-bold text-white uppercase">Live</span>
-                  </div>
-                )}
-
-                {/* Selected checkmark */}
-                {selectedThemeId === t.id && (
-                  <div className="absolute top-2 left-2 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center shadow-lg">
-                    <Check size={14} className="text-black" />
-                  </div>
-                )}
-              </div>
-
-              {/* Theme name */}
-              <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full border border-white/30 flex-shrink-0"
-                    style={{ background: t.accentColor }}
-                  />
-                  <p className="text-xs text-white font-medium truncate">{t.name}</p>
+        {/* Classic Layout Backgrounds */}
+        {selectedLayout === 'classic' && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {auctionTemplates.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedTheme(t.id)}
+                className={`relative rounded-xl transition-all overflow-hidden border-2 ${
+                  selectedThemeId === t.id
+                    ? 'border-amber-500 ring-4 ring-amber-500/20 scale-[1.02]'
+                    : 'border-slate-700/50 hover:border-slate-500 hover:scale-[1.02]'
+                }`}
+              >
+                <div className="h-24 relative pointer-events-none">
+                  {t.animatedBg ? (
+                    <div className="w-full h-full bg-slate-950 relative overflow-hidden pointer-events-none">
+                      <AnimatedBackground type={t.animatedBg} accentColor={t.accentColor} intensity="low" />
+                    </div>
+                  ) : t.background ? (
+                    <img src={t.background} alt={t.name} className="w-full h-full object-cover pointer-events-none" />
+                  ) : (
+                    <div className="w-full h-full pointer-events-none" style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)' }}>
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full opacity-30" style={{ background: t.accentColor, filter: 'blur(15px)' }} />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                  {t.isAnimated && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-red-600 rounded-lg shadow-lg">
+                      <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                      <span className="text-[10px] font-bold text-white uppercase">Live</span>
+                    </div>
+                  )}
+                  {selectedThemeId === t.id && (
+                    <div className="absolute top-2 left-2 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center shadow-lg">
+                      <Check size={14} className="text-black" />
+                    </div>
+                  )}
                 </div>
-              </div>
-            </button>
-          ))}
-        </div>
+                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full border border-white/30 flex-shrink-0" style={{ background: t.accentColor }} />
+                    <p className="text-xs text-white font-medium truncate">{t.name}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Premium Broadcast Backgrounds */}
+        {selectedLayout === 'premium-broadcast' && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {premiumBackgrounds.map((bg) => (
+              <button
+                key={bg.id}
+                onClick={() => setPremiumBackground(bg.id)}
+                className={`relative rounded-xl transition-all overflow-hidden border-2 ${
+                  premiumBackgroundId === bg.id
+                    ? 'border-amber-500 ring-4 ring-amber-500/20 scale-[1.02]'
+                    : 'border-slate-700/50 hover:border-slate-500 hover:scale-[1.02]'
+                }`}
+              >
+                <div className="h-24 relative">
+                  {bg.type === 'image' ? (
+                    <img src={bg.value} alt={bg.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full" style={{ background: bg.value }} />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  {bg.type === 'image' && (
+                    <div className="absolute top-2 right-2 px-2 py-1 bg-amber-600/80 rounded text-[10px] font-bold text-white">
+                      IMAGE
+                    </div>
+                  )}
+                  {premiumBackgroundId === bg.id && (
+                    <div className="absolute top-2 left-2 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center shadow-lg">
+                      <Check size={14} className="text-black" />
+                    </div>
+                  )}
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                  <p className="text-xs text-white font-medium truncate">{bg.name}</p>
+                  {bg.description && <p className="text-[10px] text-slate-400 truncate">{bg.description}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* City Layout Backgrounds */}
+        {selectedLayout === 'city' && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {cityBackgrounds.map((bg) => (
+              <button
+                key={bg.id}
+                onClick={() => setCityBackground(bg.id)}
+                className={`relative rounded-xl transition-all overflow-hidden border-2 ${
+                  cityBackgroundId === bg.id
+                    ? 'border-cyan-500 ring-4 ring-cyan-500/20 scale-[1.02]'
+                    : 'border-slate-700/50 hover:border-slate-500 hover:scale-[1.02]'
+                }`}
+              >
+                <div className="h-24 relative">
+                  <img src={bg.thumbnail} alt={bg.name} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  {bg.type === 'video' && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-red-600 rounded-lg shadow-lg">
+                      <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                      <span className="text-[10px] font-bold text-white uppercase">Video</span>
+                    </div>
+                  )}
+                  {cityBackgroundId === bg.id && (
+                    <div className="absolute top-2 left-2 w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center shadow-lg">
+                      <Check size={14} className="text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
+                  <p className="text-xs text-white font-medium truncate">{bg.name}</p>
+                  {bg.description && <p className="text-[10px] text-slate-400 truncate">{bg.description}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Fire Layout - Built-in Background */}
+        {selectedLayout === 'fire' && (
+          <div className="flex items-center justify-center p-8 bg-gradient-to-br from-orange-900/20 to-red-900/20 rounded-xl border border-orange-500/30">
+            <div className="text-center">
+              <div className="text-6xl mb-4">🔥</div>
+              <p className="text-white font-semibold">Fire Theme Active</p>
+              <p className="text-sm text-slate-400 mt-2">
+                The Fire layout includes a dramatic built-in animated fire background.
+                <br />No additional background selection needed.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sold Stamp Section */}
@@ -4035,6 +4199,81 @@ function CustomizeThemePanel({ tournament: _tournament, onNavigate }: { tourname
             </div>
           </div>
         )}
+      </div>
+
+      {/* Broadcaster Settings Section */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
+            <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Broadcaster Settings</h3>
+            <p className="text-sm text-slate-500">Configure broadcaster branding for overlay, animations, and break screens</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+          <div>
+            <ImageUpload
+              label="Broadcaster Logo"
+              value={broadcasterLogoUrl}
+              onChange={setBroadcasterLogoUrl}
+              folder="broadcaster-logos"
+              placeholder="Upload broadcaster logo"
+              maxSizeMB={2}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">Broadcaster Name (Optional)</label>
+            <input
+              type="text"
+              value={broadcasterName}
+              onChange={(e) => setBroadcasterName(e.target.value)}
+              placeholder="e.g., Sports Network TV"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Preview and Save */}
+        <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl">
+          <div className="flex items-center gap-3">
+            {broadcasterLogoUrl ? (
+              <>
+                <img
+                  src={broadcasterLogoUrl}
+                  alt="Broadcaster Logo Preview"
+                  className="h-10 w-auto object-contain bg-slate-900 rounded-lg p-1"
+                />
+                <span className="text-sm text-slate-400">
+                  {broadcasterName || 'Logo will appear on overlay & animations'}
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-slate-500">No broadcaster logo configured</span>
+            )}
+          </div>
+          <button
+            onClick={handleSaveBroadcaster}
+            disabled={savingBroadcaster}
+            className="px-4 py-2 bg-purple-500 hover:bg-purple-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+          >
+            {savingBroadcaster ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Save
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Audio Settings Section */}

@@ -1,10 +1,13 @@
 import { memo, useMemo, useEffect, useState } from 'react';
 import { Zap, UserPlus, Trophy } from 'lucide-react';
+import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface CityIdleScreenProps {
   tournament: {
     name?: string;
     logo_url?: string;
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
   };
   onNewPlayer?: () => void;
   loading?: boolean;
@@ -106,6 +109,18 @@ export default memo(function CityIdleScreen({ tournament, onNewPlayer, loading }
           background: `radial-gradient(ellipse 70% 50% at center, ${CITY_COLORS.cyan}10 0%, ${CITY_COLORS.purple}05 40%, transparent 70%)`,
         }}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="city"
+          showName={false}
+        />
+      )}
 
       {/* Floating neon particles */}
       <NeonParticles />

@@ -85,7 +85,7 @@ export default function SummaryPanel() {
     try {
       await api.removePlayerFromTeam(selectedTeam.id, playerId);
       loadTeamPlayers(selectedTeam.id);
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
     } catch (error: any) {
       alert(error.message || 'Failed to remove player');
     }

@@ -4,10 +4,15 @@ import { User } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { useUIStore } from '../../stores/uiStore';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface FirePlayerEntryProps {
   player: Player;
   onComplete: () => void;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 const FIRE_COLORS = {
@@ -18,7 +23,7 @@ const FIRE_COLORS = {
   ember: '#fdba74',
 };
 
-export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryProps) {
+export default function FirePlayerEntry({ player, onComplete, tournament }: FirePlayerEntryProps) {
   const [phase, setPhase] = useState<'blackout' | 'ignite' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('blackout');
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -78,6 +83,19 @@ export default function FirePlayerEntry({ player, onComplete }: FirePlayerEntryP
           background: 'radial-gradient(ellipse at center, transparent 20%, #050202 70%)',
         }}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="fire"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* Dramatic light rays */}
       <div

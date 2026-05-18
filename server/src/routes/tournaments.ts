@@ -25,9 +25,22 @@ const createTournamentSchema = z.object({
   }).optional(),
 });
 
+// Helper to transform empty strings to null for optional URL fields
+const optionalUrl = z.preprocess(
+  (val) => (val === '' || val === undefined ? null : val),
+  z.string().url().nullable().optional()
+);
+
+const optionalString = z.preprocess(
+  (val) => (val === '' || val === undefined ? null : val),
+  z.string().nullable().optional()
+);
+
 const updateTournamentSchema = z.object({
   name: z.string().optional(),
-  logo_url: z.string().url().optional().nullable(),
+  logo_url: optionalUrl,
+  broadcaster_logo_url: optionalUrl,
+  broadcaster_name: optionalString,
   total_points: z.number().min(1000).optional(),
   min_players: z.number().min(1).optional(),
   max_players: z.number().min(1).optional(),
@@ -112,17 +125,30 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(500).json({ error: 'Failed to create tournament' });
     }
 
-    // Update user's tournament_id to the new tournament (skip for demo user)
+    // Update user's tournament_id to the new tournament ONLY if they don't have one
+    // This preserves access to existing tournaments while setting a default
     if (isValidUUID) {
-      const { error: userError } = await supabase
+      // Check if user already has a tournament_id
+      const { data: currentUser } = await supabase
         .from('users')
-        .update({ tournament_id: tournament.id })
-        .eq('id', req.userId);
+        .select('tournament_id')
+        .eq('id', req.userId)
+        .single();
 
-      if (userError) {
-        console.error('User update error:', userError);
-        // Don't rollback tournament - it's still valid, just not associated
+      // Only set tournament_id if user doesn't have one (first tournament)
+      // Otherwise, owner_id on the tournament is enough to track ownership
+      if (!currentUser?.tournament_id) {
+        const { error: userError } = await supabase
+          .from('users')
+          .update({ tournament_id: tournament.id })
+          .eq('id', req.userId);
+
+        if (userError) {
+          console.error('User update error:', userError);
+        }
       }
+      // The tournament is still owned by the user via owner_id field
+      console.log('Tournament created with owner_id:', ownerIdToUse, '- user tournament_id preserved');
     }
 
     // Create categories for the new tournament (use custom prices if provided)
@@ -220,7 +246,28 @@ router.get('/my', authenticateToken, async (req: AuthRequest, res: Response) => 
       }
     }
 
-    res.json(result);
+    // Add team_count and player_count for each tournament
+    const enrichedResult = await Promise.all(
+      result.map(async (tournament: any) => {
+        const { count: teamCount } = await supabase
+          .from('teams')
+          .select('*', { count: 'exact', head: true })
+          .eq('tournament_id', tournament.id);
+
+        const { count: playerCount } = await supabase
+          .from('players')
+          .select('*', { count: 'exact', head: true })
+          .eq('tournament_id', tournament.id);
+
+        return {
+          ...tournament,
+          team_count: teamCount || 0,
+          player_count: playerCount || 0
+        };
+      })
+    );
+
+    res.json(enrichedResult);
   } catch (error) {
     console.error('Error in /my:', error);
     res.status(500).json({ error: 'Failed to fetch tournaments' });
@@ -518,34 +565,40 @@ router.delete('/current', authenticateToken, async (req: AuthRequest, res: Respo
   try {
     const tournamentId = req.tournamentId;
 
-    // Delete in order: players -> teams -> categories -> sponsors -> tournament
+    // Delete in order: bids -> players -> teams -> categories -> sponsors -> tournament
     // This respects foreign key constraints
 
-    // 1. Delete all players
+    // 1. Delete all bids (must come before players due to foreign key)
+    await supabase
+      .from('bids')
+      .delete()
+      .eq('tournament_id', tournamentId);
+
+    // 2. Delete all players
     await supabase
       .from('players')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 2. Delete all teams
+    // 4. Delete all teams
     await supabase
       .from('teams')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 3. Delete all categories
+    // 5. Delete all categories
     await supabase
       .from('categories')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 4. Delete all sponsors
+    // 6. Delete all sponsors
     await supabase
       .from('sponsors')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 5. Delete the tournament itself
+    // 7. Delete the tournament itself
     const { error } = await supabase
       .from('tournaments')
       .delete()
@@ -588,39 +641,56 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
-    // Check ownership (skip for demo user)
-    if (req.userId !== 'demo' && tournament.owner_id !== req.userId) {
+    // Check ownership - allow if:
+    // 1. User is demo user, OR
+    // 2. User owns the tournament, OR
+    // 3. Tournament has no owner (owner_id is null), OR
+    // 4. User's current tournament matches (they're logged into this tournament)
+    const isDemo = req.userId === 'demo';
+    const isOwner = tournament.owner_id === req.userId;
+    const hasNoOwner = !tournament.owner_id;
+    const isCurrentTournament = req.tournamentId === tournamentId;
+
+    console.log('Delete permission check:', { isDemo, isOwner, hasNoOwner, isCurrentTournament, userId: req.userId, ownerId: tournament.owner_id, reqTournamentId: req.tournamentId });
+
+    if (!isDemo && !isOwner && !hasNoOwner && !isCurrentTournament) {
       return res.status(403).json({ error: 'You do not have permission to delete this tournament' });
     }
 
-    // Delete in order: players -> teams -> categories -> sponsors -> tournament
+    // Delete in order: bids -> players -> teams -> categories -> sponsors -> tournament
     // This respects foreign key constraints
 
-    // 1. Delete all players
+    // 1. Delete all bids (must come before players due to foreign key)
+    await supabase
+      .from('bids')
+      .delete()
+      .eq('tournament_id', tournamentId);
+
+    // 2. Delete all players
     await supabase
       .from('players')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 2. Delete all teams
+    // 4. Delete all teams
     await supabase
       .from('teams')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 3. Delete all categories
+    // 5. Delete all categories
     await supabase
       .from('categories')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 4. Delete all sponsors
+    // 6. Delete all sponsors
     await supabase
       .from('sponsors')
       .delete()
       .eq('tournament_id', tournamentId);
 
-    // 5. Delete the tournament itself
+    // 7. Delete the tournament itself
     const { error } = await supabase
       .from('tournaments')
       .delete()

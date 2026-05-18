@@ -69,7 +69,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   const previousStatusRef = useRef(status);
 
   // Debounced loadTeams to prevent multiple rapid calls (must be defined before useEffect that uses it)
-  const loadTeamsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadTeamsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadTeams = useCallback(async () => {
     // Clear any pending load
     if (loadTeamsTimeoutRef.current) {
@@ -189,6 +189,12 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   }, [sponsors.length, sponsorRotationInterval]);
 
   const currentSponsor = sponsors[currentSponsorIndex];
+
+  // Memoized timer duration to prevent recalculation on every render
+  const effectiveTimerDuration = useMemo(() =>
+    acceleratedMode ? acceleratedTimerDuration : timerDuration,
+    [acceleratedMode, acceleratedTimerDuration, timerDuration]
+  );
 
   const loadAuctionState = async () => {
     try {
@@ -399,7 +405,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     try {
       // Reset the player in database
       await api.resetPlayer(lastAction.player.id);
-      loadTeams();
+      // Socket will broadcast teams:updated, no need to call loadTeams()
 
       // Bring the player back into auction/bidding mode
       const player = await api.getPlayerForAuction(lastAction.player.id) as Player;
@@ -496,7 +502,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             currentTeam={currentTeam}
             teams={teams}
             status={status}
-            timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
+            timerSeconds={effectiveTimerDuration}
             timerKey={timerResetKey.current}
             onNewPlayer={handleNewPlayer}
             loading={loading}
@@ -645,6 +651,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             soldPrice={soldAnimationData.price}
             teamColor={template.accentColor}
             onComplete={handleSoldAnimationComplete}
+            tournament={tournament || undefined}
           />
         )}
 
@@ -656,6 +663,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
           <PremiumPlayerEntry
             player={entryPlayer}
             onComplete={handlePlayerEntryComplete}
+            tournament={tournament || undefined}
           />
         )}
       </div>
@@ -695,7 +703,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             currentTeam={currentTeam}
             teams={teams}
             status={status}
-            timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
+            timerSeconds={effectiveTimerDuration}
             timerKey={timerResetKey.current}
             onNewPlayer={handleNewPlayer}
             loading={loading}
@@ -880,6 +888,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             team={soldAnimationData.team}
             soldPrice={soldAnimationData.price}
             onComplete={handleSoldAnimationComplete}
+            tournament={tournament || undefined}
           />
         )}
 
@@ -891,6 +900,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
           <FirePlayerEntry
             player={entryPlayer}
             onComplete={handlePlayerEntryComplete}
+            tournament={tournament || undefined}
           />
         )}
       </div>
@@ -930,7 +940,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             currentTeam={currentTeam}
             teams={teams}
             status={status}
-            timerSeconds={acceleratedMode ? acceleratedTimerDuration : timerDuration}
+            timerSeconds={effectiveTimerDuration}
             timerKey={timerResetKey.current}
             onNewPlayer={handleNewPlayer}
             loading={loading}
@@ -1114,6 +1124,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             team={soldAnimationData.team}
             soldPrice={soldAnimationData.price}
             onComplete={handleSoldAnimationComplete}
+            tournament={tournament || undefined}
           />
         )}
 
@@ -1125,6 +1136,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
           <CityPlayerEntry
             player={entryPlayer}
             onComplete={handlePlayerEntryComplete}
+            tournament={tournament || undefined}
           />
         )}
       </div>
@@ -1181,6 +1193,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             soldPrice={soldAnimationData.price}
             teamColor={template.accentColor}
             onComplete={handleSoldAnimationComplete}
+            tournament={tournament || undefined}
           />
         ) : (
           <SoldPlayerAnimation
@@ -1189,6 +1202,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             soldPrice={soldAnimationData.price}
             teamColor={template.accentColor}
             onComplete={handleSoldAnimationComplete}
+            tournament={tournament || undefined}
           />
         )
       )}
@@ -1756,6 +1770,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
           player={entryPlayer}
           onComplete={handlePlayerEntryComplete}
           accentColor={template.accentColor}
+          tournament={tournament || undefined}
         />
       )}
 

@@ -6,6 +6,7 @@ import { api } from '../utils/api';
 import { useSocket } from '../hooks/useSocket';
 import { Tournament } from '../types';
 import OverlayCelebration from '../components/overlay/OverlayCelebration';
+import BroadcasterLogo from '../components/common/BroadcasterLogo';
 import { User, TrendingUp, Users } from 'lucide-react';
 
 type OverlayMode = 'minimal' | 'standard' | 'premium';
@@ -435,6 +436,19 @@ export default function OverlayView() {
         {/* Bottom accent line */}
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30" />
       </div>
+
+      {/* Broadcaster Logo - Top Right (below ticker) */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="md"
+          position="top-right"
+          theme="classic"
+          showName={false}
+          className="!top-16"
+        />
+      )}
 
       {/* Breaking News Style - Entering Animation */}
       {slideState === 'entering' && (

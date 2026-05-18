@@ -1,10 +1,13 @@
 import { memo, useMemo } from 'react';
 import { Flame, UserPlus, Trophy } from 'lucide-react';
+import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface FireIdleScreenProps {
   tournament: {
     name?: string;
     logo_url?: string;
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
   };
   onNewPlayer?: () => void;
   loading?: boolean;
@@ -86,6 +89,18 @@ export default memo(function FireIdleScreen({ tournament, onNewPlayer, loading }
           background: `radial-gradient(ellipse 80% 60% at center, ${FIRE_COLORS.orange}12 0%, ${FIRE_COLORS.red}06 40%, transparent 65%)`,
         }}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="fire"
+          showName={false}
+        />
+      )}
 
       {/* Rising embers */}
       <RisingEmbers />

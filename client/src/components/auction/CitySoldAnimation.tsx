@@ -4,12 +4,17 @@ import { User } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import { soundManager } from '../../utils/soundManager';
 import { useUIStore } from '../../stores/uiStore';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface CitySoldAnimationProps {
   player: Player;
   team: Team;
   soldPrice: number;
   onComplete: () => void;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 const CITY_COLORS = {
@@ -73,6 +78,7 @@ export default function CitySoldAnimation({
   team,
   soldPrice,
   onComplete,
+  tournament,
 }: CitySoldAnimationProps) {
   const [phase, setPhase] = useState<'blackout' | 'scan' | 'banner' | 'reveal' | 'merge' | 'price' | 'celebrate' | 'exit'>('blackout');
   const [displayPrice, setDisplayPrice] = useState(0);
@@ -233,6 +239,19 @@ export default function CitySoldAnimation({
     >
       {/* Holographic grid background */}
       <HoloGrid />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="city"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* City background */}
       <div

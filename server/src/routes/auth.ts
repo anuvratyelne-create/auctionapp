@@ -173,6 +173,12 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Failed to create user' });
     }
 
+    // Update tournament with owner_id
+    await supabase
+      .from('tournaments')
+      .update({ owner_id: user.id })
+      .eq('id', tournament.id);
+
     // Create default categories
     const defaultCategories = [
       { name: 'Platinum', base_price: 10000, display_order: 1 },

@@ -1,10 +1,13 @@
 import { memo, useMemo } from 'react';
 import { Trophy, Sparkles, UserPlus } from 'lucide-react';
+import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface ClassicIdleScreenProps {
   tournament: {
     name?: string;
     logo_url?: string;
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
   };
   accentColor?: string;
   onNewPlayer?: () => void;
@@ -54,6 +57,18 @@ export default memo(function ClassicIdleScreen({ tournament, accentColor = '#fbb
         background: 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(15,23,42,0.98) 50%, rgba(15,23,42,1) 100%)',
       }}
     >
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="classic"
+          showName={false}
+        />
+      )}
+
       {/* Floating particles */}
       <FloatingParticles accentColor={accentColor} />
 

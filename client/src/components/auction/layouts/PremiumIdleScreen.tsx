@@ -1,11 +1,14 @@
 import { memo, useMemo } from 'react';
 import { Trophy, Sparkles, UserPlus } from 'lucide-react';
 import { getPremiumBackground } from '../../../config/premiumBackgrounds';
+import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface PremiumIdleScreenProps {
   tournament: {
     name?: string;
     logo_url?: string;
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
   };
   backgroundId?: string;
   onNewPlayer?: () => void;
@@ -105,6 +108,18 @@ export default memo(function PremiumIdleScreen({ tournament, backgroundId, onNew
           style={{
             background: 'radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 50%, #050508 100%)',
           }}
+        />
+      )}
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="premium"
+          showName={false}
         />
       )}
 

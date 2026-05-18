@@ -3,17 +3,23 @@ import { Player } from '../../types';
 import { User } from 'lucide-react';
 import { soundManager } from '../../utils/soundManager';
 import { getRoleLabel, getRoleIcon, convertLegacyRole } from '../../config/playerRoles';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface PlayerEntryAnimationProps {
   player: Player;
   onComplete: () => void;
   accentColor?: string;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 export default function PlayerEntryAnimation({
   player,
   onComplete,
-  accentColor = '#22c55e'
+  accentColor = '#22c55e',
+  tournament
 }: PlayerEntryAnimationProps) {
   const [phase, setPhase] = useState<'spotlight' | 'reveal' | 'details' | 'exit'>('spotlight');
 
@@ -43,6 +49,19 @@ export default function PlayerEntryAnimation({
         className={`absolute inset-0 transition-all duration-700
           ${phase === 'spotlight' ? 'bg-black' : 'bg-black/90'}`}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="classic"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* Spotlight beams */}
       <div className={`absolute inset-0 transition-opacity duration-500

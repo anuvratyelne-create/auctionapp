@@ -54,10 +54,16 @@ class ApiClient {
   private teamsPromiseTime: number = 0;
 
   setToken(token: string | null) {
+    const tokenChanged = this.token !== token;
     this.token = token;
     // Invalidate cache when token changes (different user/tournament)
-    if (!token) {
+    // This is critical for multi-tournament support - prevents data mixing
+    if (tokenChanged) {
       apiCache.invalidate();
+      // Also clear teams promise cache
+      this.teamsPromise = null;
+      this.teamsPromiseTime = 0;
+      console.log('API cache invalidated due to token change');
     }
   }
 
@@ -194,6 +200,8 @@ class ApiClient {
   async updateTournament(data: Partial<{
     name: string;
     logo_url: string;
+    broadcaster_logo_url: string;
+    broadcaster_name: string;
     total_points: number;
     min_players: number;
     max_players: number;

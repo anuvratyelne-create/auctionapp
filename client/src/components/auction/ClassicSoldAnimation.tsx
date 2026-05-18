@@ -3,6 +3,7 @@ import { Player, Team } from '../../types';
 import { User } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import { useUIStore } from '../../stores/uiStore';
+import BroadcasterLogo from '../common/BroadcasterLogo';
 
 interface ClassicSoldAnimationProps {
   player: Player;
@@ -10,6 +11,10 @@ interface ClassicSoldAnimationProps {
   soldPrice: number;
   onComplete: () => void;
   teamColor?: string;
+  tournament?: {
+    broadcaster_logo_url?: string;
+    broadcaster_name?: string;
+  };
 }
 
 export default function ClassicSoldAnimation({
@@ -17,7 +22,8 @@ export default function ClassicSoldAnimation({
   team,
   soldPrice,
   onComplete,
-  teamColor = '#22c55e'
+  teamColor = '#22c55e',
+  tournament
 }: ClassicSoldAnimationProps) {
   const [phase, setPhase] = useState<'spotlight' | 'reveal' | 'merge' | 'price' | 'exit'>('spotlight');
   const [displayPrice, setDisplayPrice] = useState(0);
@@ -75,6 +81,19 @@ export default function ClassicSoldAnimation({
         className={`absolute inset-0 transition-all duration-700
           ${phase === 'spotlight' ? 'bg-black' : 'bg-black/90'}`}
       />
+
+      {/* Broadcaster Logo - Top Right */}
+      {tournament?.broadcaster_logo_url && (
+        <BroadcasterLogo
+          logoUrl={tournament.broadcaster_logo_url}
+          name={tournament.broadcaster_name}
+          size="lg"
+          position="top-right"
+          theme="classic"
+          showName={false}
+          animate
+        />
+      )}
 
       {/* Spotlight beams */}
       <div className={`absolute inset-0 transition-opacity duration-500

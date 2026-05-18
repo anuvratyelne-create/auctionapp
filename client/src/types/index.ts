@@ -4,6 +4,8 @@ export interface Tournament {
   id: string;
   name: string;
   logo_url?: string;
+  broadcaster_logo_url?: string;
+  broadcaster_name?: string;
   sports_type: SportsType;
   auction_date?: string;
   auction_time?: string;
