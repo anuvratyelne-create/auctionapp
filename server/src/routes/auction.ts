@@ -442,8 +442,10 @@ router.post('/reauction-unsold', authenticateToken, async (req: AuthRequest, res
 // Reset auction (clear all sold data including retentions)
 router.post('/reset', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const tournamentId = req.tournamentId!;
+
     // Reset all players including retention data
-    await supabase
+    const { error: playersError } = await supabase
       .from('players')
       .update({
         status: 'available',
@@ -453,39 +455,66 @@ router.post('/reset', authenticateToken, async (req: AuthRequest, res: Response)
         retention_price: null,
         retained_at: null
       })
-      .eq('tournament_id', req.tournamentId);
+      .eq('tournament_id', tournamentId);
+
+    if (playersError) {
+      console.error('Reset players error:', playersError);
+      return res.status(500).json({ error: 'Failed to reset players' });
+    }
 
     // Reset all team spending (both spent_points and retention_spent)
-    await supabase
+    const { error: teamsError } = await supabase
       .from('teams')
       .update({
         spent_points: 0,
         retention_spent: 0
       })
-      .eq('tournament_id', req.tournamentId);
+      .eq('tournament_id', tournamentId);
+
+    if (teamsError) {
+      console.error('Reset teams error:', teamsError);
+      return res.status(500).json({ error: 'Failed to reset teams' });
+    }
 
     // Clear bids
-    await supabase
+    const { error: bidsError } = await supabase
       .from('bids')
       .delete()
-      .eq('tournament_id', req.tournamentId);
+      .eq('tournament_id', tournamentId);
 
-    // Reset auction state
+    if (bidsError) {
+      console.error('Reset bids error:', bidsError);
+      return res.status(500).json({ error: 'Failed to clear bids' });
+    }
+
+    // Reset auction state completely (including timer and RTM)
     const io = req.app.get('io');
-    const state = updateAuctionState(req.tournamentId!, {
+    const state = updateAuctionState(tournamentId, {
       currentPlayer: null,
       currentBid: 0,
       currentTeam: null,
       bidHistory: [],
-      status: 'idle'
+      status: 'idle',
+      timer: {
+        timeLeft: 30,
+        isRunning: false,
+        duration: 30
+      },
+      rtmEnabled: false,
+      rtmTeam: null
     });
 
-    io.to(`tournament:${req.tournamentId}`).emit('auction:state', state);
-    io.to(`tournament:${req.tournamentId}`).emit('players:updated');
-    io.to(`tournament:${req.tournamentId}`).emit('teams:updated');
-    io.to(`live:${req.tournamentId}`).emit('auction:state', state);
-    io.to(`summary:${req.tournamentId}`).emit('teams:updated');
+    // Broadcast reset to all rooms
+    const rooms = [`tournament:${tournamentId}`, `live:${tournamentId}`, `overlay:${tournamentId}`];
+    rooms.forEach(room => {
+      io.to(room).emit('auction:state', state);
+      io.to(room).emit('timer:sync', state.timer);
+    });
+    io.to(`tournament:${tournamentId}`).emit('players:updated');
+    io.to(`tournament:${tournamentId}`).emit('teams:updated');
+    io.to(`summary:${tournamentId}`).emit('teams:updated');
 
+    console.log(`Auction reset for tournament: ${tournamentId}`);
     res.json({ success: true, message: 'Auction reset including all retentions' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to reset auction' });
