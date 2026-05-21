@@ -106,6 +106,14 @@ function cleanupRateLimit(socketId: string): void {
   rateLimitMap.delete(socketId);
 }
 
+// Clear all in-memory state for a tournament (call on delete)
+export function clearTournamentState(tournamentId: string): void {
+  auctionStates.delete(tournamentId);
+  initializedTournaments.delete(tournamentId);
+  chatMessages.delete(tournamentId);
+  console.log(`Cleared all in-memory state for tournament: ${tournamentId}`);
+}
+
 // Socket authentication middleware
 function authenticateSocket(socket: AuthenticatedSocket, next: (err?: Error) => void): void {
   const token = socket.handshake.auth?.token;

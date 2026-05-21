@@ -70,6 +70,8 @@ import {
   GitCompare,
   Palette,
   Download,
+  X,
+  Loader2,
 } from 'lucide-react';
 
 // Panel types - Account level and Auction level
@@ -3673,6 +3675,11 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
   const [newSponsorPhoto, setNewSponsorPhoto] = useState('');
   const [addingSponsor, setAddingSponsor] = useState(false);
 
+  // Tournament settings state
+  const [tournamentName, setTournamentName] = useState(tournament?.name || '');
+  const [tournamentLogoUrl, setTournamentLogoUrl] = useState(tournament?.logo_url || '');
+  const [savingTournament, setSavingTournament] = useState(false);
+
   // Broadcaster settings state
   const [broadcasterLogoUrl, setBroadcasterLogoUrl] = useState(tournament?.broadcaster_logo_url || '');
   const [broadcasterName, setBroadcasterName] = useState(tournament?.broadcaster_name || '');
@@ -3682,6 +3689,12 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
   useEffect(() => {
     loadSponsors();
   }, []);
+
+  // Sync tournament state when tournament changes
+  useEffect(() => {
+    setTournamentName(tournament?.name || '');
+    setTournamentLogoUrl(tournament?.logo_url || '');
+  }, [tournament?.name, tournament?.logo_url]);
 
   // Sync broadcaster state when tournament changes
   useEffect(() => {
@@ -3726,6 +3739,27 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
       await loadSponsors();
     } catch (error) {
       console.error('Failed to delete sponsor:', error);
+    }
+  };
+
+  // Save tournament settings
+  const handleSaveTournament = async () => {
+    if (!tournamentName.trim()) {
+      alert('Tournament name is required');
+      return;
+    }
+    setSavingTournament(true);
+    try {
+      const updated = await api.updateTournament({
+        name: tournamentName.trim(),
+        logo_url: tournamentLogoUrl || undefined,
+      }) as any;
+      updateTournament(updated);
+    } catch (error: any) {
+      console.error('Failed to save tournament settings:', error);
+      alert(error.message || 'Failed to save tournament settings');
+    } finally {
+      setSavingTournament(false);
     }
   };
 
@@ -3794,6 +3828,71 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
           Customize Auction Theme
         </h2>
         <p className="text-slate-400 mt-2">Personalize the look and feel of your auction</p>
+      </div>
+
+      {/* Tournament Settings Section */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center">
+            <Trophy size={20} className="text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Tournament Settings</h3>
+            <p className="text-sm text-slate-500">Configure tournament name and logo</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Tournament Logo */}
+          <div>
+            <ImageUpload
+              label="Tournament Logo"
+              value={tournamentLogoUrl}
+              onChange={setTournamentLogoUrl}
+              folder="tournament-logos"
+              placeholder="Upload tournament logo"
+            />
+          </div>
+
+          {/* Tournament Name */}
+          <div>
+            <label className="block text-xs text-slate-400 mb-1.5">Tournament Name</label>
+            <input
+              type="text"
+              value={tournamentName}
+              onChange={(e) => setTournamentName(e.target.value)}
+              placeholder="Enter tournament name..."
+              className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        {/* Preview & Save */}
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-700/50">
+          <div className="flex items-center gap-3">
+            {tournamentLogoUrl && (
+              <img src={tournamentLogoUrl} alt="" className="w-10 h-10 rounded-lg object-contain bg-slate-800" />
+            )}
+            <span className="text-white font-medium">{tournamentName || 'Tournament Name'}</span>
+          </div>
+          <button
+            onClick={handleSaveTournament}
+            disabled={savingTournament || !tournamentName.trim()}
+            className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-semibold rounded-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {savingTournament ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Save
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Layout Selection Section */}

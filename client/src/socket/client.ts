@@ -243,6 +243,15 @@ class SocketClient {
     this.tournamentId = null;
   }
 
+  // Reconnect with fresh auth token (call after login/logout/token change)
+  reconnectWithNewToken() {
+    const currentTournamentId = this.tournamentId;
+    this.disconnect();
+    if (currentTournamentId) {
+      this.connect(currentTournamentId);
+    }
+  }
+
   isConnected() {
     return this.socket?.connected || false;
   }

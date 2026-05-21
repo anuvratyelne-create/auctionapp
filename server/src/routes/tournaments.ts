@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { clearTournamentState } from '../socket/handlers';
 import { z } from 'zod';
 
 const router = Router();
@@ -50,7 +51,12 @@ const updateTournamentSchema = z.object({
 });
 
 // Create new tournament
+// Uses manual transaction pattern with full rollback on any failure
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
+  // Track created resources for rollback
+  let createdTournamentId: string | null = null;
+  let createdMigratedUserId: string | null = null;
+
   try {
     const data = createTournamentSchema.parse(req.body);
 
@@ -75,7 +81,6 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       } else {
         // User doesn't exist in users table - create them with minimal info
         console.log('User not found in users table, creating user record');
-        // Generate a short random placeholder for mobile (max 20 chars)
         const shortId = req.userId!.substring(0, 8);
         const { data: newUser, error: createUserError } = await supabase
           .from('users')
@@ -94,12 +99,13 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           // Continue without owner_id rather than failing
         } else {
           ownerIdToUse = newUser.id;
+          createdMigratedUserId = newUser.id; // Track for rollback
           console.log('Created user record successfully:', newUser.id);
         }
       }
     }
 
-    // Create the tournament
+    // Step 1: Create the tournament
     const { data: tournament, error: tournamentError } = await supabase
       .from('tournaments')
       .insert({
@@ -120,23 +126,20 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       .select()
       .single();
 
-    if (tournamentError) {
+    if (tournamentError || !tournament) {
       console.error('Tournament creation error:', tournamentError);
-      return res.status(500).json({ error: 'Failed to create tournament' });
+      throw new Error(`Tournament creation failed: ${tournamentError?.message || 'Unknown error'}`);
     }
+    createdTournamentId = tournament.id;
 
-    // Update user's tournament_id to the new tournament ONLY if they don't have one
-    // This preserves access to existing tournaments while setting a default
+    // Step 2: Update user's tournament_id if they don't have one
     if (isValidUUID) {
-      // Check if user already has a tournament_id
       const { data: currentUser } = await supabase
         .from('users')
         .select('tournament_id')
         .eq('id', req.userId)
         .single();
 
-      // Only set tournament_id if user doesn't have one (first tournament)
-      // Otherwise, owner_id on the tournament is enough to track ownership
       if (!currentUser?.tournament_id) {
         const { error: userError } = await supabase
           .from('users')
@@ -144,22 +147,20 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           .eq('id', req.userId);
 
         if (userError) {
-          console.error('User update error:', userError);
+          console.error('User update error (non-fatal):', userError);
+          // This is non-fatal - owner_id is the source of truth
         }
       }
-      // The tournament is still owned by the user via owner_id field
-      console.log('Tournament created with owner_id:', ownerIdToUse, '- user tournament_id preserved');
+      console.log('Tournament created with owner_id:', ownerIdToUse);
     }
 
-    // Create categories for the new tournament (use custom prices if provided)
-    console.log('Creating tournament with category_prices:', data.category_prices);
+    // Step 3: Create categories for the new tournament
     const categoryPrices = data.category_prices || {
       platinum: 50000,
       gold: 30000,
       silver: 20000,
       bronze: 10000
     };
-    console.log('Using categoryPrices:', categoryPrices);
 
     const categories = [
       { name: 'Platinum', base_price: categoryPrices.platinum, display_order: 1 },
@@ -168,14 +169,18 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       { name: 'Bronze', base_price: categoryPrices.bronze, display_order: 4 }
     ];
 
-    await supabase.from('categories').insert(
+    const { error: categoriesError } = await supabase.from('categories').insert(
       categories.map(cat => ({
         ...cat,
         tournament_id: tournament.id
       }))
     );
 
-    // Generate new JWT token with the new tournament ID
+    if (categoriesError) {
+      throw new Error(`Failed to create categories: ${categoriesError.message}`);
+    }
+
+    // All steps successful - generate JWT
     const token = jwt.sign(
       { userId: req.userId, tournamentId: tournament.id },
       process.env.JWT_SECRET!,
@@ -188,10 +193,24 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       message: 'Tournament created successfully'
     });
   } catch (error) {
+    // Rollback in reverse order
+    console.error('Create tournament error, rolling back:', error);
+
+    if (createdTournamentId) {
+      await supabase.from('categories').delete().eq('tournament_id', createdTournamentId);
+      await supabase.from('tournaments').delete().eq('id', createdTournamentId);
+      console.log('Rolled back tournament:', createdTournamentId);
+    }
+
+    if (createdMigratedUserId) {
+      // Only delete if we created this user during this request
+      await supabase.from('users').delete().eq('id', createdMigratedUserId);
+      console.log('Rolled back migrated user:', createdMigratedUserId);
+    }
+
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors });
     }
-    console.error('Create tournament error:', error);
     res.status(500).json({ error: 'Failed to create tournament' });
   }
 });
@@ -435,15 +454,27 @@ router.put('/current', authenticateToken, async (req: AuthRequest, res: Response
   try {
     const updates = updateTournamentSchema.parse(req.body);
 
-    const { data: tournament, error } = await supabase
+    // Update the tournament
+    const { error: updateError } = await supabase
       .from('tournaments')
       .update(updates)
+      .eq('id', req.tournamentId);
+
+    if (updateError) {
+      console.error('Tournament update error:', updateError);
+      return res.status(500).json({ error: 'Failed to update tournament' });
+    }
+
+    // Fetch the FULL tournament record to ensure all fields are returned
+    const { data: tournament, error: fetchError } = await supabase
+      .from('tournaments')
+      .select('*')
       .eq('id', req.tournamentId)
-      .select()
       .single();
 
-    if (error) {
-      return res.status(500).json({ error: 'Failed to update tournament' });
+    if (fetchError || !tournament) {
+      console.error('Tournament fetch error:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch updated tournament' });
     }
 
     res.json(tournament);
@@ -451,6 +482,7 @@ router.put('/current', authenticateToken, async (req: AuthRequest, res: Response
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors });
     }
+    console.error('Tournament update error:', error);
     res.status(500).json({ error: 'Failed to update tournament' });
   }
 });
@@ -617,6 +649,9 @@ router.delete('/current', authenticateToken, async (req: AuthRequest, res: Respo
         .eq('id', req.userId);
     }
 
+    // Clear in-memory state for this tournament
+    clearTournamentState(tournamentId!);
+
     res.json({ success: true, message: 'Tournament deleted successfully' });
   } catch (error) {
     console.error('Delete tournament error:', error);
@@ -644,16 +679,15 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     // Check ownership - allow if:
     // 1. User is demo user, OR
     // 2. User owns the tournament, OR
-    // 3. Tournament has no owner (owner_id is null), OR
-    // 4. User's current tournament matches (they're logged into this tournament)
+    // 3. User's current tournament matches (they're logged into this tournament)
+    // NOTE: We no longer allow deletion of ownerless tournaments by anyone (security fix)
     const isDemo = req.userId === 'demo';
     const isOwner = tournament.owner_id === req.userId;
-    const hasNoOwner = !tournament.owner_id;
     const isCurrentTournament = req.tournamentId === tournamentId;
 
-    console.log('Delete permission check:', { isDemo, isOwner, hasNoOwner, isCurrentTournament, userId: req.userId, ownerId: tournament.owner_id, reqTournamentId: req.tournamentId });
+    console.log('Delete permission check:', { isDemo, isOwner, isCurrentTournament, userId: req.userId, ownerId: tournament.owner_id, reqTournamentId: req.tournamentId });
 
-    if (!isDemo && !isOwner && !hasNoOwner && !isCurrentTournament) {
+    if (!isDemo && !isOwner && !isCurrentTournament) {
       return res.status(403).json({ error: 'You do not have permission to delete this tournament' });
     }
 
@@ -716,6 +750,9 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
           .eq('id', req.userId);
       }
     }
+
+    // Clear in-memory state for this tournament
+    clearTournamentState(tournamentId);
 
     console.log('Tournament deleted successfully:', tournamentId);
     res.json({ success: true, message: 'Tournament deleted successfully', deletedId: tournamentId });

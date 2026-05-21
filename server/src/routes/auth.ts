@@ -102,7 +102,12 @@ router.post('/signup', async (req: Request, res: Response) => {
 });
 
 // Register new user and create tournament
+// Uses manual transaction pattern with full rollback on any failure
 router.post('/register', async (req: Request, res: Response) => {
+  // Track created resources for rollback
+  let createdTournamentId: string | null = null;
+  let createdUserId: string | null = null;
+
   try {
     const data = registerSchema.parse(req.body);
 
@@ -134,7 +139,7 @@ router.post('/register', async (req: Request, res: Response) => {
     // Generate share code
     const shareCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Create tournament first
+    // Step 1: Create tournament
     const { data: tournament, error: tournamentError } = await supabase
       .from('tournaments')
       .insert({
@@ -149,12 +154,13 @@ router.post('/register', async (req: Request, res: Response) => {
       .select()
       .single();
 
-    if (tournamentError) {
+    if (tournamentError || !tournament) {
       console.error('Tournament creation error:', tournamentError);
       return res.status(500).json({ error: 'Failed to create tournament' });
     }
+    createdTournamentId = tournament.id;
 
-    // Create user
+    // Step 2: Create user
     const { data: user, error: userError } = await supabase
       .from('users')
       .insert({
@@ -166,20 +172,22 @@ router.post('/register', async (req: Request, res: Response) => {
       .select()
       .single();
 
-    if (userError) {
-      // Rollback tournament creation
-      await supabase.from('tournaments').delete().eq('id', tournament.id);
-      console.error('User creation error:', userError);
-      return res.status(500).json({ error: 'Failed to create user' });
+    if (userError || !user) {
+      throw new Error(`User creation failed: ${userError?.message || 'Unknown error'}`);
     }
+    createdUserId = user.id;
 
-    // Update tournament with owner_id
-    await supabase
+    // Step 3: Update tournament with owner_id
+    const { error: ownerError } = await supabase
       .from('tournaments')
       .update({ owner_id: user.id })
       .eq('id', tournament.id);
 
-    // Create default categories
+    if (ownerError) {
+      throw new Error(`Failed to set tournament owner: ${ownerError.message}`);
+    }
+
+    // Step 4: Create default categories
     const defaultCategories = [
       { name: 'Platinum', base_price: 10000, display_order: 1 },
       { name: 'Gold', base_price: 7000, display_order: 2 },
@@ -187,14 +195,18 @@ router.post('/register', async (req: Request, res: Response) => {
       { name: 'Bronze', base_price: 3000, display_order: 4 }
     ];
 
-    await supabase.from('categories').insert(
+    const { error: categoriesError } = await supabase.from('categories').insert(
       defaultCategories.map(cat => ({
         ...cat,
         tournament_id: tournament.id
       }))
     );
 
-    // Generate JWT
+    if (categoriesError) {
+      throw new Error(`Failed to create categories: ${categoriesError.message}`);
+    }
+
+    // All steps successful - generate JWT
     const token = jwt.sign(
       { userId: user.id, tournamentId: tournament.id },
       process.env.JWT_SECRET!,
@@ -204,13 +216,27 @@ router.post('/register', async (req: Request, res: Response) => {
     res.status(201).json({
       token,
       user: { id: user.id, email: user.email, mobile: user.mobile },
-      tournament: tournament  // Return full tournament object
+      tournament: tournament
     });
   } catch (error) {
+    // Rollback in reverse order
+    console.error('Register error, rolling back:', error);
+
+    if (createdUserId) {
+      await supabase.from('users').delete().eq('id', createdUserId);
+      console.log('Rolled back user:', createdUserId);
+    }
+
+    if (createdTournamentId) {
+      // Delete categories first (no FK constraint but good practice)
+      await supabase.from('categories').delete().eq('tournament_id', createdTournamentId);
+      await supabase.from('tournaments').delete().eq('id', createdTournamentId);
+      console.log('Rolled back tournament:', createdTournamentId);
+    }
+
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors });
     }
-    console.error('Register error:', error);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
