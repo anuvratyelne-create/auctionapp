@@ -27,13 +27,14 @@ const createTournamentSchema = z.object({
 });
 
 // Helper to transform empty strings to null for optional URL fields
+// IMPORTANT: Keep undefined as undefined so Zod's .optional() excludes it from output
 const optionalUrl = z.preprocess(
-  (val) => (val === '' || val === undefined ? null : val),
+  (val) => (val === '' ? null : val),
   z.string().url().nullable().optional()
 );
 
 const optionalString = z.preprocess(
-  (val) => (val === '' || val === undefined ? null : val),
+  (val) => (val === '' ? null : val),
   z.string().nullable().optional()
 );
 
@@ -452,7 +453,21 @@ router.get('/current', authenticateToken, async (req: AuthRequest, res: Response
 // Update tournament
 router.put('/current', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const updates = updateTournamentSchema.parse(req.body);
+    const parsed = updateTournamentSchema.parse(req.body);
+
+    // Filter out undefined values - only update fields that were explicitly provided
+    // This prevents accidentally clearing fields that weren't in the request
+    const updates: Record<string, any> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value !== undefined) {
+        updates[key] = value;
+      }
+    }
+
+    // Don't update if no valid fields provided
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     // Update the tournament
     const { error: updateError } = await supabase
