@@ -55,10 +55,16 @@ function DigitalRain({ delay, left }: { delay: number; left: string }) {
 }
 
 export default function CityPlayerEntry({ player, onComplete, tournament }: CityPlayerEntryProps) {
-  const [phase, setPhase] = useState<'blackout' | 'scan' | 'glitch' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('blackout');
+  // Add 'intro' phase for broadcaster logo display
+  const [phase, setPhase] = useState<'intro' | 'blackout' | 'scan' | 'glitch' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('intro');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
+
+  // Check if we have a broadcaster logo
+  const hasBroadcasterLogo = !!tournament?.broadcaster_logo_url;
+  // Intro duration - skip if no logo
+  const introDuration = hasBroadcasterLogo ? 2500 : 0;
 
   // Grid animation on canvas
   useEffect(() => {
@@ -129,19 +135,25 @@ export default function CityPlayerEntry({ player, onComplete, tournament }: City
   useEffect(() => {
     let cancelled = false;
 
-    soundManager.play('whoosh');
+    // Play sound after intro phase
+    if (hasBroadcasterLogo) {
+      setTimeout(() => soundManager.play('whoosh'), introDuration);
+    } else {
+      soundManager.play('whoosh');
+    }
 
     const timers = [
-      setTimeout(() => !cancelled && setPhase('scan'), 300),
-      setTimeout(() => !cancelled && setPhase('glitch'), 1200),
-      setTimeout(() => !cancelled && setPhase('reveal'), 1800),
-      setTimeout(() => !cancelled && setPhase('name'), 3000),
-      setTimeout(() => !cancelled && setPhase('stats'), 4500),
-      setTimeout(() => !cancelled && setPhase('ready'), 6500),
-      setTimeout(() => !cancelled && setPhase('exit'), 8500),
+      setTimeout(() => !cancelled && setPhase('blackout'), introDuration),
+      setTimeout(() => !cancelled && setPhase('scan'), introDuration + 300),
+      setTimeout(() => !cancelled && setPhase('glitch'), introDuration + 1200),
+      setTimeout(() => !cancelled && setPhase('reveal'), introDuration + 1800),
+      setTimeout(() => !cancelled && setPhase('name'), introDuration + 3000),
+      setTimeout(() => !cancelled && setPhase('stats'), introDuration + 4500),
+      setTimeout(() => !cancelled && setPhase('ready'), introDuration + 6500),
+      setTimeout(() => !cancelled && setPhase('exit'), introDuration + 8500),
       setTimeout(() => {
         if (!cancelled) onComplete();
-      }, 9000),
+      }, introDuration + 9000),
     ];
 
     return () => {
@@ -157,16 +169,117 @@ export default function CityPlayerEntry({ player, onComplete, tournament }: City
         ${phase === 'exit' ? 'animate-city-exit' : ''}`}
       style={{ background: CITY_COLORS.darkNavy }}
     >
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* BROADCASTER INTRO - Big centered logo like football broadcasts */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {phase === 'intro' && tournament?.broadcaster_logo_url && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center overflow-hidden">
+          {/* Dark background with gradient */}
+          <div
+            className="absolute inset-0 animate-entry-intro-bg"
+            style={{
+              background: `radial-gradient(ellipse at center, ${CITY_COLORS.navy} 0%, ${CITY_COLORS.darkNavy} 70%)`,
+            }}
+          />
+
+          {/* Animated light rays */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {[...Array(12)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute h-[200%] w-1 animate-entry-intro-rays"
+                style={{
+                  background: `linear-gradient(to top, transparent, ${CITY_COLORS.cyan}40, transparent)`,
+                  transform: `rotate(${i * 30}deg)`,
+                  animationDelay: `${i * 0.1}s`,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Circular glow behind logo */}
+          <div
+            className="absolute w-[500px] h-[500px] animate-entry-intro-glow"
+            style={{
+              background: `radial-gradient(circle, ${CITY_COLORS.cyan}60 0%, ${CITY_COLORS.purple}30 40%, transparent 70%)`,
+              filter: 'blur(40px)',
+            }}
+          />
+
+          {/* Main logo container */}
+          <div className="relative flex flex-col items-center animate-entry-intro-logo">
+            {/* Logo with glow */}
+            <div
+              className="relative"
+              style={{
+                filter: `drop-shadow(0 0 40px ${CITY_COLORS.cyan}) drop-shadow(0 0 80px ${CITY_COLORS.purple})`,
+              }}
+            >
+              <img
+                src={tournament.broadcaster_logo_url}
+                alt={tournament.broadcaster_name || 'Broadcaster'}
+                className="h-48 md:h-64 max-w-[400px] object-contain animate-entry-intro-pulse"
+              />
+            </div>
+
+            {/* Broadcaster name */}
+            {tournament.broadcaster_name && (
+              <h3
+                className="mt-8 text-2xl md:text-3xl font-bold tracking-[0.3em] uppercase animate-entry-intro-text"
+                style={{
+                  color: CITY_COLORS.cyan,
+                  textShadow: `0 0 20px ${CITY_COLORS.cyan}, 0 0 40px ${CITY_COLORS.purple}`,
+                  fontFamily: "'Orbitron', sans-serif",
+                }}
+              >
+                {tournament.broadcaster_name}
+              </h3>
+            )}
+
+            {/* "PRESENTS" text */}
+            <p
+              className="mt-4 text-lg tracking-[0.5em] uppercase animate-entry-intro-presents"
+              style={{
+                color: CITY_COLORS.gold,
+                textShadow: `0 0 15px ${CITY_COLORS.gold}`,
+                fontFamily: "'Orbitron', sans-serif",
+              }}
+            >
+              PRESENTS
+            </p>
+          </div>
+
+          {/* Particles */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {[...Array(20)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full animate-entry-intro-particle"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  width: `${3 + Math.random() * 5}px`,
+                  height: `${3 + Math.random() * 5}px`,
+                  background: i % 3 === 0 ? CITY_COLORS.cyan : i % 3 === 1 ? CITY_COLORS.purple : CITY_COLORS.gold,
+                  boxShadow: `0 0 10px currentColor`,
+                  animationDelay: `${Math.random() * 2}s`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Animated grid canvas */}
       <canvas
         ref={canvasRef}
         className={`absolute inset-0 transition-opacity duration-1000 ${
-          phase === 'blackout' ? 'opacity-0' : 'opacity-100'
+          phase === 'blackout' || phase === 'intro' ? 'opacity-0' : 'opacity-100'
         }`}
       />
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
+      {/* Broadcaster Logo - Top Right (shown after intro) */}
+      {phase !== 'intro' && tournament?.broadcaster_logo_url && (
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
@@ -682,6 +795,63 @@ export default function CityPlayerEntry({ player, onComplete, tournament }: City
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+        /* BROADCASTER INTRO ANIMATIONS */
+        @keyframes entry-intro-bg {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes entry-intro-rays {
+          0% { opacity: 0; transform: rotate(var(--rotation)) scaleY(0); }
+          30% { opacity: 0.6; transform: rotate(var(--rotation)) scaleY(1); }
+          70% { opacity: 0.6; transform: rotate(var(--rotation)) scaleY(1); }
+          100% { opacity: 0; transform: rotate(var(--rotation)) scaleY(0); }
+        }
+        @keyframes entry-intro-glow {
+          0% { opacity: 0; transform: scale(0.5); }
+          30% { opacity: 1; transform: scale(1); }
+          70% { opacity: 1; transform: scale(1.1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes entry-intro-logo {
+          0% { opacity: 0; transform: scale(0.3); }
+          20% { opacity: 1; transform: scale(1.1); }
+          30% { transform: scale(1); }
+          70% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes entry-intro-pulse {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.3); }
+        }
+        @keyframes entry-intro-text {
+          0% { opacity: 0; transform: translateY(20px); }
+          30% { opacity: 1; transform: translateY(0); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes entry-intro-presents {
+          0% { opacity: 0; transform: scaleX(0); }
+          40% { opacity: 1; transform: scaleX(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes entry-intro-particle {
+          0%, 100% { opacity: 0; transform: scale(0); }
+          20% { opacity: 1; transform: scale(1); }
+          80% { opacity: 1; transform: scale(1); }
+        }
+
+        .animate-entry-intro-bg { animation: entry-intro-bg 2.5s ease-in-out forwards; }
+        .animate-entry-intro-rays { animation: entry-intro-rays 2.5s ease-out forwards; }
+        .animate-entry-intro-glow { animation: entry-intro-glow 2.5s ease-out forwards; }
+        .animate-entry-intro-logo { animation: entry-intro-logo 2.5s ease-out forwards; }
+        .animate-entry-intro-pulse { animation: entry-intro-pulse 0.8s ease-in-out infinite; }
+        .animate-entry-intro-text { animation: entry-intro-text 2.5s ease-out forwards; }
+        .animate-entry-intro-presents { animation: entry-intro-presents 2.5s ease-out forwards; }
+        .animate-entry-intro-particle { animation: entry-intro-particle 2.5s ease-in-out forwards; }
 
         @keyframes city-exit {
           to { opacity: 0; transform: scale(1.1); filter: blur(10px); }

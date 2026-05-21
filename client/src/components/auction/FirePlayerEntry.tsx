@@ -24,27 +24,39 @@ const FIRE_COLORS = {
 };
 
 export default function FirePlayerEntry({ player, onComplete, tournament }: FirePlayerEntryProps) {
-  const [phase, setPhase] = useState<'blackout' | 'ignite' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('blackout');
+  // Add 'intro' phase for broadcaster logo display
+  const [phase, setPhase] = useState<'intro' | 'blackout' | 'ignite' | 'reveal' | 'name' | 'stats' | 'ready' | 'exit'>('intro');
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
+
+  // Check if we have a broadcaster logo
+  const hasBroadcasterLogo = !!tournament?.broadcaster_logo_url;
+  // Intro duration - skip if no logo
+  const introDuration = hasBroadcasterLogo ? 2500 : 0;
 
   // Animation phases - 10 second total duration
   useEffect(() => {
     // Use a flag to prevent re-running if component re-renders
     let cancelled = false;
 
-    soundManager.play('whoosh');
+    // Play sound after intro phase
+    if (hasBroadcasterLogo) {
+      setTimeout(() => soundManager.play('whoosh'), introDuration);
+    } else {
+      soundManager.play('whoosh');
+    }
 
     const timers = [
-      setTimeout(() => !cancelled && setPhase('ignite'), 400),
-      setTimeout(() => !cancelled && setPhase('reveal'), 1200),
-      setTimeout(() => !cancelled && setPhase('name'), 3000),
-      setTimeout(() => !cancelled && setPhase('stats'), 5000),
-      setTimeout(() => !cancelled && setPhase('ready'), 7000),
-      setTimeout(() => !cancelled && setPhase('exit'), 9000),
+      setTimeout(() => !cancelled && setPhase('blackout'), introDuration),
+      setTimeout(() => !cancelled && setPhase('ignite'), introDuration + 400),
+      setTimeout(() => !cancelled && setPhase('reveal'), introDuration + 1200),
+      setTimeout(() => !cancelled && setPhase('name'), introDuration + 3000),
+      setTimeout(() => !cancelled && setPhase('stats'), introDuration + 5000),
+      setTimeout(() => !cancelled && setPhase('ready'), introDuration + 7000),
+      setTimeout(() => !cancelled && setPhase('exit'), introDuration + 9000),
       setTimeout(() => {
         if (!cancelled) onComplete();
-      }, 10000),
+      }, introDuration + 10000),
     ];
 
     return () => {
@@ -60,6 +72,93 @@ export default function FirePlayerEntry({ player, onComplete, tournament }: Fire
         ${phase === 'exit' ? 'animate-entry-fade-out' : ''}`}
       style={{ background: '#050202' }}
     >
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* BROADCASTER INTRO - Big centered logo like football broadcasts */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {phase === 'intro' && tournament?.broadcaster_logo_url && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center overflow-hidden" style={{ background: '#050202' }}>
+          {/* Fire background gradient */}
+          <div
+            className="absolute inset-0 animate-fire-entry-intro-bg"
+            style={{
+              background: `radial-gradient(ellipse at center bottom, ${FIRE_COLORS.orange}30 0%, ${FIRE_COLORS.red}15 40%, #050202 70%)`,
+            }}
+          />
+
+          {/* Rising embers */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {[...Array(30)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full animate-fire-entry-ember"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  bottom: '-10px',
+                  width: `${2 + Math.random() * 4}px`,
+                  height: `${2 + Math.random() * 4}px`,
+                  background: i % 3 === 0 ? FIRE_COLORS.yellow : i % 3 === 1 ? FIRE_COLORS.orange : FIRE_COLORS.ember,
+                  boxShadow: `0 0 ${6 + Math.random() * 8}px ${i % 3 === 0 ? FIRE_COLORS.yellow : FIRE_COLORS.orange}`,
+                  animationDuration: `${2 + Math.random() * 3}s`,
+                  animationDelay: `${Math.random() * 2}s`,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Circular fire glow behind logo */}
+          <div
+            className="absolute w-[500px] h-[500px] animate-fire-entry-intro-glow"
+            style={{
+              background: `radial-gradient(circle, ${FIRE_COLORS.orange}50 0%, ${FIRE_COLORS.red}30 40%, transparent 70%)`,
+              filter: 'blur(40px)',
+            }}
+          />
+
+          {/* Main logo container */}
+          <div className="relative flex flex-col items-center animate-fire-entry-intro-logo">
+            {/* Logo with fire glow */}
+            <div
+              className="relative"
+              style={{
+                filter: `drop-shadow(0 0 40px ${FIRE_COLORS.orange}) drop-shadow(0 0 80px ${FIRE_COLORS.red})`,
+              }}
+            >
+              <img
+                src={tournament.broadcaster_logo_url}
+                alt={tournament.broadcaster_name || 'Broadcaster'}
+                className="h-48 md:h-64 max-w-[400px] object-contain animate-fire-entry-intro-pulse"
+              />
+            </div>
+
+            {/* Broadcaster name */}
+            {tournament.broadcaster_name && (
+              <h3
+                className="mt-8 text-2xl md:text-3xl font-bold tracking-[0.3em] uppercase animate-fire-entry-intro-text"
+                style={{
+                  color: FIRE_COLORS.yellow,
+                  textShadow: `0 0 20px ${FIRE_COLORS.orange}, 0 0 40px ${FIRE_COLORS.red}`,
+                }}
+              >
+                {tournament.broadcaster_name}
+              </h3>
+            )}
+
+            {/* "PRESENTS" text */}
+            <p
+              className="mt-4 text-lg tracking-[0.5em] uppercase animate-fire-entry-intro-presents"
+              style={{
+                background: `linear-gradient(180deg, ${FIRE_COLORS.yellow}, ${FIRE_COLORS.orange})`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                filter: `drop-shadow(0 0 10px ${FIRE_COLORS.orange})`,
+              }}
+            >
+              PRESENTS
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Real fire video background - full screen */}
       <video
         autoPlay
@@ -68,7 +167,7 @@ export default function FirePlayerEntry({ player, onComplete, tournament }: Fire
         playsInline
         className="absolute inset-0 w-full h-full object-cover"
         style={{
-          opacity: phase === 'blackout' ? 0 : 0.4,
+          opacity: phase === 'blackout' || phase === 'intro' ? 0 : 0.4,
           transition: 'opacity 0.5s ease-out',
           filter: 'blur(2px)',
         }}
@@ -84,8 +183,8 @@ export default function FirePlayerEntry({ player, onComplete, tournament }: Fire
         }}
       />
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
+      {/* Broadcaster Logo - Top Right (shown after intro) */}
+      {phase !== 'intro' && tournament?.broadcaster_logo_url && (
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
@@ -317,6 +416,55 @@ export default function FirePlayerEntry({ player, onComplete, tournament }: Fire
       </div>
 
       <style>{`
+        /* BROADCASTER INTRO ANIMATIONS */
+        @keyframes fire-entry-intro-bg {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes fire-entry-ember {
+          0% { transform: translateY(0) scale(1); opacity: 1; }
+          100% { transform: translateY(-100vh) scale(0); opacity: 0; }
+        }
+        @keyframes fire-entry-intro-glow {
+          0% { opacity: 0; transform: scale(0.5); }
+          30% { opacity: 1; transform: scale(1); }
+          70% { opacity: 1; transform: scale(1.1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes fire-entry-intro-logo {
+          0% { opacity: 0; transform: scale(0.3) translateY(50px); }
+          20% { opacity: 1; transform: scale(1.1) translateY(0); }
+          30% { transform: scale(1) translateY(0); }
+          70% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.5) translateY(-20px); }
+        }
+        @keyframes fire-entry-intro-pulse {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.4); }
+        }
+        @keyframes fire-entry-intro-text {
+          0% { opacity: 0; transform: translateY(20px); }
+          30% { opacity: 1; transform: translateY(0); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes fire-entry-intro-presents {
+          0% { opacity: 0; transform: scaleX(0); }
+          40% { opacity: 1; transform: scaleX(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+
+        .animate-fire-entry-intro-bg { animation: fire-entry-intro-bg 2.5s ease-in-out forwards; }
+        .animate-fire-entry-ember { animation: fire-entry-ember linear infinite; }
+        .animate-fire-entry-intro-glow { animation: fire-entry-intro-glow 2.5s ease-out forwards; }
+        .animate-fire-entry-intro-logo { animation: fire-entry-intro-logo 2.5s ease-out forwards; }
+        .animate-fire-entry-intro-pulse { animation: fire-entry-intro-pulse 0.6s ease-in-out infinite; }
+        .animate-fire-entry-intro-text { animation: fire-entry-intro-text 2.5s ease-out forwards; }
+        .animate-fire-entry-intro-presents { animation: fire-entry-intro-presents 2.5s ease-out forwards; }
+
         @keyframes entry-fade-out {
           to { opacity: 0; transform: scale(1.1); }
         }

@@ -214,26 +214,6 @@ export default function SoldPlayerAnimation({
             }}
           />
 
-          {/* Rotating hexagon frame */}
-          <div className="absolute animate-premium-intro-hex">
-            <svg viewBox="0 0 200 200" className="w-[450px] h-[450px]">
-              <polygon
-                points="100,10 190,55 190,145 100,190 10,145 10,55"
-                fill="none"
-                stroke={teamColor}
-                strokeWidth="1"
-                opacity="0.5"
-              />
-              <polygon
-                points="100,30 170,65 170,135 100,170 30,135 30,65"
-                fill="none"
-                stroke="#fbbf24"
-                strokeWidth="0.5"
-                opacity="0.3"
-              />
-            </svg>
-          </div>
-
           {/* Main logo container */}
           <div className="relative flex flex-col items-center animate-premium-intro-logo">
             {/* Logo with premium glow */}

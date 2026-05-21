@@ -21,22 +21,33 @@ export default function PlayerEntryAnimation({
   accentColor = '#22c55e',
   tournament
 }: PlayerEntryAnimationProps) {
-  const [phase, setPhase] = useState<'spotlight' | 'reveal' | 'details' | 'exit'>('spotlight');
+  // Add 'intro' phase for broadcaster logo display
+  const [phase, setPhase] = useState<'intro' | 'spotlight' | 'reveal' | 'details' | 'exit'>('intro');
+
+  // Check if we have a broadcaster logo
+  const hasBroadcasterLogo = !!tournament?.broadcaster_logo_url;
+  // Intro duration - skip if no logo
+  const introDuration = hasBroadcasterLogo ? 2500 : 0;
 
   useEffect(() => {
-    // Play whoosh sound at start
-    soundManager.play('whoosh');
+    // Play whoosh sound after intro
+    if (hasBroadcasterLogo) {
+      setTimeout(() => soundManager.play('whoosh'), introDuration);
+    } else {
+      soundManager.play('whoosh');
+    }
 
     // Animation sequence
     const timers = [
-      setTimeout(() => setPhase('reveal'), 600),
-      setTimeout(() => setPhase('details'), 1400),
-      setTimeout(() => setPhase('exit'), 3000),
-      setTimeout(() => onComplete(), 3500),
+      setTimeout(() => setPhase('spotlight'), introDuration),
+      setTimeout(() => setPhase('reveal'), introDuration + 600),
+      setTimeout(() => setPhase('details'), introDuration + 1400),
+      setTimeout(() => setPhase('exit'), introDuration + 3000),
+      setTimeout(() => onComplete(), introDuration + 3500),
     ];
 
     return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+  }, [onComplete, hasBroadcasterLogo, introDuration]);
 
   const roleValue = player.stats?.role ? convertLegacyRole(player.stats.role) : null;
 
@@ -44,14 +55,105 @@ export default function PlayerEntryAnimation({
     <div className={`fixed inset-0 z-[100] flex items-center justify-center overflow-hidden
       ${phase === 'exit' ? 'animate-fade-out' : ''}`}
     >
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* BROADCASTER INTRO - Big centered logo like football broadcasts */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {phase === 'intro' && tournament?.broadcaster_logo_url && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center overflow-hidden bg-black">
+          {/* Spotlight beams behind logo */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {[...Array(8)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute h-[200%] w-32 animate-classic-entry-intro-beam"
+                style={{
+                  background: `linear-gradient(to top, transparent, ${accentColor}30, transparent)`,
+                  transform: `rotate(${i * 45}deg)`,
+                  animationDelay: `${i * 0.1}s`,
+                  filter: 'blur(20px)',
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Circular glow behind logo */}
+          <div
+            className="absolute w-[400px] h-[400px] animate-classic-entry-intro-glow"
+            style={{
+              background: `radial-gradient(circle, ${accentColor}50 0%, ${accentColor}20 40%, transparent 70%)`,
+              filter: 'blur(30px)',
+            }}
+          />
+
+          {/* Main logo container */}
+          <div className="relative flex flex-col items-center animate-classic-entry-intro-logo">
+            {/* Logo with glow */}
+            <div
+              className="relative"
+              style={{
+                filter: `drop-shadow(0 0 40px ${accentColor}) drop-shadow(0 0 80px ${accentColor}80)`,
+              }}
+            >
+              <img
+                src={tournament.broadcaster_logo_url}
+                alt={tournament.broadcaster_name || 'Broadcaster'}
+                className="h-48 md:h-64 max-w-[400px] object-contain animate-classic-entry-intro-pulse"
+              />
+            </div>
+
+            {/* Broadcaster name */}
+            {tournament.broadcaster_name && (
+              <h3
+                className="mt-8 text-2xl md:text-3xl font-bold tracking-[0.3em] uppercase animate-classic-entry-intro-text"
+                style={{
+                  color: accentColor,
+                  textShadow: `0 0 30px ${accentColor}`,
+                }}
+              >
+                {tournament.broadcaster_name}
+              </h3>
+            )}
+
+            {/* "PRESENTS" text */}
+            <p
+              className="mt-4 text-lg tracking-[0.5em] uppercase text-amber-400 animate-classic-entry-intro-presents"
+              style={{
+                textShadow: '0 0 15px #fbbf24',
+              }}
+            >
+              PRESENTS
+            </p>
+          </div>
+
+          {/* Particles */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {[...Array(30)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full animate-classic-entry-intro-particle"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  width: `${2 + Math.random() * 4}px`,
+                  height: `${2 + Math.random() * 4}px`,
+                  background: i % 2 === 0 ? accentColor : '#fbbf24',
+                  boxShadow: `0 0 8px currentColor`,
+                  animationDelay: `${Math.random() * 2}s`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Dark overlay with radial spotlight */}
       <div
         className={`absolute inset-0 transition-all duration-700
-          ${phase === 'spotlight' ? 'bg-black' : 'bg-black/90'}`}
+          ${phase === 'spotlight' || phase === 'intro' ? 'bg-black' : 'bg-black/90'}`}
       />
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
+      {/* Broadcaster Logo - Top Right (shown after intro) */}
+      {phase !== 'intro' && tournament?.broadcaster_logo_url && (
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
@@ -228,6 +330,56 @@ export default function PlayerEntryAnimation({
       />
 
       <style>{`
+        /* BROADCASTER INTRO ANIMATIONS */
+        @keyframes classic-entry-intro-beam {
+          0% { opacity: 0; transform: rotate(var(--rotation)) scaleY(0); }
+          30% { opacity: 0.5; transform: rotate(var(--rotation)) scaleY(1); }
+          70% { opacity: 0.5; transform: rotate(var(--rotation)) scaleY(1); }
+          100% { opacity: 0; transform: rotate(var(--rotation)) scaleY(0); }
+        }
+        @keyframes classic-entry-intro-glow {
+          0% { opacity: 0; transform: scale(0.5); }
+          30% { opacity: 1; transform: scale(1); }
+          70% { opacity: 1; transform: scale(1.1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes classic-entry-intro-logo {
+          0% { opacity: 0; transform: scale(0.3); }
+          20% { opacity: 1; transform: scale(1.1); }
+          30% { transform: scale(1); }
+          70% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes classic-entry-intro-pulse {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.3); }
+        }
+        @keyframes classic-entry-intro-text {
+          0% { opacity: 0; transform: translateY(20px); }
+          30% { opacity: 1; transform: translateY(0); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes classic-entry-intro-presents {
+          0% { opacity: 0; transform: scaleX(0); }
+          40% { opacity: 1; transform: scaleX(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes classic-entry-intro-particle {
+          0%, 100% { opacity: 0; transform: scale(0); }
+          20% { opacity: 1; transform: scale(1); }
+          80% { opacity: 1; transform: scale(1); }
+        }
+
+        .animate-classic-entry-intro-beam { animation: classic-entry-intro-beam 2.5s ease-out forwards; }
+        .animate-classic-entry-intro-glow { animation: classic-entry-intro-glow 2.5s ease-out forwards; }
+        .animate-classic-entry-intro-logo { animation: classic-entry-intro-logo 2.5s ease-out forwards; }
+        .animate-classic-entry-intro-pulse { animation: classic-entry-intro-pulse 0.8s ease-in-out infinite; }
+        .animate-classic-entry-intro-text { animation: classic-entry-intro-text 2.5s ease-out forwards; }
+        .animate-classic-entry-intro-presents { animation: classic-entry-intro-presents 2.5s ease-out forwards; }
+        .animate-classic-entry-intro-particle { animation: classic-entry-intro-particle 2.5s ease-in-out forwards; }
+
         @keyframes spotlight-entry {
           0% { opacity: 0; transform: translateX(-50%) rotate(var(--rotation, 0deg)) scaleY(0); }
           50% { opacity: 1; transform: translateX(-50%) rotate(var(--rotation, 0deg)) scaleY(1.2); }

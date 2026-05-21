@@ -16,32 +16,149 @@ interface PremiumPlayerEntryProps {
 }
 
 export default function PremiumPlayerEntry({ player, onComplete, tournament }: PremiumPlayerEntryProps) {
-  const [phase, setPhase] = useState<'intro' | 'photo' | 'name' | 'stats' | 'ready' | 'exit'>('intro');
+  // Add 'broadcasterIntro' phase for broadcaster logo display
+  const [phase, setPhase] = useState<'broadcasterIntro' | 'intro' | 'photo' | 'name' | 'stats' | 'ready' | 'exit'>('broadcasterIntro');
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
 
+  // Check if we have a broadcaster logo
+  const hasBroadcasterLogo = !!tournament?.broadcaster_logo_url;
+  // Intro duration - skip if no logo
+  const introDuration = hasBroadcasterLogo ? 2500 : 0;
+
   useEffect(() => {
-    soundManager.play('whoosh');
+    // Play sound after broadcaster intro
+    if (hasBroadcasterLogo) {
+      setTimeout(() => soundManager.play('whoosh'), introDuration);
+    } else {
+      soundManager.play('whoosh');
+    }
 
     const timers = [
-      setTimeout(() => setPhase('photo'), 400),
-      setTimeout(() => setPhase('name'), 1000),
-      setTimeout(() => setPhase('stats'), 1800),
-      setTimeout(() => setPhase('ready'), 2800),
-      setTimeout(() => setPhase('exit'), 3500),
-      setTimeout(() => onComplete(), 4000),
+      setTimeout(() => setPhase('intro'), introDuration),
+      setTimeout(() => setPhase('photo'), introDuration + 400),
+      setTimeout(() => setPhase('name'), introDuration + 1000),
+      setTimeout(() => setPhase('stats'), introDuration + 1800),
+      setTimeout(() => setPhase('ready'), introDuration + 2800),
+      setTimeout(() => setPhase('exit'), introDuration + 3500),
+      setTimeout(() => onComplete(), introDuration + 4000),
     ];
 
     return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+  }, [onComplete, hasBroadcasterLogo, introDuration]);
 
   return (
     <div className={`fixed inset-0 z-[100] overflow-hidden ${phase === 'exit' ? 'animate-premium-fade-out' : ''}`}>
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* BROADCASTER INTRO - Big centered logo like football broadcasts */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {phase === 'broadcasterIntro' && tournament?.broadcaster_logo_url && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center overflow-hidden bg-[#030308]">
+          {/* Premium gradient background */}
+          <div
+            className="absolute inset-0 animate-premium-entry-intro-bg"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(59,130,246,0.2) 0%, #030308 60%)',
+            }}
+          />
+
+          {/* Sweeping light beams */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div
+              className="absolute top-0 left-1/4 w-[250px] h-[200%] animate-premium-entry-intro-beam-left"
+              style={{
+                background: 'linear-gradient(to bottom, rgba(59,130,246,0.4), rgba(59,130,246,0.15), transparent)',
+                transform: 'rotate(20deg)',
+                filter: 'blur(40px)',
+              }}
+            />
+            <div
+              className="absolute top-0 right-1/4 w-[250px] h-[200%] animate-premium-entry-intro-beam-right"
+              style={{
+                background: 'linear-gradient(to bottom, rgba(251,191,36,0.3), rgba(251,191,36,0.1), transparent)',
+                transform: 'rotate(-20deg)',
+                filter: 'blur(40px)',
+              }}
+            />
+          </div>
+
+          {/* Circular glow behind logo */}
+          <div
+            className="absolute w-[500px] h-[500px] animate-premium-entry-intro-glow"
+            style={{
+              background: 'radial-gradient(circle, rgba(59,130,246,0.5) 0%, rgba(59,130,246,0.2) 40%, transparent 70%)',
+              filter: 'blur(40px)',
+            }}
+          />
+
+          {/* Main logo container */}
+          <div className="relative flex flex-col items-center animate-premium-entry-intro-logo">
+            {/* Logo with premium glow */}
+            <div
+              className="relative"
+              style={{
+                filter: 'drop-shadow(0 0 40px rgba(59,130,246,0.8)) drop-shadow(0 0 80px rgba(59,130,246,0.5))',
+              }}
+            >
+              <img
+                src={tournament.broadcaster_logo_url}
+                alt={tournament.broadcaster_name || 'Broadcaster'}
+                className="h-48 md:h-64 max-w-[400px] object-contain animate-premium-entry-intro-pulse"
+              />
+            </div>
+
+            {/* Broadcaster name */}
+            {tournament.broadcaster_name && (
+              <h3
+                className="mt-8 text-2xl md:text-3xl font-bold tracking-[0.3em] uppercase animate-premium-entry-intro-text"
+                style={{
+                  background: 'linear-gradient(180deg, #ffffff, #3b82f6)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  filter: 'drop-shadow(0 0 20px rgba(59,130,246,0.8))',
+                }}
+              >
+                {tournament.broadcaster_name}
+              </h3>
+            )}
+
+            {/* "PRESENTS" text */}
+            <p
+              className="mt-4 text-lg tracking-[0.5em] uppercase text-amber-400 animate-premium-entry-intro-presents"
+              style={{
+                textShadow: '0 0 15px #fbbf24',
+              }}
+            >
+              PRESENTS
+            </p>
+          </div>
+
+          {/* Flying particles */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {[...Array(25)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full animate-premium-entry-intro-particle"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  width: `${2 + Math.random() * 3}px`,
+                  height: `${2 + Math.random() * 3}px`,
+                  background: i % 2 === 0 ? '#3b82f6' : '#fbbf24',
+                  boxShadow: `0 0 ${6 + Math.random() * 6}px ${i % 2 === 0 ? '#3b82f6' : '#fbbf24'}`,
+                  animationDelay: `${Math.random() * 2}s`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Dark cinematic background */}
       <div className="absolute inset-0 bg-[#030308]" />
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
+      {/* Broadcaster Logo - Top Right (shown after intro) */}
+      {phase !== 'broadcasterIntro' && tournament?.broadcaster_logo_url && (
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
@@ -284,6 +401,70 @@ export default function PremiumPlayerEntry({ player, onComplete, tournament }: P
       </div>
 
       <style>{`
+        /* BROADCASTER INTRO ANIMATIONS */
+        @keyframes premium-entry-intro-bg {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes premium-entry-intro-beam-left {
+          0% { transform: translateX(-200%) rotate(20deg); opacity: 0; }
+          30% { transform: translateX(0%) rotate(20deg); opacity: 0.5; }
+          70% { transform: translateX(0%) rotate(20deg); opacity: 0.5; }
+          100% { transform: translateX(200%) rotate(20deg); opacity: 0; }
+        }
+        @keyframes premium-entry-intro-beam-right {
+          0% { transform: translateX(200%) rotate(-20deg); opacity: 0; }
+          30% { transform: translateX(0%) rotate(-20deg); opacity: 0.5; }
+          70% { transform: translateX(0%) rotate(-20deg); opacity: 0.5; }
+          100% { transform: translateX(-200%) rotate(-20deg); opacity: 0; }
+        }
+        @keyframes premium-entry-intro-glow {
+          0% { opacity: 0; transform: scale(0.5); }
+          30% { opacity: 1; transform: scale(1); }
+          70% { opacity: 1; transform: scale(1.1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes premium-entry-intro-logo {
+          0% { opacity: 0; transform: scale(0.3); }
+          20% { opacity: 1; transform: scale(1.1); }
+          30% { transform: scale(1); }
+          70% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes premium-entry-intro-pulse {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.3); }
+        }
+        @keyframes premium-entry-intro-text {
+          0% { opacity: 0; transform: translateY(20px); }
+          30% { opacity: 1; transform: translateY(0); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes premium-entry-intro-presents {
+          0% { opacity: 0; transform: scaleX(0); }
+          40% { opacity: 1; transform: scaleX(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes premium-entry-intro-particle {
+          0%, 100% { opacity: 0; transform: scale(0) translateY(0); }
+          20% { opacity: 1; transform: scale(1) translateY(0); }
+          80% { opacity: 1; transform: scale(1) translateY(-30px); }
+        }
+
+        .animate-premium-entry-intro-bg { animation: premium-entry-intro-bg 2.5s ease-in-out forwards; }
+        .animate-premium-entry-intro-beam-left { animation: premium-entry-intro-beam-left 2.5s ease-out forwards; }
+        .animate-premium-entry-intro-beam-right { animation: premium-entry-intro-beam-right 2.5s ease-out forwards; }
+        .animate-premium-entry-intro-glow { animation: premium-entry-intro-glow 2.5s ease-out forwards; }
+        .animate-premium-entry-intro-logo { animation: premium-entry-intro-logo 2.5s ease-out forwards; }
+        .animate-premium-entry-intro-pulse { animation: premium-entry-intro-pulse 0.8s ease-in-out infinite; }
+        .animate-premium-entry-intro-text { animation: premium-entry-intro-text 2.5s ease-out forwards; }
+        .animate-premium-entry-intro-presents { animation: premium-entry-intro-presents 2.5s ease-out forwards; }
+        .animate-premium-entry-intro-particle { animation: premium-entry-intro-particle 2.5s ease-in-out forwards; }
+
         @keyframes premium-fade-out {
           to { opacity: 0; transform: scale(1.05); }
         }

@@ -287,26 +287,6 @@ export default function CitySoldAnimation({
             }}
           />
 
-          {/* Rotating ring */}
-          <div
-            className="absolute w-[450px] h-[450px] animate-spin-slow"
-            style={{
-              border: `3px solid ${CITY_COLORS.cyan}40`,
-              borderRadius: '50%',
-              borderTopColor: CITY_COLORS.cyan,
-              borderRightColor: CITY_COLORS.purple,
-            }}
-          />
-
-          {/* Inner rotating ring */}
-          <div
-            className="absolute w-[380px] h-[380px] animate-spin-reverse"
-            style={{
-              border: `2px dashed ${CITY_COLORS.purple}30`,
-              borderRadius: '50%',
-            }}
-          />
-
           {/* Main logo container */}
           <div className="relative flex flex-col items-center animate-intro-logo">
             {/* Logo with glow */}

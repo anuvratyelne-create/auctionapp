@@ -144,16 +144,6 @@ export default function FireSoldAnimation({
             }}
           />
 
-          {/* Fire ring */}
-          <div
-            className="absolute w-[400px] h-[400px] rounded-full animate-spin-slow"
-            style={{
-              border: `3px solid ${FIRE_COLORS.orange}40`,
-              borderTopColor: FIRE_COLORS.yellow,
-              borderRightColor: FIRE_COLORS.orange,
-            }}
-          />
-
           {/* Main logo container */}
           <div className="relative flex flex-col items-center animate-fire-intro-logo">
             {/* Logo with fire glow */}
