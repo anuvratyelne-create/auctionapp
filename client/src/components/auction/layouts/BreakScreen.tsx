@@ -82,7 +82,7 @@ export default memo(function BreakScreen({ tournament, theme = 'classic', accent
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
-          size="lg"
+          size="xxl"
           position="top-right"
           theme={theme}
           showName={false}

@@ -4,19 +4,21 @@ import { motion } from 'framer-motion';
 interface BroadcasterLogoProps {
   logoUrl?: string;
   name?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   theme?: 'premium' | 'fire' | 'city' | 'classic';
   showName?: boolean;
+  showBackground?: boolean;
   className?: string;
   animate?: boolean;
 }
 
 const sizeClasses = {
-  sm: 'h-10 max-w-[100px]',
-  md: 'h-14 max-w-[140px]',
-  lg: 'h-20 max-w-[200px]',
-  xl: 'h-28 max-w-[280px]',
+  sm: 'h-14 max-w-[140px]',
+  md: 'h-20 max-w-[200px]',
+  lg: 'h-28 max-w-[280px]',
+  xl: 'h-40 max-w-[400px]',
+  xxl: 'h-52 max-w-[520px]',
 };
 
 const positionClasses = {
@@ -58,12 +60,14 @@ function BroadcasterLogo({
   position = 'top-right',
   theme = 'classic',
   showName = false,
+  showBackground = false,
   className = '',
   animate = true,
 }: BroadcasterLogoProps) {
   if (!logoUrl && !name) return null;
 
-  const content = (
+  // Content with or without background
+  const content = showBackground ? (
     <div
       className={`
         flex items-center gap-3 px-4 py-3 rounded-2xl backdrop-blur-md border-2
@@ -80,6 +84,22 @@ function BroadcasterLogo({
       )}
       {showName && name && (
         <span className={`text-sm font-semibold ${themeTextStyles[theme]}`}>
+          {name}
+        </span>
+      )}
+    </div>
+  ) : (
+    // No background - just the logo with glow
+    <div className={`flex items-center gap-3 ${className}`}>
+      {logoUrl && (
+        <img
+          src={logoUrl}
+          alt={name || 'Broadcaster'}
+          className={`${sizeClasses[size]} object-contain ${themeGlowStyles[theme]}`}
+        />
+      )}
+      {showName && name && (
+        <span className={`text-sm font-semibold ${themeTextStyles[theme]} drop-shadow-lg`}>
           {name}
         </span>
       )}

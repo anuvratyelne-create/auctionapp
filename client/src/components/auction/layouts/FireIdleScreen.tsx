@@ -95,7 +95,7 @@ export default memo(function FireIdleScreen({ tournament, onNewPlayer, loading }
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
-          size="lg"
+          size="xxl"
           position="top-right"
           theme="fire"
           showName={false}

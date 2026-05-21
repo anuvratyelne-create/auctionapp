@@ -115,7 +115,7 @@ export default memo(function CityIdleScreen({ tournament, onNewPlayer, loading }
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
-          size="lg"
+          size="xxl"
           position="top-right"
           theme="city"
           showName={false}

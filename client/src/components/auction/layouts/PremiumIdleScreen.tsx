@@ -116,7 +116,7 @@ export default memo(function PremiumIdleScreen({ tournament, backgroundId, onNew
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
-          size="lg"
+          size="xxl"
           position="top-right"
           theme="premium"
           showName={false}

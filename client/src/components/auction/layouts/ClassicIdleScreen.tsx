@@ -62,7 +62,7 @@ export default memo(function ClassicIdleScreen({ tournament, accentColor = '#fbb
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
-          size="lg"
+          size="xxl"
           position="top-right"
           theme="classic"
           showName={false}
