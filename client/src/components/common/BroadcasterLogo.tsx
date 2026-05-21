@@ -13,17 +13,17 @@ interface BroadcasterLogoProps {
 }
 
 const sizeClasses = {
-  sm: 'h-8 max-w-[80px]',
-  md: 'h-12 max-w-[120px]',
-  lg: 'h-16 max-w-[160px]',
-  xl: 'h-20 max-w-[200px]',
+  sm: 'h-10 max-w-[100px]',
+  md: 'h-14 max-w-[140px]',
+  lg: 'h-20 max-w-[200px]',
+  xl: 'h-28 max-w-[280px]',
 };
 
 const positionClasses = {
-  'top-left': 'top-4 left-4',
-  'top-right': 'top-4 right-4',
-  'bottom-left': 'bottom-4 left-4',
-  'bottom-right': 'bottom-4 right-4',
+  'top-left': 'top-6 left-6',
+  'top-right': 'top-6 right-6',
+  'bottom-left': 'bottom-6 left-6',
+  'bottom-right': 'bottom-6 right-6',
 };
 
 const themeGlowStyles = {
@@ -34,10 +34,10 @@ const themeGlowStyles = {
 };
 
 const themeBgStyles = {
-  premium: 'bg-black/40 border-amber-500/30',
-  fire: 'bg-black/40 border-orange-500/30',
-  city: 'bg-black/40 border-cyan-500/30',
-  classic: 'bg-black/40 border-white/20',
+  premium: 'bg-black/60 border-amber-500/40',
+  fire: 'bg-black/60 border-orange-500/40',
+  city: 'bg-black/60 border-cyan-500/40',
+  classic: 'bg-black/60 border-white/30',
 };
 
 const themeTextStyles = {
@@ -66,7 +66,7 @@ function BroadcasterLogo({
   const content = (
     <div
       className={`
-        flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md border
+        flex items-center gap-3 px-4 py-3 rounded-2xl backdrop-blur-md border-2
         ${themeBgStyles[theme]}
         ${className}
       `}
