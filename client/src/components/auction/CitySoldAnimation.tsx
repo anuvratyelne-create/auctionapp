@@ -80,29 +80,42 @@ export default function CitySoldAnimation({
   onComplete,
   tournament,
 }: CitySoldAnimationProps) {
-  const [phase, setPhase] = useState<'blackout' | 'scan' | 'banner' | 'reveal' | 'merge' | 'price' | 'celebrate' | 'exit'>('blackout');
+  // Add 'intro' phase for broadcaster logo display
+  const [phase, setPhase] = useState<'intro' | 'blackout' | 'scan' | 'banner' | 'reveal' | 'merge' | 'price' | 'celebrate' | 'exit'>('intro');
   const [displayPrice, setDisplayPrice] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const firedRef = useRef(false);
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
 
+  // Check if we have a broadcaster logo
+  const hasBroadcasterLogo = !!tournament?.broadcaster_logo_url;
+  // Intro duration - skip if no logo
+  const introDuration = hasBroadcasterLogo ? 2500 : 0;
+
   useEffect(() => {
     let cancelled = false;
 
-    soundManager.play('sold');
+    // Play sound after intro phase
+    if (hasBroadcasterLogo) {
+      setTimeout(() => soundManager.play('sold'), introDuration);
+    } else {
+      soundManager.play('sold');
+    }
 
     const timers = [
-      setTimeout(() => !cancelled && setPhase('scan'), 200),
-      setTimeout(() => !cancelled && setPhase('banner'), 800),
-      setTimeout(() => !cancelled && setPhase('reveal'), 2000),
-      setTimeout(() => !cancelled && setPhase('merge'), 3500),
-      setTimeout(() => !cancelled && setPhase('price'), 5000),
-      setTimeout(() => !cancelled && setPhase('celebrate'), 7000),
-      setTimeout(() => !cancelled && setPhase('exit'), 9500),
+      // If no broadcaster logo, skip intro phase immediately
+      setTimeout(() => !cancelled && setPhase('blackout'), introDuration),
+      setTimeout(() => !cancelled && setPhase('scan'), introDuration + 200),
+      setTimeout(() => !cancelled && setPhase('banner'), introDuration + 800),
+      setTimeout(() => !cancelled && setPhase('reveal'), introDuration + 2000),
+      setTimeout(() => !cancelled && setPhase('merge'), introDuration + 3500),
+      setTimeout(() => !cancelled && setPhase('price'), introDuration + 5000),
+      setTimeout(() => !cancelled && setPhase('celebrate'), introDuration + 7000),
+      setTimeout(() => !cancelled && setPhase('exit'), introDuration + 9500),
       setTimeout(() => {
         if (!cancelled) onComplete();
-      }, 10000),
+      }, introDuration + 10000),
     ];
 
     return () => {
@@ -237,11 +250,150 @@ export default function CitySoldAnimation({
         ${phase === 'exit' ? 'animate-city-sold-exit' : ''}`}
       style={{ background: CITY_COLORS.darkNavy }}
     >
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* BROADCASTER INTRO - Big centered logo like football broadcasts */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {phase === 'intro' && tournament?.broadcaster_logo_url && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center overflow-hidden">
+          {/* Dark background with gradient */}
+          <div
+            className="absolute inset-0 animate-intro-bg"
+            style={{
+              background: `radial-gradient(ellipse at center, ${CITY_COLORS.navy} 0%, ${CITY_COLORS.darkNavy} 70%)`,
+            }}
+          />
+
+          {/* Animated light rays */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {[...Array(12)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute h-[200%] w-1 animate-intro-rays"
+                style={{
+                  background: `linear-gradient(to top, transparent, ${CITY_COLORS.cyan}40, transparent)`,
+                  transform: `rotate(${i * 30}deg)`,
+                  animationDelay: `${i * 0.1}s`,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Circular glow behind logo */}
+          <div
+            className="absolute w-[500px] h-[500px] animate-intro-glow"
+            style={{
+              background: `radial-gradient(circle, ${CITY_COLORS.cyan}60 0%, ${CITY_COLORS.purple}30 40%, transparent 70%)`,
+              filter: 'blur(40px)',
+            }}
+          />
+
+          {/* Rotating ring */}
+          <div
+            className="absolute w-[450px] h-[450px] animate-spin-slow"
+            style={{
+              border: `3px solid ${CITY_COLORS.cyan}40`,
+              borderRadius: '50%',
+              borderTopColor: CITY_COLORS.cyan,
+              borderRightColor: CITY_COLORS.purple,
+            }}
+          />
+
+          {/* Inner rotating ring */}
+          <div
+            className="absolute w-[380px] h-[380px] animate-spin-reverse"
+            style={{
+              border: `2px dashed ${CITY_COLORS.purple}30`,
+              borderRadius: '50%',
+            }}
+          />
+
+          {/* Main logo container */}
+          <div className="relative flex flex-col items-center animate-intro-logo">
+            {/* Logo with glow */}
+            <div
+              className="relative"
+              style={{
+                filter: `drop-shadow(0 0 40px ${CITY_COLORS.cyan}) drop-shadow(0 0 80px ${CITY_COLORS.purple})`,
+              }}
+            >
+              <img
+                src={tournament.broadcaster_logo_url}
+                alt={tournament.broadcaster_name || 'Broadcaster'}
+                className="h-48 md:h-64 max-w-[400px] object-contain animate-intro-logo-pulse"
+              />
+            </div>
+
+            {/* Broadcaster name */}
+            {tournament.broadcaster_name && (
+              <h3
+                className="mt-8 text-2xl md:text-3xl font-bold tracking-[0.3em] uppercase animate-intro-text"
+                style={{
+                  color: CITY_COLORS.cyan,
+                  textShadow: `0 0 20px ${CITY_COLORS.cyan}, 0 0 40px ${CITY_COLORS.purple}`,
+                  fontFamily: "'Orbitron', sans-serif",
+                }}
+              >
+                {tournament.broadcaster_name}
+              </h3>
+            )}
+
+            {/* "PRESENTS" text */}
+            <p
+              className="mt-4 text-lg tracking-[0.5em] uppercase animate-intro-presents"
+              style={{
+                color: CITY_COLORS.gold,
+                textShadow: `0 0 15px ${CITY_COLORS.gold}`,
+                fontFamily: "'Orbitron', sans-serif",
+              }}
+            >
+              PRESENTS
+            </p>
+          </div>
+
+          {/* Corner decorations */}
+          <div className="absolute top-8 left-8 animate-intro-corner">
+            <div className="w-16 h-1" style={{ background: CITY_COLORS.cyan }} />
+            <div className="w-1 h-16" style={{ background: CITY_COLORS.cyan }} />
+          </div>
+          <div className="absolute top-8 right-8 animate-intro-corner" style={{ animationDelay: '0.1s' }}>
+            <div className="w-16 h-1 ml-auto" style={{ background: CITY_COLORS.purple }} />
+            <div className="w-1 h-16 ml-auto" style={{ background: CITY_COLORS.purple }} />
+          </div>
+          <div className="absolute bottom-8 left-8 animate-intro-corner" style={{ animationDelay: '0.2s' }}>
+            <div className="w-1 h-16" style={{ background: CITY_COLORS.gold }} />
+            <div className="w-16 h-1" style={{ background: CITY_COLORS.gold }} />
+          </div>
+          <div className="absolute bottom-8 right-8 animate-intro-corner" style={{ animationDelay: '0.3s' }}>
+            <div className="w-1 h-16 ml-auto" style={{ background: CITY_COLORS.green }} />
+            <div className="w-16 h-1 ml-auto" style={{ background: CITY_COLORS.green }} />
+          </div>
+
+          {/* Particles */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {[...Array(20)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute rounded-full animate-intro-particle"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  width: `${3 + Math.random() * 5}px`,
+                  height: `${3 + Math.random() * 5}px`,
+                  background: i % 3 === 0 ? CITY_COLORS.cyan : i % 3 === 1 ? CITY_COLORS.purple : CITY_COLORS.gold,
+                  boxShadow: `0 0 10px currentColor`,
+                  animationDelay: `${Math.random() * 2}s`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Holographic grid background */}
       <HoloGrid />
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
+      {/* Broadcaster Logo - Top Right (shown after intro) */}
+      {phase !== 'intro' && tournament?.broadcaster_logo_url && (
         <BroadcasterLogo
           logoUrl={tournament.broadcaster_logo_url}
           name={tournament.broadcaster_name}
@@ -859,6 +1011,72 @@ export default function CitySoldAnimation({
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+        /* ═══════════════════════════════════════════════════════════════════ */
+        /* BROADCASTER INTRO ANIMATIONS */
+        /* ═══════════════════════════════════════════════════════════════════ */
+        @keyframes intro-bg {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes intro-rays {
+          0% { opacity: 0; transform: rotate(var(--rotation)) scaleY(0); }
+          30% { opacity: 0.6; transform: rotate(var(--rotation)) scaleY(1); }
+          70% { opacity: 0.6; transform: rotate(var(--rotation)) scaleY(1); }
+          100% { opacity: 0; transform: rotate(var(--rotation)) scaleY(0); }
+        }
+        @keyframes intro-glow {
+          0% { opacity: 0; transform: scale(0.5); }
+          30% { opacity: 1; transform: scale(1); }
+          70% { opacity: 1; transform: scale(1.1); }
+          100% { opacity: 0; transform: scale(1.5); }
+        }
+        @keyframes intro-logo {
+          0% { opacity: 0; transform: scale(0.3) rotateY(-30deg); }
+          20% { opacity: 1; transform: scale(1.1) rotateY(0deg); }
+          30% { transform: scale(1) rotateY(0deg); }
+          70% { opacity: 1; transform: scale(1) rotateY(0deg); }
+          100% { opacity: 0; transform: scale(1.5) rotateY(15deg); }
+        }
+        @keyframes intro-logo-pulse {
+          0%, 100% { filter: brightness(1); }
+          50% { filter: brightness(1.3); }
+        }
+        @keyframes intro-text {
+          0% { opacity: 0; transform: translateY(20px); letter-spacing: 0.1em; }
+          30% { opacity: 1; transform: translateY(0); letter-spacing: 0.3em; }
+          70% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-10px); }
+        }
+        @keyframes intro-presents {
+          0% { opacity: 0; transform: scaleX(0); }
+          40% { opacity: 1; transform: scaleX(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes intro-corner {
+          0% { opacity: 0; transform: scale(0); }
+          30% { opacity: 1; transform: scale(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes intro-particle {
+          0%, 100% { opacity: 0; transform: scale(0); }
+          20% { opacity: 1; transform: scale(1); }
+          80% { opacity: 1; transform: scale(1); }
+        }
+
+        .animate-intro-bg { animation: intro-bg 2.5s ease-in-out forwards; }
+        .animate-intro-rays { animation: intro-rays 2.5s ease-out forwards; }
+        .animate-intro-glow { animation: intro-glow 2.5s ease-out forwards; }
+        .animate-intro-logo { animation: intro-logo 2.5s ease-out forwards; }
+        .animate-intro-logo-pulse { animation: intro-logo-pulse 0.8s ease-in-out infinite; }
+        .animate-intro-text { animation: intro-text 2.5s ease-out forwards; }
+        .animate-intro-presents { animation: intro-presents 2.5s ease-out forwards; }
+        .animate-intro-corner { animation: intro-corner 2.5s ease-out forwards; }
+        .animate-intro-particle { animation: intro-particle 2.5s ease-in-out forwards; }
 
         @keyframes city-sold-exit {
           to { opacity: 0; transform: scale(1.1); filter: blur(10px); }
