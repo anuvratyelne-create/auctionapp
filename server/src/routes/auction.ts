@@ -118,6 +118,18 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
 // Get specific player for auction (manual/recall)
 router.get('/player/:playerId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    // First update player status to 'bidding' in database
+    // This is critical for the /sold endpoint which checks for status='bidding'
+    const { error: updateError } = await supabase
+      .from('players')
+      .update({ status: 'bidding' })
+      .eq('id', req.params.playerId)
+      .eq('tournament_id', req.tournamentId);
+
+    if (updateError) {
+      console.error('Failed to update player status to bidding:', updateError);
+    }
+
     const { data: player, error } = await supabase
       .from('players')
       .select(`
@@ -378,7 +390,7 @@ router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) 
   }
 });
 
-// Mark player as unsold
+// Mark player as unsold (with race condition protection)
 router.post('/unsold', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const state = getAuctionState(req.tournamentId!);
@@ -387,16 +399,24 @@ router.post('/unsold', authenticateToken, async (req: AuthRequest, res: Response
       return res.status(400).json({ error: 'No player in auction' });
     }
 
-    // Update player
+    // Update player with optimistic locking - only update if status is still 'bidding'
     const { data: player, error } = await supabase
       .from('players')
       .update({ status: 'unsold' })
       .eq('id', state.currentPlayer.id)
+      .eq('status', 'bidding') // Only update if still in bidding state
       .select()
       .single();
 
     if (error) {
+      if (error.code === 'PGRST116') { // No rows returned
+        return res.status(409).json({ error: 'Player state changed' });
+      }
       return res.status(500).json({ error: 'Failed to update player' });
+    }
+
+    if (!player) {
+      return res.status(409).json({ error: 'Player state changed' });
     }
 
     // Update auction state

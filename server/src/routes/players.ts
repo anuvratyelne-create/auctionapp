@@ -593,9 +593,16 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
   }
 });
 
-// Reset player to available (remove from team, clear sold status)
+// Reset player to available (remove from team, clear sold status, clear bids)
 router.post('/:id/reset', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    // Clear all bids for this player (for clean undo)
+    await supabase
+      .from('bids')
+      .delete()
+      .eq('player_id', req.params.id)
+      .eq('tournament_id', req.tournamentId);
+
     const { data: player, error } = await supabase
       .from('players')
       .update({
