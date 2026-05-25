@@ -1,3 +1,5 @@
+import { localCache } from './localCache';
+
 const API_URL = '/api';
 
 // TTL-based cache for API responses
@@ -67,9 +69,19 @@ class ApiClient {
     }
   }
 
+  // Set tournament ID for localStorage caching
+  setTournamentId(tournamentId: string | null) {
+    localCache.setTournamentId(tournamentId);
+  }
+
   // Expose cache invalidation for components that need to force refresh
   invalidateCache(pattern?: string): void {
     apiCache.invalidate(pattern);
+  }
+
+  // Clear all localStorage caches
+  clearLocalCache(): void {
+    localCache.clearAll();
   }
 
   private getToken(): string | null {
@@ -276,12 +288,23 @@ class ApiClient {
     return this.request(`/tournaments/sponsors/${id}`, { method: 'DELETE' });
   }
 
-  // Teams (with caching + request deduplication)
-  async getTeams() {
+  // Teams (with localStorage caching + stale-while-revalidate)
+  async getTeams(options?: { skipCache?: boolean }) {
     const cacheKey = 'teams';
-    const cached = apiCache.get(cacheKey);
-    if (cached) {
-      return Promise.resolve(cached);
+
+    // Check in-memory cache first
+    const memCached = apiCache.get(cacheKey);
+    if (memCached && !options?.skipCache) {
+      return Promise.resolve(memCached);
+    }
+
+    // Check localStorage cache for instant loading
+    const localCached = localCache.getTeams();
+    if (localCached && !options?.skipCache) {
+      // Return cached data immediately, but refresh in background
+      this.refreshTeamsInBackground();
+      apiCache.set(cacheKey, localCached, CACHE_TTL.TEAMS);
+      return Promise.resolve(localCached);
     }
 
     const now = Date.now();
@@ -293,6 +316,7 @@ class ApiClient {
     this.teamsPromiseTime = now;
     this.teamsPromise = this.request('/teams').then((data) => {
       apiCache.set(cacheKey, data, CACHE_TTL.TEAMS);
+      localCache.setTeams(data as any[]);
       return data;
     });
 
@@ -304,6 +328,17 @@ class ApiClient {
     });
 
     return this.teamsPromise;
+  }
+
+  // Background refresh for teams
+  private async refreshTeamsInBackground() {
+    try {
+      const data = await this.request('/teams');
+      apiCache.set('teams', data, CACHE_TTL.TEAMS);
+      localCache.setTeams(data as any[]);
+    } catch (e) {
+      console.log('[API] Background teams refresh failed:', e);
+    }
   }
 
   async getTeamsPublic(tournamentId: string) {
@@ -324,6 +359,7 @@ class ApiClient {
     total_budget?: number;
   }) {
     apiCache.invalidate('teams');
+    localCache.invalidateTeams();
     return this.request('/teams', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -340,6 +376,7 @@ class ApiClient {
     total_budget: number;
   }>) {
     apiCache.invalidate('teams');
+    localCache.invalidateTeams();
     return this.request(`/teams/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -348,6 +385,7 @@ class ApiClient {
 
   async deleteTeam(id: string) {
     apiCache.invalidate('teams');
+    localCache.invalidateTeams();
     return this.request(`/teams/${id}`, { method: 'DELETE' });
   }
 
@@ -355,18 +393,43 @@ class ApiClient {
     return this.request(`/teams/${teamId}/players/${playerId}`, { method: 'DELETE' });
   }
 
-  // Categories (cached for 5 minutes - rarely change during auction)
-  async getCategories() {
+  // Categories (with localStorage caching - rarely change during auction)
+  async getCategories(options?: { skipCache?: boolean }) {
     const cacheKey = 'categories';
-    const cached = apiCache.get(cacheKey);
-    if (cached) {
-      return Promise.resolve(cached);
+
+    // Check in-memory cache first
+    const memCached = apiCache.get(cacheKey);
+    if (memCached && !options?.skipCache) {
+      return Promise.resolve(memCached);
+    }
+
+    // Check localStorage cache for instant loading
+    const localCached = localCache.getCategories();
+    if (localCached && !options?.skipCache) {
+      apiCache.set(cacheKey, localCached, CACHE_TTL.CATEGORIES);
+      // Refresh in background if stale
+      if (localCache.isCategoriesStale()) {
+        this.refreshCategoriesInBackground();
+      }
+      return Promise.resolve(localCached);
     }
 
     return this.request('/categories').then((data) => {
       apiCache.set(cacheKey, data, CACHE_TTL.CATEGORIES);
+      localCache.setCategories(data as any[]);
       return data;
     });
+  }
+
+  // Background refresh for categories
+  private async refreshCategoriesInBackground() {
+    try {
+      const data = await this.request('/categories');
+      apiCache.set('categories', data, CACHE_TTL.CATEGORIES);
+      localCache.setCategories(data as any[]);
+    } catch (e) {
+      console.log('[API] Background categories refresh failed:', e);
+    }
   }
 
   async getCategoriesPublic(tournamentId: string) {
@@ -375,6 +438,7 @@ class ApiClient {
 
   async createCategory(data: { name: string; base_price: number; display_order?: number }) {
     apiCache.invalidate('categories');
+    localCache.invalidateCategories();
     return this.request('/categories', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -383,6 +447,7 @@ class ApiClient {
 
   async updateCategory(id: string, data: Partial<{ name: string; base_price: number; display_order: number }>) {
     apiCache.invalidate('categories');
+    localCache.invalidateCategories();
     return this.request(`/categories/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -396,6 +461,7 @@ class ApiClient {
     bronze: number;
   }) {
     apiCache.invalidate('categories');
+    localCache.invalidateCategories();
     return this.request('/categories/update-standard-prices', {
       method: 'POST',
       body: JSON.stringify({ category_prices: categoryPrices }),
@@ -404,11 +470,12 @@ class ApiClient {
 
   async deleteCategory(id: string) {
     apiCache.invalidate('categories');
+    localCache.invalidateCategories();
     return this.request(`/categories/${id}`, { method: 'DELETE' });
   }
 
-  // Players (cached for 30 seconds)
-  async getPlayers(status?: string, category_id?: string, role_category?: string) {
+  // Players (with localStorage caching for instant loading)
+  async getPlayers(status?: string, category_id?: string, role_category?: string, options?: { skipCache?: boolean }) {
     let query = '';
     const params: string[] = [];
     if (status) params.push(`status=${status}`);
@@ -417,15 +484,43 @@ class ApiClient {
     if (params.length) query = `?${params.join('&')}`;
 
     const cacheKey = `players${query}`;
-    const cached = apiCache.get(cacheKey);
-    if (cached) {
-      return Promise.resolve(cached);
+
+    // Check in-memory cache first
+    const memCached = apiCache.get(cacheKey);
+    if (memCached && !options?.skipCache) {
+      return Promise.resolve(memCached);
+    }
+
+    // For base players query (no filters), use localStorage cache
+    if (!query) {
+      const localCached = localCache.getPlayers();
+      if (localCached && !options?.skipCache) {
+        apiCache.set(cacheKey, localCached, CACHE_TTL.PLAYERS);
+        // Always refresh players in background (they change frequently)
+        this.refreshPlayersInBackground();
+        return Promise.resolve(localCached);
+      }
     }
 
     return this.request(`/players${query}`).then((data) => {
       apiCache.set(cacheKey, data, CACHE_TTL.PLAYERS);
+      // Only cache to localStorage if no filters
+      if (!query) {
+        localCache.setPlayers(data as any[]);
+      }
       return data;
     });
+  }
+
+  // Background refresh for players
+  private async refreshPlayersInBackground() {
+    try {
+      const data = await this.request('/players');
+      apiCache.set('players', data, CACHE_TTL.PLAYERS);
+      localCache.setPlayers(data as any[]);
+    } catch (e) {
+      console.log('[API] Background players refresh failed:', e);
+    }
   }
 
   async getPlayersPublic(tournamentId: string, status?: string) {
@@ -446,6 +541,7 @@ class ApiClient {
     stats?: Record<string, any>;
   }) {
     apiCache.invalidate('players');
+    localCache.invalidatePlayers();
     return this.request('/players', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -494,6 +590,7 @@ class ApiClient {
     stats: Record<string, any>;
   }>) {
     apiCache.invalidate('players');
+    localCache.invalidatePlayers();
     return this.request(`/players/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -502,6 +599,7 @@ class ApiClient {
 
   async deletePlayer(id: string) {
     apiCache.invalidate('players');
+    localCache.invalidatePlayers();
     return this.request(`/players/${id}`, { method: 'DELETE' });
   }
 

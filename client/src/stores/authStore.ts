@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { User, Tournament } from '../types';
 import { api as apiClient } from '../utils/api';
 import { socketClient } from '../socket/client';
+import { localCache } from '../utils/localCache';
 
 interface AuthState {
   user: User | null;
@@ -25,6 +26,9 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (user, tournament, token) => {
         // Update API client token and reconnect socket with new auth
         apiClient.setToken(token);
+        // Set tournament ID for localStorage caching
+        apiClient.setTournamentId(tournament?.id || null);
+        localCache.setTournamentId(tournament?.id || null);
         socketClient.reconnectWithNewToken();
         set({
           user,
@@ -38,7 +42,18 @@ export const useAuthStore = create<AuthState>()(
         // Merge with existing tournament data to prevent losing fields
         // Only update fields that are explicitly set (not null/undefined)
         set((state) => {
-          if (!newTournament) return { tournament: null };
+          if (!newTournament) {
+            localCache.setTournamentId(null);
+            return { tournament: null };
+          }
+
+          // Update cache tournament ID if it changed
+          if (newTournament.id && newTournament.id !== state.tournament?.id) {
+            localCache.setTournamentId(newTournament.id);
+            apiClient.setTournamentId(newTournament.id);
+            // Clear caches when switching tournaments
+            localCache.clearAll();
+          }
 
           const merged = { ...state.tournament };
           for (const [key, value] of Object.entries(newTournament)) {
@@ -52,8 +67,10 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        // Clear API cache and disconnect socket on logout
+        // Clear API cache, localStorage cache, and disconnect socket on logout
         apiClient.setToken(null);
+        apiClient.setTournamentId(null);
+        localCache.clearAll();
         socketClient.disconnect();
         set({
           user: null,
