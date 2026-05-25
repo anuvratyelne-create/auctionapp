@@ -326,18 +326,26 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Regular login - check if identifier is email or mobile
     const isEmail = data.identifier.includes('@');
+    console.log('Login attempt:', { identifier: data.identifier, isEmail });
+
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
       .eq(isEmail ? 'email' : 'mobile', data.identifier)
       .single();
 
+    console.log('User lookup result:', { found: !!user, error: error?.message });
+
     if (error || !user) {
+      console.log('User not found for:', data.identifier);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const validPassword = await bcrypt.compare(data.password, user.password_hash);
+    console.log('Password check:', { valid: validPassword });
+
     if (!validPassword) {
+      console.log('Invalid password for user:', data.identifier);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -369,6 +377,50 @@ router.post('/login', async (req: Request, res: Response) => {
     }
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Reset password
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ error: 'Email and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Check if user exists
+    const { data: user, error: findError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', email)
+      .single();
+
+    if (findError || !user) {
+      return res.status(404).json({ error: 'No account found with this email' });
+    }
+
+    // Hash new password and update
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ password_hash: passwordHash })
+      .eq('email', email);
+
+    if (updateError) {
+      console.error('Password reset error:', updateError);
+      return res.status(500).json({ error: 'Failed to reset password' });
+    }
+
+    console.log('Password reset successful for:', email);
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Password reset failed' });
   }
 });
 

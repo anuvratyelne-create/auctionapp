@@ -150,6 +150,13 @@ class ApiClient {
     });
   }
 
+  async resetPassword(email: string, newPassword: string) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, newPassword }),
+    });
+  }
+
   async signup(data: {
     name: string;
     email: string;

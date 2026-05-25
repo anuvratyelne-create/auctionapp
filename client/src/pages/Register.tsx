@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Gavel, Mail, Lock, UserPlus, User, MapPin, Building, ChevronDown } from 'lucide-react';
+import { Gavel, Mail, Lock, UserPlus, User, MapPin, Building, ChevronDown, Eye, EyeOff } from 'lucide-react';
 
 // Indian states list
 const INDIAN_STATES = [
@@ -390,20 +390,33 @@ function GlassInput({ label, name, type, value, onChange, placeholder, icon }: {
   placeholder: string;
   icon: React.ReactNode;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
   return (
     <div>
       <label className="block text-sm font-medium text-slate-300 mb-2">{label}</label>
       <div className="relative">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">{icon}</span>
         <input
-          type={type}
+          type={inputType}
           name={name}
           value={value}
           onChange={onChange}
-          className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:bg-white/10 focus:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all"
+          className={`w-full bg-white/5 border border-white/10 rounded-xl pl-11 ${isPassword ? 'pr-11' : 'pr-4'} py-3 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:bg-white/10 focus:shadow-[0_0_20px_rgba(6,182,212,0.15)] transition-all`}
           placeholder={placeholder}
           required
         />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-cyan-400 transition-colors"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
       </div>
     </div>
   );
