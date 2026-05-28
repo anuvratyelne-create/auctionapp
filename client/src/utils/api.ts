@@ -243,7 +243,7 @@ class ApiClient {
 
   // Delete tournament by explicit ID (preferred method)
   async deleteTournamentById(tournamentId: string) {
-    return this.request<{ success: boolean; message: string; deletedId: string }>(`/tournaments/${tournamentId}`, {
+    return this.request<{ success: boolean; message: string; deletedId: string; fallbackTournament?: any }>(`/tournaments/${tournamentId}`, {
       method: 'DELETE',
     });
   }

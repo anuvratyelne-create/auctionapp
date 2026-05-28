@@ -750,7 +750,8 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
       return res.status(500).json({ error: 'Failed to delete tournament' });
     }
 
-    // If this was the user's current tournament, clear the reference
+    // If this was the user's current tournament, find another one to set as current
+    let fallbackTournament = null;
     if (req.userId && req.userId !== 'demo') {
       const { data: user } = await supabase
         .from('users')
@@ -759,10 +760,30 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
         .single();
 
       if (user?.tournament_id === tournamentId) {
-        await supabase
-          .from('users')
-          .update({ tournament_id: null })
-          .eq('id', req.userId);
+        // Find another tournament owned by this user
+        const { data: otherTournaments } = await supabase
+          .from('tournaments')
+          .select('*')
+          .eq('owner_id', req.userId)
+          .neq('id', tournamentId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (otherTournaments && otherTournaments.length > 0) {
+          // Set the most recent other tournament as current
+          fallbackTournament = otherTournaments[0];
+          await supabase
+            .from('users')
+            .update({ tournament_id: fallbackTournament.id })
+            .eq('id', req.userId);
+          console.log('Set fallback tournament:', fallbackTournament.id);
+        } else {
+          // No other tournaments, clear the reference
+          await supabase
+            .from('users')
+            .update({ tournament_id: null })
+            .eq('id', req.userId);
+        }
       }
     }
 
@@ -770,7 +791,12 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     clearTournamentState(tournamentId);
 
     console.log('Tournament deleted successfully:', tournamentId);
-    res.json({ success: true, message: 'Tournament deleted successfully', deletedId: tournamentId });
+    res.json({
+      success: true,
+      message: 'Tournament deleted successfully',
+      deletedId: tournamentId,
+      fallbackTournament // Include fallback tournament info for client
+    });
   } catch (error) {
     console.error('Delete tournament error:', error);
     res.status(500).json({ error: 'Failed to delete tournament' });

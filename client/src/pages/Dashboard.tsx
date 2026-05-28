@@ -569,8 +569,8 @@ function AccountDashboard({ user, tournaments, currentTournament, onNavigate, on
     }
   };
 
-  const handleDelete = async (tournament: any) => {
-    if (!confirm(`Are you sure you want to delete "${tournament.name}"?\n\nThis will permanently delete:\n• All teams\n• All players\n• All categories\n• All auction data\n\nThis action cannot be undone!`)) {
+  const handleDelete = async (tournamentToDelete: any) => {
+    if (!confirm(`Are you sure you want to delete "${tournamentToDelete.name}"?\n\nThis will permanently delete:\n• All teams\n• All players\n• All categories\n• All auction data\n\nThis action cannot be undone!`)) {
       return;
     }
 
@@ -578,12 +578,27 @@ function AccountDashboard({ user, tournaments, currentTournament, onNavigate, on
       return;
     }
 
-    setDeleting(tournament.id);
+    setDeleting(tournamentToDelete.id);
     try {
-      await api.deleteTournamentById(tournament.id);
+      const result = await api.deleteTournamentById(tournamentToDelete.id);
       onRefresh();
-      if (currentTournament?.id === tournament.id) {
-        onTournamentDeleted();
+
+      if (currentTournament?.id === tournamentToDelete.id) {
+        if (result.fallbackTournament) {
+          // Switch to fallback tournament
+          try {
+            const switchResult = await api.selectTournament(result.fallbackTournament.id);
+            const { setAuth, user } = useAuthStore.getState();
+            if (user) {
+              setAuth(user, switchResult.tournament, switchResult.token);
+            }
+          } catch (switchErr) {
+            console.error('Failed to switch to fallback:', switchErr);
+            onTournamentDeleted();
+          }
+        } else {
+          onTournamentDeleted();
+        }
       }
     } catch (err) {
       alert('Failed to delete auction');
@@ -784,9 +799,23 @@ function AuctionOverview({ tournament, teams, players, categories, onNavigate, o
 
     setDeleting(true);
     try {
-      await api.deleteTournamentById(tournament.id);
+      const result = await api.deleteTournamentById(tournament.id);
       alert('Auction deleted successfully!');
-      onTournamentDeleted();
+
+      if (result.fallbackTournament) {
+        try {
+          const switchResult = await api.selectTournament(result.fallbackTournament.id);
+          const { setAuth, user } = useAuthStore.getState();
+          if (user) {
+            setAuth(user, switchResult.tournament, switchResult.token);
+          }
+        } catch (switchErr) {
+          console.error('Failed to switch to fallback:', switchErr);
+          onTournamentDeleted();
+        }
+      } else {
+        onTournamentDeleted();
+      }
     } catch (err) {
       alert('Failed to delete auction');
       console.error(err);
@@ -1588,14 +1617,32 @@ function MyAuctionsPanel({ tournament, onNavigate, onRefresh, onTournamentDelete
 
     setDeleting(tournamentToDelete.id);
     try {
-      // Use explicit ID delete - no need to switch tournaments
-      await api.deleteTournamentById(tournamentToDelete.id);
+      // Use explicit ID delete
+      const result = await api.deleteTournamentById(tournamentToDelete.id);
       alert('Auction deleted successfully!');
+
       // Reload tournaments list
       await loadAllTournaments();
-      // If we deleted the current one, clear it from state
+
+      // If we deleted the current one, handle fallback
       if (tournament?.id === tournamentToDelete.id) {
-        onTournamentDeleted();
+        if (result.fallbackTournament) {
+          // Switch to fallback tournament to get a new token
+          try {
+            const switchResult = await api.selectTournament(result.fallbackTournament.id);
+            // Update auth state with new tournament and token
+            const { setAuth } = useAuthStore.getState();
+            const { user } = useAuthStore.getState();
+            if (user) {
+              setAuth(user, switchResult.tournament, switchResult.token);
+            }
+          } catch (switchErr) {
+            console.error('Failed to switch to fallback tournament:', switchErr);
+            onTournamentDeleted();
+          }
+        } else {
+          onTournamentDeleted();
+        }
       }
     } catch (err) {
       alert('Failed to delete auction');
@@ -1763,11 +1810,23 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
 
     setDeleting(true);
     try {
-      // Use explicit ID delete
-      await api.deleteTournamentById(tournament.id);
+      const result = await api.deleteTournamentById(tournament.id);
       alert('Auction deleted successfully!');
-      // Clear tournament from state and navigate away
-      onTournamentDeleted();
+
+      if (result.fallbackTournament) {
+        try {
+          const switchResult = await api.selectTournament(result.fallbackTournament.id);
+          const { setAuth, user } = useAuthStore.getState();
+          if (user) {
+            setAuth(user, switchResult.tournament, switchResult.token);
+          }
+        } catch (switchErr) {
+          console.error('Failed to switch to fallback:', switchErr);
+          onTournamentDeleted();
+        }
+      } else {
+        onTournamentDeleted();
+      }
     } catch (err) {
       alert('Failed to delete auction');
       console.error(err);
