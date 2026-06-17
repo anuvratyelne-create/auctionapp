@@ -10,6 +10,7 @@ import SummaryView from './pages/SummaryView';
 import OverlayView from './pages/OverlayView';
 import TopPlayers from './pages/TopPlayers';
 import PlayerRegister from './pages/PlayerRegister';
+import LandingPage from './pages/LandingPage';
 
 // Admin Panel imports
 import AdminLogin from './admin/pages/AdminLogin';
@@ -111,6 +112,44 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Home route - show landing page for unauthenticated, redirect to dashboard for authenticated
+function HomeRoute() {
+  const { isAuthenticated } = useAuthStore();
+  const [isReady, setIsReady] = useState(false);
+  const [hasStoredAuth, setHasStoredAuth] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('auction-auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.state?.token && parsed?.state?.isAuthenticated) {
+          setHasStoredAuth(true);
+        }
+      }
+    } catch (e) {
+      console.error('Error reading auth:', e);
+    }
+    setIsReady(true);
+  }, []);
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // If authenticated, go to dashboard
+  if (isAuthenticated || hasStoredAuth) {
+    return <Navigate to="/manage" replace />;
+  }
+
+  // Otherwise show landing page
+  return <LandingPage />;
+}
+
 function App() {
   const { token } = useAuthStore();
 
@@ -149,7 +188,7 @@ function App() {
       <Route path="/summary/:shareCode" element={<SummaryView />} />
       <Route path="/overlay/:shareCode" element={<OverlayView />} />
       <Route path="/register/:shareCode" element={<PlayerRegister />} />
-      <Route path="/" element={<Navigate to="/manage" replace />} />
+      <Route path="/" element={<HomeRoute />} />
 
       {/* Admin Panel Routes */}
       <Route path="/admin/login" element={<AdminLogin />} />
