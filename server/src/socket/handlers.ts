@@ -1,15 +1,72 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import supabase from '../config/supabase';
+import { z } from 'zod';
 
-// Memory bounds constants
-const MAX_AUCTION_STATES = 50;
-const MAX_BID_HISTORY = 100;
-const MAX_CHAT_MESSAGES = 100;
+// Socket event validation schemas
+const uuidSchema = z.string().uuid();
+const tournamentIdSchema = z.string().uuid();
 
-// Rate limiting constants
-const RATE_LIMIT_WINDOW_MS = 1000; // 1 second
-const RATE_LIMIT_MAX_EVENTS = 10; // 10 events per second
+const newPlayerSchema = z.object({
+  tournamentId: tournamentIdSchema,
+  player: z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1),
+    base_price: z.number().nonnegative()
+  }).passthrough() // Allow additional fields
+});
+
+const placeBidSchema = z.object({
+  tournamentId: tournamentIdSchema,
+  team: z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1)
+  }).passthrough(),
+  amount: z.number().positive()
+});
+
+const timerSchema = z.object({
+  tournamentId: tournamentIdSchema,
+  timeLeft: z.number().nonnegative().optional(),
+  duration: z.number().positive().optional()
+});
+
+const chatMessageSchema = z.object({
+  tournamentId: tournamentIdSchema,
+  userId: z.string().min(1),
+  userName: z.string().min(1),
+  message: z.string().min(1).max(500)
+});
+
+const overlaySettingsSchema = z.object({
+  tournamentId: tournamentIdSchema,
+  settings: z.record(z.unknown())
+});
+
+// Helper to validate socket events and emit error if invalid
+function validateSocketEvent<T>(socket: Socket, schema: z.ZodSchema<T>, data: unknown): T | null {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    socket.emit('error', { message: 'Invalid data format', details: result.error.format() });
+    return null;
+  }
+  return result.data;
+}
+
+// Generate secure unique ID
+function generateSecureId(): string {
+  return `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+}
+
+// Memory bounds constants (configurable via environment variables)
+const MAX_AUCTION_STATES = parseInt(process.env.MAX_AUCTION_STATES || '50', 10);
+const MAX_BID_HISTORY = parseInt(process.env.MAX_BID_HISTORY || '100', 10);
+const MAX_CHAT_MESSAGES = parseInt(process.env.MAX_CHAT_MESSAGES || '100', 10);
+
+// Rate limiting constants (configurable via environment variables)
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '1000', 10); // 1 second default
+const RATE_LIMIT_MAX_EVENTS = parseInt(process.env.RATE_LIMIT_MAX_EVENTS || '10', 10); // 10 events/sec default
 
 interface AuctionState {
   currentPlayer: any | null;
@@ -24,6 +81,13 @@ interface AuctionState {
   };
   rtmEnabled: boolean;
   rtmTeam: any | null;
+  accentColor?: string; // Current admin theme accent color for overlay sync
+  // Auction lifecycle tracking
+  auctionStarted?: boolean; // True once first player is ever called
+  lastPlayer?: any | null; // Last player that was sold/unsold
+  lastStatus?: 'sold' | 'unsold' | null; // Status of last player
+  lastTeam?: any | null; // Team that won last player (if sold)
+  lastPrice?: number; // Final price of last player
 }
 
 // Extended socket interface with auth info
@@ -79,7 +143,6 @@ function enforceAuctionStateBounds(): void {
   for (const [tournamentId] of toRemove) {
     auctionStates.delete(tournamentId);
     initializedTournaments.delete(tournamentId);
-    console.log(`LRU evicted auction state for tournament: ${tournamentId}`);
   }
 }
 
@@ -111,7 +174,6 @@ export function clearTournamentState(tournamentId: string): void {
   auctionStates.delete(tournamentId);
   initializedTournaments.delete(tournamentId);
   chatMessages.delete(tournamentId);
-  console.log(`Cleared all in-memory state for tournament: ${tournamentId}`);
 }
 
 // Socket authentication middleware
@@ -159,9 +221,10 @@ function withRateLimit(socket: AuthenticatedSocket, callback: () => void): void 
   callback();
 }
 
-// Cleanup stale entries every 30 minutes (entries not accessed in 2 hours)
-const STATE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
-const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+// Cleanup stale entries more aggressively to prevent memory buildup
+// Configurable via environment variables
+const STATE_TTL_MS = parseInt(process.env.STATE_TTL_MS || String(30 * 60 * 1000), 10); // 30 minutes default
+const CLEANUP_INTERVAL_MS = parseInt(process.env.CLEANUP_INTERVAL_MS || String(10 * 60 * 1000), 10); // 10 minutes default
 
 setInterval(() => {
   const now = Date.now();
@@ -252,8 +315,6 @@ async function restoreAuctionStateFromDB(tournamentId: string): Promise<AuctionS
       };
     }
 
-    console.log(`Restored auction state for tournament ${tournamentId}: Player ${biddingPlayer.name}, Bid: ${latestBid?.amount || biddingPlayer.base_price}`);
-
     return {
       currentPlayer: biddingPlayer,
       currentBid: latestBid?.amount || biddingPlayer.base_price,
@@ -293,7 +354,13 @@ export const getAuctionState = (tournamentId: string): AuctionState => {
       duration: 30
     },
     rtmEnabled: false,
-    rtmTeam: null
+    rtmTeam: null,
+    accentColor: '#22c55e', // Default green, updated by admin
+    auctionStarted: false,
+    lastPlayer: null,
+    lastStatus: null,
+    lastTeam: null,
+    lastPrice: 0
   };
 
   auctionStates.set(tournamentId, {
@@ -306,9 +373,44 @@ export const getAuctionState = (tournamentId: string): AuctionState => {
 
 // Async version that restores from DB if needed
 export const getAuctionStateAsync = async (tournamentId: string): Promise<AuctionState> => {
-  // If already initialized, return current state
+  // If already initialized, validate current state against DB
   if (initializedTournaments.has(tournamentId)) {
-    return getAuctionState(tournamentId);
+    const currentState = getAuctionState(tournamentId);
+
+    // If there's a current player in memory with 'bidding' status,
+    // verify they're still actually in bidding state in the database
+    if (currentState.currentPlayer && currentState.status === 'bidding') {
+      const { data: dbPlayer, error } = await supabase
+        .from('players')
+        .select('status')
+        .eq('id', currentState.currentPlayer.id)
+        .single();
+
+      if (error || !dbPlayer) {
+        // Player doesn't exist, reset to idle
+        return updateAuctionState(tournamentId, {
+          currentPlayer: null,
+          currentBid: 0,
+          currentTeam: null,
+          bidHistory: [],
+          status: 'idle'
+        });
+      }
+
+      if (dbPlayer.status !== 'bidding') {
+        // Player was already sold/unsold, reset to idle
+        // This handles stale state from previous sessions (e.g., yesterday's auction)
+        return updateAuctionState(tournamentId, {
+          currentPlayer: null,
+          currentBid: 0,
+          currentTeam: null,
+          bidHistory: [],
+          status: 'idle'
+        });
+      }
+    }
+
+    return currentState;
   }
 
   // Try to restore from database
@@ -393,15 +495,40 @@ export const setupSocketHandlers = (io: Server) => {
   io.use(authenticateSocket);
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`Client connected: ${socket.id}, isAdmin: ${socket.isAdmin}`);
 
-    // Join tournament room
-    socket.on('join:tournament', async (tournamentId: string) => {
-      socket.join(`tournament:${tournamentId}`);
-      console.log(`Socket ${socket.id} joined tournament:${tournamentId}`);
+    // Join tournament room (admin users must own the tournament)
+    socket.on('join:tournament', async (tournamentId: unknown) => {
+      // Validate tournament ID is a valid UUID
+      const validatedId = uuidSchema.safeParse(tournamentId);
+      if (!validatedId.success) {
+        socket.emit('error', { message: 'Invalid tournament ID' });
+        return;
+      }
+      const validTournamentId = validatedId.data;
+
+      // For admin users, verify tournament ownership
+      if (socket.isAdmin && socket.userId) {
+        const { data: tournament, error } = await supabase
+          .from('tournaments')
+          .select('owner_id')
+          .eq('id', validTournamentId)
+          .single();
+
+        if (error || !tournament) {
+          socket.emit('error', { message: 'Tournament not found' });
+          return;
+        }
+
+        if (tournament.owner_id !== socket.userId) {
+          socket.emit('error', { message: 'Not authorized to access this tournament' });
+          return;
+        }
+      }
+
+      socket.join(`tournament:${validTournamentId}`);
 
       // Send current auction state (with DB restoration if needed)
-      const state = await getAuctionStateAsync(tournamentId);
+      const state = await getAuctionStateAsync(validTournamentId);
       socket.emit('auction:state', state);
     });
 
@@ -430,7 +557,11 @@ export const setupSocketHandlers = (io: Server) => {
     // But we can also handle direct socket events for faster updates
     // All admin actions require authentication and are rate limited
 
-    socket.on('auction:newPlayer', async ({ tournamentId, player }) => {
+    socket.on('auction:newPlayer', async (data: unknown) => {
+      const validated = validateSocketEvent(socket, newPlayerSchema, data);
+      if (!validated) return;
+
+      const { tournamentId, player } = validated;
       withRateLimit(socket, () => {
         requireAdmin(socket, () => {
           const state = updateAuctionState(tournamentId, {
@@ -438,14 +569,19 @@ export const setupSocketHandlers = (io: Server) => {
             currentBid: player.base_price,
             currentTeam: null,
             bidHistory: [],
-            status: 'bidding'
+            status: 'bidding',
+            auctionStarted: true // Mark auction as started
           });
           broadcastToAuctionRooms(io, tournamentId, 'auction:state', state);
         });
       });
     });
 
-    socket.on('auction:placeBid', ({ tournamentId, team, amount }) => {
+    socket.on('auction:placeBid', (data: unknown) => {
+      const validated = validateSocketEvent(socket, placeBidSchema, data);
+      if (!validated) return;
+
+      const { tournamentId, team, amount } = validated;
       withRateLimit(socket, () => {
         requireAdmin(socket, () => {
           const state = getAuctionState(tournamentId);
@@ -475,7 +611,15 @@ export const setupSocketHandlers = (io: Server) => {
     socket.on('auction:sold', ({ tournamentId }) => {
       withRateLimit(socket, () => {
         requireAdmin(socket, () => {
-          const state = updateAuctionState(tournamentId, { status: 'sold' });
+          const currentState = getAuctionState(tournamentId);
+          const state = updateAuctionState(tournamentId, {
+            status: 'sold',
+            // Save last player info for resume functionality
+            lastPlayer: currentState.currentPlayer,
+            lastStatus: 'sold',
+            lastTeam: currentState.currentTeam,
+            lastPrice: currentState.currentBid
+          });
           broadcastToAuctionRooms(io, tournamentId, 'auction:state', state);
           io.to(`summary:${tournamentId}`).emit('teams:updated');
           io.to(`tournament:${tournamentId}`).emit('stats:updated');
@@ -486,7 +630,15 @@ export const setupSocketHandlers = (io: Server) => {
     socket.on('auction:unsold', ({ tournamentId }) => {
       withRateLimit(socket, () => {
         requireAdmin(socket, () => {
-          const state = updateAuctionState(tournamentId, { status: 'unsold' });
+          const currentState = getAuctionState(tournamentId);
+          const state = updateAuctionState(tournamentId, {
+            status: 'unsold',
+            // Save last player info for resume functionality
+            lastPlayer: currentState.currentPlayer,
+            lastStatus: 'unsold',
+            lastTeam: null,
+            lastPrice: currentState.currentBid
+          });
           broadcastToAuctionRooms(io, tournamentId, 'auction:state', state);
         });
       });
@@ -527,7 +679,11 @@ export const setupSocketHandlers = (io: Server) => {
     });
 
     // Timer handlers (admin only)
-    socket.on('timer:start', ({ tournamentId, timeLeft, duration }) => {
+    socket.on('timer:start', (data: unknown) => {
+      const validated = validateSocketEvent(socket, timerSchema, data);
+      if (!validated || validated.timeLeft === undefined || validated.duration === undefined) return;
+
+      const { tournamentId, timeLeft, duration } = validated;
       withRateLimit(socket, () => {
         requireAdmin(socket, () => {
           const newState = updateAuctionState(tournamentId, {
@@ -570,10 +726,14 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
-    socket.on('chat:message', ({ tournamentId, userId, userName, message }) => {
+    socket.on('chat:message', (data: unknown) => {
+      const validated = validateSocketEvent(socket, chatMessageSchema, data);
+      if (!validated) return;
+
+      const { tournamentId, userId, userName, message } = validated;
       withRateLimit(socket, () => {
         const chatMsg: ChatMessage = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          id: generateSecureId(),
           tournamentId,
           userId,
           userName,
@@ -591,7 +751,7 @@ export const setupSocketHandlers = (io: Server) => {
       withRateLimit(socket, () => {
         requireAdmin(socket, () => {
           const chatMsg: ChatMessage = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+            id: generateSecureId(),
             tournamentId,
             userId: 'system',
             userName: 'System',
@@ -649,8 +809,79 @@ export const setupSocketHandlers = (io: Server) => {
       });
     });
 
+    // Overlay settings update (admin only) - broadcasts to overlay views
+    socket.on('overlay:settingsUpdate', (data: unknown) => {
+      const validated = validateSocketEvent(socket, overlaySettingsSchema, data);
+      if (!validated) return;
+
+      const { tournamentId, settings } = validated;
+      withRateLimit(socket, () => {
+        requireAdmin(socket, () => {
+          // Store accent color in auction state so new overlays get it
+          if (settings && typeof settings === 'object' && 'accentColor' in settings) {
+            const state = getAuctionState(tournamentId);
+            state.accentColor = settings.accentColor as string;
+          }
+          // Broadcast only to overlay views for real-time sync
+          io.to(`overlay:${tournamentId}`).emit('overlay:settingsUpdated', settings);
+        });
+      });
+    });
+
+    // =====================================================
+    // ADMIN PANEL SOCKET HANDLERS
+    // =====================================================
+
+    // Join admin dashboard room for real-time updates
+    socket.on('admin:join', () => {
+      withRateLimit(socket, () => {
+        // Admin room requires authentication (checked via isAdmin flag from token)
+        if (socket.isAdmin) {
+          socket.join('admin:dashboard');
+        } else {
+          socket.emit('error', { message: 'Admin access required' });
+        }
+      });
+    });
+
+    // Admin force stop auction (real-time broadcast)
+    socket.on('admin:auction:force-stop', async ({ tournamentId }) => {
+      withRateLimit(socket, () => {
+        if (!socket.isAdmin) {
+          socket.emit('error', { message: 'Admin access required' });
+          return;
+        }
+
+        // Reset auction state
+        const state = updateAuctionState(tournamentId, {
+          currentPlayer: null,
+          currentBid: 0,
+          currentTeam: null,
+          bidHistory: [],
+          status: 'idle',
+          timer: { timeLeft: 30, isRunning: false, duration: 30 }
+        });
+
+        // Broadcast to all rooms
+        broadcastToAuctionRooms(io, tournamentId, 'auction:state', state);
+        io.to(`tournament:${tournamentId}`).emit('auction:force-stopped', { by: 'admin' });
+      });
+    });
+
+    // Broadcast stats updates to admin dashboard
+    socket.on('admin:request-stats', () => {
+      withRateLimit(socket, () => {
+        if (!socket.isAdmin) {
+          socket.emit('error', { message: 'Admin access required' });
+          return;
+        }
+        // This would be enhanced to fetch real-time stats
+        // For now, admins poll via REST API
+        socket.emit('admin:stats:ack');
+      });
+    });
+
     socket.on('disconnect', () => {
-      console.log(`Client disconnected: ${socket.id}`);
       // Cleanup rate limit entry
       cleanupRateLimit(socket.id);
     });

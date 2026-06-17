@@ -299,11 +299,15 @@ export default function FireSoldAnimation({
             filter: `drop-shadow(0 0 40px ${FIRE_COLORS.orange}) drop-shadow(0 0 80px ${FIRE_COLORS.red})`,
           }}
           onError={(e) => {
-            // Fallback to text if image not found
+            // Fallback to text if image not found (using safe DOM manipulation)
             e.currentTarget.style.display = 'none';
             const parent = e.currentTarget.parentElement;
-            if (parent) {
-              parent.innerHTML = `<h1 class="text-9xl md:text-[10rem] font-black uppercase tracking-wider" style="background: linear-gradient(180deg, #ffffff 0%, ${FIRE_COLORS.yellow} 20%, ${FIRE_COLORS.orange} 50%, ${FIRE_COLORS.red} 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 40px ${FIRE_COLORS.orange});">SOLD!</h1>`;
+            if (parent && !parent.querySelector('h1')) {
+              const h1 = document.createElement('h1');
+              h1.className = 'text-9xl md:text-[10rem] font-black uppercase tracking-wider';
+              h1.style.cssText = `background: linear-gradient(180deg, #ffffff 0%, ${FIRE_COLORS.yellow} 20%, ${FIRE_COLORS.orange} 50%, ${FIRE_COLORS.red} 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 40px ${FIRE_COLORS.orange});`;
+              h1.textContent = 'SOLD!';
+              parent.appendChild(h1);
             }
           }}
         />

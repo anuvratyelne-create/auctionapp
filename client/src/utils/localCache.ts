@@ -39,7 +39,6 @@ class LocalCache {
   setTournamentId(tournamentId: string | null) {
     if (this.currentTournamentId !== tournamentId) {
       this.currentTournamentId = tournamentId;
-      console.log('[LocalCache] Tournament ID set:', tournamentId);
     }
   }
 
@@ -55,15 +54,12 @@ class LocalCache {
 
       // Check if cache is for current tournament
       if (cached.tournamentId !== this.currentTournamentId) {
-        console.log('[LocalCache] Cache miss - different tournament');
         return null;
       }
 
       // Return cached data (even if stale - we'll refresh in background)
-      console.log('[LocalCache] Cache hit:', key);
       return cached.data;
-    } catch (e) {
-      console.error('[LocalCache] Error reading cache:', e);
+    } catch {
       return null;
     }
   }
@@ -89,7 +85,6 @@ class LocalCache {
    */
   set<T>(key: string, data: T): void {
     if (!this.currentTournamentId) {
-      console.log('[LocalCache] No tournament ID, skipping cache');
       return;
     }
 
@@ -100,9 +95,7 @@ class LocalCache {
         tournamentId: this.currentTournamentId,
       };
       localStorage.setItem(key, JSON.stringify(cached));
-      console.log('[LocalCache] Cached:', key);
-    } catch (e) {
-      console.error('[LocalCache] Error saving cache:', e);
+    } catch {
       // If localStorage is full, clear old caches
       this.clearAll();
     }
@@ -114,9 +107,8 @@ class LocalCache {
   clear(key: string): void {
     try {
       localStorage.removeItem(key);
-      console.log('[LocalCache] Cleared:', key);
-    } catch (e) {
-      console.error('[LocalCache] Error clearing cache:', e);
+    } catch {
+      // Silently ignore clear errors
     }
   }
 
@@ -127,9 +119,10 @@ class LocalCache {
     Object.values(CACHE_KEYS).forEach(key => {
       try {
         localStorage.removeItem(key);
-      } catch (e) {}
+      } catch {
+        // Silently ignore
+      }
     });
-    console.log('[LocalCache] All caches cleared');
   }
 
   /**

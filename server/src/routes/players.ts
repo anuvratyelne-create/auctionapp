@@ -31,17 +31,29 @@ async function generatePlayerUID(tournamentId: string): Promise<string> {
   return `P${nextNum.toString().padStart(3, '0')}`;
 }
 
-// Get all players
+// Get all players (with optional pagination)
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, category_id, role_category } = req.query;
+    const { status, category_id, role_category, page, limit } = req.query;
+
+    // Pagination support (optional - if not provided, returns all)
+    const pageNum = page ? parseInt(page as string, 10) : null;
+    const limitNum = limit ? Math.min(parseInt(limit as string, 10), 200) : null; // Max 200 per page
+    const usePagination = pageNum !== null && limitNum !== null && pageNum > 0 && limitNum > 0;
 
     // Fetch players without joins first (faster query)
     let query = supabase
       .from('players')
-      .select('id, name, photo_url, player_uid, jersey_number, base_price, sold_price, status, stats, sequence_num, is_retained, retention_price, category_id, team_id')
+      .select('id, name, photo_url, player_uid, jersey_number, base_price, sold_price, status, stats, sequence_num, is_retained, retention_price, category_id, team_id',
+        usePagination ? { count: 'exact' } : undefined)
       .eq('tournament_id', req.tournamentId)
       .order('sequence_num', { ascending: true });
+
+    // Apply pagination if requested
+    if (usePagination) {
+      const offset = (pageNum - 1) * limitNum;
+      query = query.range(offset, offset + limitNum - 1);
+    }
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -57,7 +69,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       query = query.eq('category_id', category_id);
     }
 
-    const { data: players, error } = await query;
+    const { data: players, error, count } = await query;
 
     if (error) {
       console.error('Players fetch error:', error);
@@ -84,14 +96,31 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (role_category && typeof role_category === 'string') {
       const validRoles = getRolesByFilterCategory(role_category);
       if (validRoles.length > 0) {
-        enrichedPlayers = enrichedPlayers.filter((player: any) => {
-          const playerRole = player.stats?.role?.toLowerCase();
+        enrichedPlayers = enrichedPlayers.filter((player) => {
+          const stats = player.stats as Record<string, unknown> | undefined;
+          const playerRole = (stats?.role as string)?.toLowerCase();
           return playerRole && validRoles.some(r => r.toLowerCase() === playerRole);
         });
       }
     }
 
-    res.json(enrichedPlayers);
+    // Return paginated response with metadata if pagination was requested
+    if (usePagination && count !== null) {
+      const totalPages = Math.ceil(count / limitNum);
+      res.json({
+        data: enrichedPlayers,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: count,
+          totalPages,
+          hasMore: pageNum < totalPages
+        }
+      });
+    } else {
+      // Backward compatible - return array directly
+      res.json(enrichedPlayers);
+    }
   } catch (error) {
     console.error('Players route error:', error);
     res.status(500).json({ error: 'Failed to fetch players' });
@@ -519,11 +548,12 @@ router.post('/bulk-upsert', authenticateToken, async (req: AuthRequest, res: Res
             }
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         results.errors.push({
           row: p.rowNumber || i + 1,
           name: p.name || 'Unknown',
-          error: err.message || 'Unknown error',
+          error: errorMessage,
         });
       }
     }
@@ -532,9 +562,10 @@ router.post('/bulk-upsert', authenticateToken, async (req: AuthRequest, res: Res
     io.to(`tournament:${req.tournamentId}`).emit('players:updated');
 
     res.status(200).json(results);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Bulk upsert error:', error);
-    res.status(500).json({ error: error.message || 'Failed to upsert players' });
+    const errorMessage = error instanceof Error ? error.message : 'Failed to upsert players';
+    res.status(500).json({ error: errorMessage });
   }
 });
 

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Team } from '../../types';
 import { formatCompactIndian } from '../../utils/formatters';
 import TeamPreviewPopover from './TeamPreviewPopover';
+import { Loader2 } from 'lucide-react';
 
 interface TeamButtonsProps {
   teams: Team[];
@@ -9,6 +10,7 @@ interface TeamButtonsProps {
   currentTeamId?: string;
   disabled?: boolean;
   theme?: 'default' | 'fire' | 'premium';
+  loadingTeamId?: string | null;
 }
 
 export default function TeamButtons({
@@ -17,6 +19,7 @@ export default function TeamButtons({
   currentTeamId,
   disabled,
   theme = 'default',
+  loadingTeamId,
 }: TeamButtonsProps) {
   const [hoveredTeamId, setHoveredTeamId] = useState<string | null>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -54,7 +57,8 @@ export default function TeamButtons({
 
   const renderTeamButton = (team: Team, isTopRow: boolean) => {
     const isCurrentBidder = currentTeamId === team.id;
-    const isButtonDisabled = disabled || isCurrentBidder;
+    const isLoading = loadingTeamId === team.id;
+    const isButtonDisabled = disabled || isCurrentBidder || isLoading || !!loadingTeamId;
     const capacityColor = (team.max_bid || 0) > 10000
       ? 'bg-emerald-500'
       : (team.max_bid || 0) > 5000
@@ -107,8 +111,10 @@ export default function TeamButtons({
               : `${team.name} - Max: ${formatCompactIndian(team.max_bid)}`
           }
         >
-        {/* Team Logo */}
-        {team.logo_url ? (
+        {/* Team Logo or Loading Spinner */}
+        {isLoading ? (
+          <Loader2 className="w-7 h-7 animate-spin text-primary-400" />
+        ) : team.logo_url ? (
           <img
             src={team.logo_url}
             alt={team.short_name}

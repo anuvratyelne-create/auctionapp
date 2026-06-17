@@ -83,7 +83,7 @@ export default function Register() {
       }) as any;
 
       api.setToken(response.token);
-      setAuth(response.user, response.tournament, response.token);
+      setAuth(response.user, response.tournament, response.token, response.tournaments || []);
       navigate('/manage');
     } catch (err: any) {
       setError(err.message || 'Registration failed');

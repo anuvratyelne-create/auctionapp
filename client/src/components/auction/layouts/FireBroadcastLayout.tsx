@@ -7,6 +7,8 @@ import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
 import { User, Flame } from 'lucide-react';
 import FireIdleScreen from './FireIdleScreen';
+import AuctionResumeScreen from './AuctionResumeScreen';
+import CompletionScreen from './CompletionScreen';
 
 interface Sponsor {
   id: string;
@@ -25,7 +27,15 @@ interface FireBroadcastLayoutProps {
   timerSeconds?: number;
   timerKey?: number;
   onNewPlayer?: () => void;
+  onClose?: () => void;
   loading?: boolean;
+  // Auction lifecycle props
+  auctionStarted?: boolean;
+  lastPlayer?: Player | null;
+  lastStatus?: 'sold' | 'unsold' | null;
+  lastTeam?: Team | null;
+  lastPrice?: number;
+  availablePlayersCount?: number;
 }
 
 // Fire colors
@@ -258,11 +268,19 @@ export default function FireBroadcastLayout({
   currentPlayer,
   currentBid,
   currentTeam,
+  teams,
   status,
   timerSeconds = 15,
   timerKey = 0,
   onNewPlayer,
+  onClose,
   loading,
+  auctionStarted = false,
+  lastPlayer = null,
+  lastStatus = null,
+  lastTeam = null,
+  lastPrice = 0,
+  availablePlayersCount = 0,
 }: FireBroadcastLayoutProps) {
   const { showSponsors, sponsorRotationInterval, displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -295,12 +313,43 @@ export default function FireBroadcastLayout({
 
   return (
     <div className="relative w-full h-full min-h-screen overflow-x-hidden" style={{ background: '#0a0505' }}>
-      {/* Full Screen Idle Welcome Screen when no player selected */}
-      {!currentPlayer && tournament && (
+      {/* New Player Screen - Only when players are available */}
+      {!currentPlayer && tournament && tournament.status !== 'completed' && availablePlayersCount > 0 && (
         <FireIdleScreen
           tournament={tournament}
           onNewPlayer={onNewPlayer}
+          onClose={onClose}
           loading={loading}
+        />
+      )}
+
+      {/* Resume Auction Screen - When no players available but auction not completed */}
+      {!currentPlayer && tournament && tournament.status !== 'completed' && availablePlayersCount === 0 && (
+        <AuctionResumeScreen
+          tournament={tournament}
+          lastPlayer={lastPlayer}
+          lastStatus={lastStatus}
+          lastTeam={lastTeam}
+          lastPrice={lastPrice}
+          availablePlayers={0}
+          onNewPlayer={onNewPlayer}
+          onClose={onClose}
+          loading={loading}
+          theme="fire"
+        />
+      )}
+
+      {/* Completion Screen - Only when admin marks tournament as completed */}
+      {!currentPlayer && tournament && tournament.status === 'completed' && (
+        <CompletionScreen
+          tournament={tournament}
+          stats={{
+            totalPlayers: teams.reduce((sum, t) => sum + (t.player_count || 0), 0),
+            totalSpent: teams.reduce((sum, t) => sum + (t.spent_points || 0), 0),
+            teamsCount: teams.length,
+          }}
+          theme="fire"
+          onClose={onClose}
         />
       )}
 

@@ -155,14 +155,13 @@ export function useAuctionHandlers({
     const newBid = currentBid - increment;
 
     if (newBid < basePrice) {
-      console.log('Cannot decrease below base price:', basePrice);
       return;
     }
 
     try {
       await api.incrementBid(newBid);
-    } catch (error: any) {
-      console.error('Failed to decrement bid:', error);
+    } catch {
+      // Failed to decrement bid - silently ignore
     }
   }, [currentPlayer, currentBid, status, teams]);
 

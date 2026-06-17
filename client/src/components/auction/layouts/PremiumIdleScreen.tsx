@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
-import { Trophy, Sparkles, UserPlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Trophy, Sparkles, UserPlus, X } from 'lucide-react';
 import { getPremiumBackground } from '../../../config/premiumBackgrounds';
 import BroadcasterLogo from '../../common/BroadcasterLogo';
 
@@ -12,6 +13,7 @@ interface PremiumIdleScreenProps {
   };
   backgroundId?: string;
   onNewPlayer?: () => void;
+  onClose?: () => void;
   loading?: boolean;
 }
 
@@ -78,7 +80,8 @@ const SpotlightBeams = memo(function SpotlightBeams() {
   );
 });
 
-export default memo(function PremiumIdleScreen({ tournament, backgroundId, onNewPlayer, loading }: PremiumIdleScreenProps) {
+export default memo(function PremiumIdleScreen({ tournament, backgroundId, onNewPlayer, onClose, loading }: PremiumIdleScreenProps) {
+  const navigate = useNavigate();
   const background = backgroundId ? getPremiumBackground(backgroundId) : null;
 
   return (
@@ -110,6 +113,24 @@ export default memo(function PremiumIdleScreen({ tournament, backgroundId, onNew
           }}
         />
       )}
+
+      {/* Close Button - Top Left */}
+      <button
+        onClick={() => {
+          if (onClose) {
+            onClose();
+          } else {
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => {});
+            }
+            navigate('/manage');
+          }
+        }}
+        className="absolute top-6 left-6 p-3 rounded-xl bg-black/60 hover:bg-red-600 border border-amber-500/30 hover:border-red-500 text-white transition-all z-[100] backdrop-blur-sm shadow-lg"
+        title="Exit to Dashboard (or press ESC)"
+      >
+        <X size={24} />
+      </button>
 
       {/* Broadcaster Logo - Top Right */}
       {tournament?.broadcaster_logo_url && (

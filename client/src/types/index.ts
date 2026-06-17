@@ -20,6 +20,12 @@ export interface Tournament {
   owner_id?: string;
   created_at: string;
   updated_at?: string;
+  overlay_settings?: OverlaySettings;
+  // Admin approval fields
+  approval_status?: 'pending' | 'approved' | 'rejected';
+  approved_by?: string;
+  approved_at?: string;
+  admin_notes?: string;
 }
 
 export interface Team {
@@ -101,6 +107,13 @@ export interface AuctionState {
   timer?: TimerState;
   rtmEnabled?: boolean;
   rtmTeam?: Team | null;
+  accentColor?: string; // Current admin theme accent color for overlay sync
+  // Auction lifecycle tracking
+  auctionStarted?: boolean; // True once first player is ever called
+  lastPlayer?: Player | null; // Last player that was sold/unsold
+  lastStatus?: 'sold' | 'unsold' | null; // Status of last player
+  lastTeam?: Team | null; // Team that won last player (if sold)
+  lastPrice?: number; // Final price of last player
 }
 
 export interface ChatMessage {
@@ -162,4 +175,17 @@ export interface AuthState {
   tournament: Tournament | null;
   token: string | null;
   isAuthenticated: boolean;
+}
+
+// Overlay theme types - matches admin layout themes
+export type OverlayTheme = 'auto' | 'classic' | 'fire' | 'city' | 'premium' | 'premium-standard';
+export type OverlayMode = 'minimal' | 'standard' | 'full';
+
+export interface OverlaySettings {
+  theme: OverlayTheme;           // 'auto' = match admin layout
+  mode: OverlayMode;
+  accentColor: string;           // Hex color for accent
+  showParticles: boolean;        // Enable particle effects
+  showTimer: boolean;            // Show countdown timer
+  showTeamLogo: boolean;         // Show team logo in overlay
 }

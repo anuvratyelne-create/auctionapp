@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../../utils/api';
 import { useAuthStore } from '../../stores/authStore';
-import { Team, Category, Player } from '../../types';
+import { Team, Category, Player, OverlaySettings, OverlayTheme, OverlayMode } from '../../types';
 import { formatCompactIndian } from '../../utils/formatters';
 import { PLAYER_CATEGORIES, getRoleShortLabel, getRoleIcon, getRoleLabel, convertLegacyRole } from '../../config/playerRoles';
 import ExportSection from '../export/ExportSection';
@@ -12,6 +12,8 @@ import LayoutSelector from '../auction/LayoutSelector';
 import ThemeSelector from '../auction/ThemeSelector';
 import { cityBackgrounds } from '../../config/cityBackgrounds';
 import { premiumBackgrounds } from '../../config/premiumBackgrounds';
+import { defaultOverlaySettings } from '../../config/overlayThemes';
+import { socketClient } from '../../socket/client';
 import {
   Users,
   UserPlus,
@@ -37,6 +39,10 @@ import {
   Layout,
   FileSpreadsheet,
   Download,
+  Monitor,
+  Eye,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import ExcelImportModal from '../import/ExcelImportModal';
 import { downloadExcelTemplate } from '../import/ExcelTemplateGenerator';
@@ -134,11 +140,28 @@ export default function ManagePanel() {
     { key: 'settings', label: 'Settings', icon: Settings },
   ] as const;
 
+  const isCompleted = tournament?.status === 'completed';
+
   return (
     <div className="p-6 min-h-screen">
       <div className="max-w-7xl mx-auto">
+        {/* Auction Completed Banner */}
+        {isCompleted && (
+          <div className="mb-6 p-4 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-500/30 rounded-full flex items-center justify-center">
+                <Check size={24} className="text-green-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-green-400">Auction Completed</h3>
+                <p className="text-sm text-slate-400">This auction has been marked as completed. Data is now read-only.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-3xl font-bold text-white">Manage</h2>
+          <h2 className="text-3xl font-bold text-white">Manage {isCompleted && <span className="text-sm text-green-400 ml-2">(View Only)</span>}</h2>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
@@ -152,8 +175,8 @@ export default function ManagePanel() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <button
             onClick={handleUpdatePoints}
-            disabled={loading}
-            className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 hover:border-primary-500/50 transition-all group"
+            disabled={loading || isCompleted}
+            className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 transition-all group ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary-500/50'}`}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-primary-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <RefreshCw size={24} className="text-primary-400 mb-2" />
@@ -163,8 +186,8 @@ export default function ManagePanel() {
 
           <button
             onClick={handleReauctionUnsold}
-            disabled={loading}
-            className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 hover:border-amber-500/50 transition-all group"
+            disabled={loading || isCompleted}
+            className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 transition-all group ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'hover:border-amber-500/50'}`}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-amber-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <RotateCcw size={24} className="text-amber-400 mb-2" />
@@ -174,7 +197,8 @@ export default function ManagePanel() {
 
           <button
             onClick={handleToggleDisplayMode}
-            className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 hover:border-green-500/50 transition-all group"
+            disabled={isCompleted}
+            className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 transition-all group ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'hover:border-green-500/50'}`}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-green-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             {tournament?.player_display_mode === 'random' ? (
@@ -190,8 +214,8 @@ export default function ManagePanel() {
 
           <button
             onClick={handleResetAuction}
-            disabled={loading}
-            className="relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 hover:border-red-500/50 transition-all group"
+            disabled={loading || isCompleted}
+            className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-slate-700/50 transition-all group ${isCompleted ? 'opacity-50 cursor-not-allowed' : 'hover:border-red-500/50'}`}
           >
             <div className="absolute inset-0 bg-gradient-to-br from-red-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <Trash2 size={24} className="text-red-400 mb-2" />
@@ -1401,6 +1425,9 @@ function SettingsTab() {
       {/* Auction Settings - Timer & Sound */}
       <AuctionSettingsCard />
 
+      {/* Overlay Settings - OBS/Streaming customization */}
+      <OverlaySettingsCard />
+
       {/* Player Registration QR Code & Share Links */}
       {(shareCode || tournament) && (
         <div className="relative overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm p-6">
@@ -1545,6 +1572,306 @@ function SettingsTab() {
       )}
 
       <ExportSection />
+    </div>
+  );
+}
+
+// Overlay Settings Card for OBS/Streaming overlays
+function OverlaySettingsCard() {
+  const { tournament, updateTournament } = useAuthStore();
+  const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(
+    tournament?.overlay_settings || defaultOverlaySettings
+  );
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const shareCode = tournament?.share_code || '';
+  const baseUrl = window.location.origin;
+
+  // Update local state when tournament changes
+  useEffect(() => {
+    if (tournament?.overlay_settings) {
+      setOverlaySettings(tournament.overlay_settings);
+    }
+  }, [tournament?.overlay_settings]);
+
+  const handleSettingChange = async <K extends keyof OverlaySettings>(
+    key: K,
+    value: OverlaySettings[K]
+  ) => {
+    const newSettings = { ...overlaySettings, [key]: value };
+    setOverlaySettings(newSettings);
+
+    // Save to server
+    setSaving(true);
+    try {
+      await api.updateTournament({ overlay_settings: newSettings });
+      // Update local auth store
+      if (tournament) {
+        updateTournament({ ...tournament, overlay_settings: newSettings });
+      }
+      // Broadcast to connected overlays
+      if (tournament?.id) {
+        socketClient.emit('overlay:settingsUpdate', { tournamentId: tournament.id, settings: newSettings });
+      }
+    } catch (error) {
+      console.error('Failed to save overlay settings:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getOverlayUrl = () => {
+    const params = new URLSearchParams();
+    if (overlaySettings.theme !== 'auto') {
+      params.set('theme', overlaySettings.theme);
+    }
+    // Map 'full' to 'premium' for URL (OverlayView uses 'premium' for full broadcast mode)
+    if (overlaySettings.mode !== 'standard') {
+      const modeParam = overlaySettings.mode === 'full' ? 'premium' : overlaySettings.mode;
+      params.set('mode', modeParam);
+    }
+    if (overlaySettings.accentColor !== '#22c55e') {
+      params.set('color', overlaySettings.accentColor);
+    }
+    const queryString = params.toString();
+    return `${baseUrl}/overlay/${shareCode}${queryString ? `?${queryString}` : ''}`;
+  };
+
+  const copyOverlayUrl = () => {
+    navigator.clipboard.writeText(getOverlayUrl());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openPreview = () => {
+    window.open(getOverlayUrl(), '_blank', 'width=1280,height=720');
+  };
+
+  const themeOptions: { value: OverlayTheme; label: string; description: string; colors: string[] }[] = [
+    { value: 'auto', label: 'Auto-sync', description: 'Match admin layout', colors: ['#22c55e', '#0ea5e9'] },
+    { value: 'classic', label: 'Classic', description: 'Clean, professional', colors: ['#22c55e', '#3b82f6'] },
+    { value: 'fire', label: 'Fire', description: 'Embers & flames', colors: ['#f97316', '#ef4444', '#fbbf24'] },
+    { value: 'city', label: 'City', description: 'Neon cyberpunk', colors: ['#06b6d4', '#a855f7', '#ec4899'] },
+    { value: 'premium', label: 'Premium', description: 'Luxury gold', colors: ['#d4af37', '#ffd700', '#b8860b'] },
+  ];
+
+  const modeOptions: { value: OverlayMode; label: string; description: string }[] = [
+    { value: 'minimal', label: 'Minimal', description: 'Small floating card' },
+    { value: 'standard', label: 'Standard', description: 'Balanced layout' },
+    { value: 'full', label: 'Full', description: 'Full broadcast view' },
+  ];
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm p-6">
+      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-purple-500/5 pointer-events-none" />
+
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center">
+              <Monitor size={20} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white text-lg">Overlay Settings</h3>
+              <p className="text-xs text-slate-400">Customize OBS/streaming overlays</p>
+            </div>
+          </div>
+          {saving && (
+            <span className="text-xs text-cyan-400 animate-pulse">Saving...</span>
+          )}
+        </div>
+
+        <div className="space-y-6">
+          {/* Theme Selection */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Palette size={18} className="text-purple-400" />
+              <label className="text-sm text-slate-400">Overlay Theme</label>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {themeOptions.map((theme) => (
+                <button
+                  key={theme.value}
+                  onClick={() => handleSettingChange('theme', theme.value)}
+                  className={`relative p-3 rounded-xl text-left transition-all ${
+                    overlaySettings.theme === theme.value
+                      ? 'bg-gradient-to-br from-slate-700 to-slate-800 ring-2 ring-cyan-500 scale-[1.02]'
+                      : 'bg-slate-700/30 hover:bg-slate-700/50 hover:scale-[1.01]'
+                  }`}
+                >
+                  {/* Color preview dots */}
+                  <div className="flex gap-1 mb-2">
+                    {theme.colors.map((color, i) => (
+                      <div
+                        key={i}
+                        className="w-3 h-3 rounded-full"
+                        style={{ background: color, boxShadow: `0 0 8px ${color}50` }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-sm font-medium text-white">{theme.label}</p>
+                  <p className="text-xs text-slate-400">{theme.description}</p>
+                  {overlaySettings.theme === theme.value && (
+                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
+                      <Check size={12} className="text-white" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mode Selection */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Layout size={18} className="text-blue-400" />
+              <label className="text-sm text-slate-400">Display Mode</label>
+            </div>
+            <div className="flex gap-2">
+              {modeOptions.map((mode) => (
+                <button
+                  key={mode.value}
+                  onClick={() => handleSettingChange('mode', mode.value)}
+                  className={`flex-1 p-3 rounded-xl text-center transition-all ${
+                    overlaySettings.mode === mode.value
+                      ? 'bg-blue-600/30 border border-blue-500/50 text-white'
+                      : 'bg-slate-700/30 text-slate-400 hover:bg-slate-700/50 hover:text-white'
+                  }`}
+                >
+                  <p className="font-medium">{mode.label}</p>
+                  <p className="text-xs opacity-70">{mode.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Effect Toggles */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Particles */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-700/30">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-amber-400" />
+                <span className="text-sm text-white">Particles</span>
+              </div>
+              <button
+                onClick={() => handleSettingChange('showParticles', !overlaySettings.showParticles)}
+                className={`relative w-12 h-6 rounded-full transition-all ${
+                  overlaySettings.showParticles ? 'bg-amber-500' : 'bg-slate-600'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                    overlaySettings.showParticles ? 'left-7' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Timer */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-700/30">
+              <div className="flex items-center gap-2">
+                <Timer size={18} className="text-green-400" />
+                <span className="text-sm text-white">Timer</span>
+              </div>
+              <button
+                onClick={() => handleSettingChange('showTimer', !overlaySettings.showTimer)}
+                className={`relative w-12 h-6 rounded-full transition-all ${
+                  overlaySettings.showTimer ? 'bg-green-500' : 'bg-slate-600'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                    overlaySettings.showTimer ? 'left-7' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Team Logo */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-700/30">
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-blue-400" />
+                <span className="text-sm text-white">Team Logo</span>
+              </div>
+              <button
+                onClick={() => handleSettingChange('showTeamLogo', !overlaySettings.showTeamLogo)}
+                className={`relative w-12 h-6 rounded-full transition-all ${
+                  overlaySettings.showTeamLogo ? 'bg-blue-500' : 'bg-slate-600'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                    overlaySettings.showTeamLogo ? 'left-7' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Accent Color */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Palette size={18} className="text-pink-400" />
+              <label className="text-sm text-slate-400">Accent Color</label>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={overlaySettings.accentColor}
+                onChange={(e) => handleSettingChange('accentColor', e.target.value)}
+                className="w-12 h-10 rounded-lg cursor-pointer border-0 bg-transparent"
+              />
+              <input
+                type="text"
+                value={overlaySettings.accentColor}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                    handleSettingChange('accentColor', e.target.value);
+                  }
+                }}
+                className="flex-1 px-4 py-2 rounded-lg bg-slate-700/50 border border-slate-600/50 text-white text-sm font-mono"
+                placeholder="#22c55e"
+              />
+              <div
+                className="w-10 h-10 rounded-lg"
+                style={{ background: overlaySettings.accentColor, boxShadow: `0 0 20px ${overlaySettings.accentColor}50` }}
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-4 border-t border-slate-700/50">
+            <button
+              onClick={openPreview}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-medium hover:from-cyan-500 hover:to-blue-500 transition-all"
+            >
+              <Eye size={18} />
+              Preview Overlay
+            </button>
+            <button
+              onClick={copyOverlayUrl}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-all ${
+                copied
+                  ? 'bg-green-600/20 border-green-500/50 text-green-400'
+                  : 'bg-slate-700/50 border-slate-600/50 text-white hover:bg-slate-700'
+              }`}
+            >
+              {copied ? <Check size={18} /> : <Copy size={18} />}
+              {copied ? 'Copied!' : 'Copy URL'}
+            </button>
+          </div>
+
+          {/* URL Display */}
+          <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-700/50">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-400">OBS Browser Source URL</span>
+              <ExternalLink size={12} className="text-slate-500" />
+            </div>
+            <p className="text-xs text-cyan-400 font-mono break-all">{getOverlayUrl()}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

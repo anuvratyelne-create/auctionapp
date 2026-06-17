@@ -21,6 +21,11 @@ const initialState: AuctionState = {
   currentTeam: null,
   bidHistory: [],
   status: 'idle',
+  auctionStarted: false,
+  lastPlayer: null,
+  lastStatus: null,
+  lastTeam: null,
+  lastPrice: 0,
 };
 
 export const useAuctionStore = create<AuctionStore>((set) => ({

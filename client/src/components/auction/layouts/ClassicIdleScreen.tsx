@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
-import { Trophy, Sparkles, UserPlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Trophy, Sparkles, UserPlus, X } from 'lucide-react';
 import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface ClassicIdleScreenProps {
@@ -11,6 +12,7 @@ interface ClassicIdleScreenProps {
   };
   accentColor?: string;
   onNewPlayer?: () => void;
+  onClose?: () => void;
   loading?: boolean;
 }
 
@@ -48,7 +50,9 @@ const FloatingParticles = memo(function FloatingParticles({ accentColor }: { acc
   );
 });
 
-export default memo(function ClassicIdleScreen({ tournament, accentColor = '#fbbf24', onNewPlayer, loading }: ClassicIdleScreenProps) {
+export default memo(function ClassicIdleScreen({ tournament, accentColor = '#fbbf24', onNewPlayer, onClose, loading }: ClassicIdleScreenProps) {
+  const navigate = useNavigate();
+
   return (
     <div
       className="fixed inset-0 flex flex-col items-center justify-center z-50"
@@ -57,6 +61,25 @@ export default memo(function ClassicIdleScreen({ tournament, accentColor = '#fbb
         background: 'linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(15,23,42,0.98) 50%, rgba(15,23,42,1) 100%)',
       }}
     >
+      {/* Close Button - Top Left - Always visible */}
+      <button
+        onClick={() => {
+          if (onClose) {
+            onClose();
+          } else {
+            // Fallback: exit fullscreen and go to dashboard
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => {});
+            }
+            navigate('/manage');
+          }
+        }}
+        className="absolute top-6 left-6 p-3 rounded-xl bg-slate-800/90 hover:bg-red-600 border border-slate-600 hover:border-red-500 text-white transition-all z-[100] backdrop-blur-sm shadow-lg"
+        title="Exit to Dashboard (or press ESC)"
+      >
+        <X size={24} />
+      </button>
+
       {/* Broadcaster Logo - Top Right */}
       {tournament?.broadcaster_logo_url && (
         <BroadcasterLogo

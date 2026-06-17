@@ -1,16 +1,46 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../utils/api';
 import { Sponsor } from '../../types';
-import { Trophy, Sparkles, Copy, Check } from 'lucide-react';
+import { Trophy, Sparkles, Copy, Check, ChevronDown, Plus, RefreshCw } from 'lucide-react';
+import ConnectionStatus from '../common/ConnectionStatus';
 
 export default function Header() {
-  const { tournament } = useAuthStore();
+  const { tournament, tournaments, switchTournament } = useAuthStore();
   const navigate = useNavigate();
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [showTournamentDropdown, setShowTournamentDropdown] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowTournamentDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSwitchTournament = async (tournamentId: string) => {
+    if (tournamentId === tournament?.id) {
+      setShowTournamentDropdown(false);
+      return;
+    }
+    setSwitching(true);
+    const success = await switchTournament(tournamentId);
+    setSwitching(false);
+    if (success) {
+      setShowTournamentDropdown(false);
+      // Reload the page to refresh all data
+      window.location.reload();
+    }
+  };
 
   useEffect(() => {
     loadSponsors();
@@ -97,19 +127,81 @@ export default function Header() {
           {/* Tournament Name - Fancy */}
           <div className="flex-1 text-center px-8">
             <div className="inline-flex flex-col items-center">
-              {/* Main Title with Gradient */}
-              <div className="relative">
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight">
-                  <span className="bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 bg-clip-text text-transparent drop-shadow-lg">
-                    {tournament?.name || 'Player Auction'}
-                  </span>
-                </h1>
+              {/* Main Title with Gradient + Dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => tournaments.length > 1 && setShowTournamentDropdown(!showTournamentDropdown)}
+                  className={`group flex items-center gap-2 ${tournaments.length > 1 ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+                >
+                  <h1 className="text-4xl md:text-5xl lg:text-6xl font-black tracking-tight">
+                    <span className="bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 bg-clip-text text-transparent drop-shadow-lg">
+                      {tournament?.name || 'Player Auction'}
+                    </span>
+                  </h1>
+                  {tournaments.length > 1 && (
+                    <ChevronDown
+                      size={24}
+                      className={`text-amber-400 transition-transform ${showTournamentDropdown ? 'rotate-180' : ''}`}
+                    />
+                  )}
+                </button>
                 {/* Glow effect behind text */}
-                <div className="absolute inset-0 text-4xl md:text-5xl lg:text-6xl font-black tracking-tight blur-lg opacity-50">
+                <div className="absolute inset-0 text-4xl md:text-5xl lg:text-6xl font-black tracking-tight blur-lg opacity-50 pointer-events-none">
                   <span className="text-amber-400">
                     {tournament?.name || 'Player Auction'}
                   </span>
                 </div>
+
+                {/* Tournament Dropdown */}
+                {showTournamentDropdown && tournaments.length > 1 && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                    <div className="p-2 border-b border-slate-700">
+                      <p className="text-xs text-slate-400 px-2">Switch Tournament</p>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {tournaments.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleSwitchTournament(t.id)}
+                          disabled={switching}
+                          className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-800 transition-colors ${
+                            t.id === tournament?.id ? 'bg-slate-800/50' : ''
+                          }`}
+                        >
+                          {t.logo_url ? (
+                            <img src={t.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
+                              <span className="text-white font-bold text-sm">{t.name?.charAt(0)}</span>
+                            </div>
+                          )}
+                          <div className="flex-1 text-left">
+                            <p className="text-white font-medium text-sm">{t.name}</p>
+                            <p className="text-slate-500 text-xs">{t.share_code}</p>
+                          </div>
+                          {t.id === tournament?.id && (
+                            <Check size={16} className="text-emerald-400" />
+                          )}
+                          {switching && t.id !== tournament?.id && (
+                            <RefreshCw size={14} className="text-slate-400 animate-spin" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="p-2 border-t border-slate-700">
+                      <button
+                        onClick={() => {
+                          setShowTournamentDropdown(false);
+                          navigate('/manage/settings');
+                        }}
+                        className="w-full px-4 py-2 flex items-center justify-center gap-2 text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                      >
+                        <Plus size={16} />
+                        <span className="text-sm font-medium">Create New Tournament</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Decorative line */}
@@ -119,21 +211,24 @@ export default function Header() {
                 <div className="h-px w-12 bg-gradient-to-r from-transparent via-amber-500 to-transparent" />
               </div>
 
-              {/* Share Code */}
-              {tournament?.share_code && tournament.share_code !== 'undefined' && (
-                <button
-                  onClick={copyShareCode}
-                  className="mt-2 flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/60 border border-slate-700/50 hover:border-primary-500/50 transition-all group"
-                >
-                  <span className="text-xs text-slate-400">Share Code:</span>
-                  <span className="font-mono font-bold text-primary-400 tracking-wider">{tournament.share_code}</span>
-                  {copied ? (
-                    <Check size={12} className="text-emerald-400" />
-                  ) : (
-                    <Copy size={12} className="text-slate-500 group-hover:text-primary-400 transition-colors" />
-                  )}
-                </button>
-              )}
+              {/* Share Code & Connection Status */}
+              <div className="mt-2 flex items-center gap-3">
+                {tournament?.share_code && tournament.share_code !== 'undefined' && (
+                  <button
+                    onClick={copyShareCode}
+                    className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/60 border border-slate-700/50 hover:border-primary-500/50 transition-all group"
+                  >
+                    <span className="text-xs text-slate-400">Share Code:</span>
+                    <span className="font-mono font-bold text-primary-400 tracking-wider">{tournament.share_code}</span>
+                    {copied ? (
+                      <Check size={12} className="text-emerald-400" />
+                    ) : (
+                      <Copy size={12} className="text-slate-500 group-hover:text-primary-400 transition-colors" />
+                    )}
+                  </button>
+                )}
+                <ConnectionStatus />
+              </div>
             </div>
           </div>
 

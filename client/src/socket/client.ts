@@ -3,20 +3,60 @@ import { AuctionState, TimerState, ChatMessage, DraftPick } from '../types';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '';
 
+type ViewType = 'tournament' | 'live' | 'summary' | 'overlay';
+type ConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+type ConnectionStatusCallback = (status: ConnectionStatus) => void;
+
 class SocketClient {
   private socket: Socket | null = null;
   private tournamentId: string | null = null;
+  private pendingView: ViewType | null = null;
+  private connectionStatus: ConnectionStatus = 'disconnected';
+  private statusCallbacks: Set<ConnectionStatusCallback> = new Set();
 
-  connect(tournamentId: string) {
+  private setConnectionStatus(status: ConnectionStatus) {
+    this.connectionStatus = status;
+    this.statusCallbacks.forEach(cb => cb(status));
+  }
+
+  // Subscribe to connection status changes
+  onConnectionStatusChange(callback: ConnectionStatusCallback): () => void {
+    this.statusCallbacks.add(callback);
+    // Immediately call with current status
+    callback(this.connectionStatus);
+    // Return unsubscribe function
+    return () => {
+      this.statusCallbacks.delete(callback);
+    };
+  }
+
+  getConnectionStatus(): ConnectionStatus {
+    return this.connectionStatus;
+  }
+
+  connect(tournamentId: string, viewType: ViewType = 'tournament') {
     if (this.socket?.connected && this.tournamentId === tournamentId) {
+      // Already connected to this tournament, just join the view
+      this.joinView(viewType, tournamentId);
       return;
     }
 
     this.disconnect();
     this.tournamentId = tournamentId;
+    this.pendingView = viewType;
+    this.setConnectionStatus('connecting');
 
-    // Get auth token from localStorage for authenticated socket connections
-    const token = localStorage.getItem('token');
+    // Get auth token from zustand persisted state
+    let token: string | null = null;
+    try {
+      const authData = localStorage.getItem('auction-auth');
+      if (authData) {
+        const parsed = JSON.parse(authData);
+        token = parsed?.state?.token || null;
+      }
+    } catch (e) {
+      console.warn('[SocketClient] Failed to parse auth token:', e);
+    }
 
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -25,16 +65,22 @@ class SocketClient {
     });
 
     this.socket.on('connect', () => {
-      console.log('Socket connected:', this.socket?.id);
+      this.setConnectionStatus('connected');
+      // Join the tournament room first
       this.socket?.emit('join:tournament', tournamentId);
+      // Then join the specific view room if needed
+      if (this.pendingView && this.pendingView !== 'tournament') {
+        this.joinView(this.pendingView, tournamentId);
+      }
+      this.pendingView = null;
     });
 
     this.socket.on('disconnect', () => {
-      console.log('Socket disconnected');
+      this.setConnectionStatus('disconnected');
     });
 
-    this.socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+    this.socket.on('connect_error', () => {
+      this.setConnectionStatus('error');
     });
 
     this.socket.on('error', (error: { message: string }) => {
@@ -42,29 +88,48 @@ class SocketClient {
     });
 
     this.socket.on('server:shutdown', () => {
-      console.log('Server is shutting down, will reconnect automatically');
+      // Server is shutting down, will reconnect automatically
     });
   }
 
-  joinLiveView(tournamentId: string) {
-    if (!this.socket?.connected) {
-      this.connect(tournamentId);
+  private joinView(viewType: ViewType, tournamentId: string) {
+    if (!this.socket) return;
+
+    switch (viewType) {
+      case 'live':
+        this.socket.emit('join:live', tournamentId);
+        break;
+      case 'summary':
+        this.socket.emit('join:summary', tournamentId);
+        break;
+      case 'overlay':
+        this.socket.emit('join:overlay', tournamentId);
+        break;
     }
-    this.socket?.emit('join:live', tournamentId);
+  }
+
+  joinLiveView(tournamentId: string) {
+    if (this.socket?.connected) {
+      this.joinView('live', tournamentId);
+    } else {
+      this.connect(tournamentId, 'live');
+    }
   }
 
   joinSummaryView(tournamentId: string) {
-    if (!this.socket?.connected) {
-      this.connect(tournamentId);
+    if (this.socket?.connected) {
+      this.joinView('summary', tournamentId);
+    } else {
+      this.connect(tournamentId, 'summary');
     }
-    this.socket?.emit('join:summary', tournamentId);
   }
 
   joinOverlayView(tournamentId: string) {
-    if (!this.socket?.connected) {
-      this.connect(tournamentId);
+    if (this.socket?.connected) {
+      this.joinView('overlay', tournamentId);
+    } else {
+      this.connect(tournamentId, 'overlay');
     }
-    this.socket?.emit('join:overlay', tournamentId);
   }
 
   onAuctionState(callback: (state: AuctionState) => void) {
@@ -225,6 +290,15 @@ class SocketClient {
     this.socket?.emit(event, data);
   }
 
+  // Overlay settings events
+  emitOverlaySettingsUpdate(tournamentId: string, settings: any) {
+    this.socket?.emit('overlay:settingsUpdate', { tournamentId, settings });
+  }
+
+  onOverlaySettingsUpdated(callback: (settings: any) => void) {
+    this.socket?.on('overlay:settingsUpdated', callback);
+  }
+
   removeAllListeners() {
     this.socket?.removeAllListeners('auction:state');
     this.socket?.removeAllListeners('teams:updated');
@@ -235,12 +309,14 @@ class SocketClient {
     this.socket?.removeAllListeners('chat:message');
     this.socket?.removeAllListeners('draft:update');
     this.socket?.removeAllListeners('rounds:update');
+    this.socket?.removeAllListeners('overlay:settingsUpdated');
   }
 
   disconnect() {
     this.socket?.disconnect();
     this.socket = null;
     this.tournamentId = null;
+    this.setConnectionStatus('disconnected');
   }
 
   // Reconnect with fresh auth token (call after login/logout/token change)

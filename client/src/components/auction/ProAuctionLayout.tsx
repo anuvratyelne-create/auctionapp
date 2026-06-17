@@ -20,14 +20,16 @@ import FortuneWheel from './FortuneWheel';
 import PlayerEntryAnimation from './PlayerEntryAnimation';
 import BudgetAlerts from '../common/BudgetAlerts';
 import { PremiumBroadcastLayout, FireBroadcastLayout, CityBroadcastLayout, BreakScreen } from './layouts';
+import CompletionScreen from './layouts/CompletionScreen';
 import PremiumPlayerEntry from './layouts/PremiumPlayerEntry';
 import FirePlayerEntry from './FirePlayerEntry';
 import FireSoldAnimation from './FireSoldAnimation';
 import CityPlayerEntry from './CityPlayerEntry';
 import CitySoldAnimation from './CitySoldAnimation';
 import ClassicIdleScreen from './layouts/ClassicIdleScreen';
+import AuctionResumeScreen from './layouts/AuctionResumeScreen';
 import { getBidIncrement } from '../../config/budgetPresets';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout, Undo2, Pause } from 'lucide-react';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout, Undo2, Pause, Loader2 } from 'lucide-react';
 import RoleFilterDropdown from './RoleFilterDropdown';
 
 interface ProAuctionLayoutProps {
@@ -35,7 +37,7 @@ interface ProAuctionLayoutProps {
 }
 
 export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
-  const { tournament } = useAuthStore();
+  const { tournament, updateTournament } = useAuthStore();
   const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode, showSponsors, sponsorRotationInterval, isAuctionPaused, setAuctionPaused } = useUIStore();
   const template = getTemplate(selectedThemeId);
   const {
@@ -48,8 +50,21 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     setAuctionState,
   } = useAuctionStore();
 
+  // Get auction lifecycle state from store (these come from socket updates)
+  const auctionState = useAuctionStore();
+  const auctionStarted = auctionState.auctionStarted ?? false;
+  const lastPlayer = auctionState.lastPlayer ?? null;
+  const lastStatus = auctionState.lastStatus ?? null;
+  const lastTeam = auctionState.lastTeam ?? null;
+  const lastPrice = auctionState.lastPrice ?? 0;
+
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
+  const [soldLoading, setSoldLoading] = useState(false);
+  const [unsoldLoading, setUnsoldLoading] = useState(false);
+  const [undoLoading, setUndoLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [biddingTeamId, setBiddingTeamId] = useState<string | null>(null);
   const [playerSearch, setPlayerSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
@@ -64,6 +79,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   const [sponsors, setSponsors] = useState<Array<{ id: string; name?: string; logo_url: string }>>([]);
   const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
   const [lastAction, setLastAction] = useState<{ player: Player; type: 'sold' | 'unsold' } | null>(null);
+  const [availablePlayersCount, setAvailablePlayersCount] = useState<number | null>(null);
   const timerResetKey = useRef(0);
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
@@ -86,15 +102,35 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     }, 300);
   }, []);
 
+  // Load available players count
+  const loadAvailablePlayersCount = useCallback(async () => {
+    try {
+      const players = await api.getPlayers('available') as Player[];
+      setAvailablePlayersCount(players.length);
+    } catch (error) {
+      console.error('Failed to load available players count:', error);
+      setAvailablePlayersCount(0);
+    }
+  }, []);
+
   useEffect(() => {
     if (!tournament?.id) return;
 
     // Connect to socket and join tournament room
     socketClient.connect(tournament.id);
 
-    // Initial load (immediate, no debounce)
-    api.getTeams().then(data => setTeams(data as Team[])).catch(console.error);
+    // Initial load (immediate, no debounce) with proper error handling
+    const loadInitialTeams = async () => {
+      try {
+        const data = await api.getTeams();
+        setTeams(data as Team[]);
+      } catch (error) {
+        console.error('Failed to load teams:', error);
+      }
+    };
+    loadInitialTeams();
     loadAuctionState();
+    loadAvailablePlayersCount();
 
     // Define handlers for proper cleanup
     const handleAuctionState = (state: any) => {
@@ -105,18 +141,68 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       loadTeams(); // Uses debounced version
     };
 
+    const handlePlayersUpdated = () => {
+      loadAvailablePlayersCount(); // Refresh available count
+    };
+
     // Listen for auction state updates from server
     socketClient.onAuctionState(handleAuctionState);
     socketClient.onTeamsUpdated(handleTeamsUpdated);
+    socketClient.on('players:updated', handlePlayersUpdated);
+
+    // Listen for tournament status changes (e.g., when admin marks as completed)
+    const handleTournamentCompleted = (data: { status: string; by?: string }) => {
+      if (tournament) {
+        updateTournament({ ...tournament, status: 'completed' });
+      }
+    };
+
+    const handleTournamentStatusChanged = (data: { status: string; by?: string }) => {
+      if (tournament && data.status) {
+        updateTournament({ ...tournament, status: data.status as 'setup' | 'live' | 'paused' | 'completed' });
+      }
+    };
+
+    socketClient.on('tournament:completed', handleTournamentCompleted);
+    socketClient.on('tournament:status-changed', handleTournamentStatusChanged);
 
     // Cleanup: remove specific listeners and clear debounce timeout
     return () => {
       socketClient.removeAllListeners();
+      socketClient.off('tournament:completed', handleTournamentCompleted);
+      socketClient.off('tournament:status-changed', handleTournamentStatusChanged);
+      socketClient.off('players:updated', handlePlayersUpdated);
       if (loadTeamsTimeoutRef.current) {
         clearTimeout(loadTeamsTimeoutRef.current);
       }
     };
-  }, [tournament?.id, setAuctionState, loadTeams]);
+  }, [tournament?.id, setAuctionState, loadTeams, loadAvailablePlayersCount, tournament, updateTournament]);
+
+  // Broadcast accent color to overlay when theme changes or on initial load
+  // Use a ref to track if we've done the initial broadcast
+  const initialBroadcastDone = useRef(false);
+
+  useEffect(() => {
+    if (!tournament?.id) return;
+
+    // Small delay to ensure socket is connected
+    const broadcastAccentColor = () => {
+      socketClient.emitOverlaySettingsUpdate(tournament.id, {
+        accentColor: template.accentColor
+      });
+    };
+
+    // Broadcast after a short delay to ensure socket is connected
+    const timeoutId = setTimeout(broadcastAccentColor, 500);
+
+    // Also broadcast immediately if this is a theme change (not initial load)
+    if (initialBroadcastDone.current) {
+      broadcastAccentColor();
+    }
+    initialBroadcastDone.current = true;
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedThemeId, tournament?.id, template.accentColor]);
 
   useEffect(() => {
     if (status === 'bidding' && currentBid !== previousBidRef.current) {
@@ -226,12 +312,20 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
         });
       }
     } catch (error: any) {
+      const errorMsg = error.message || '';
+      // Handle tournament not found - clear cache and redirect
+      if (errorMsg.includes('not found') || errorMsg.includes('deleted')) {
+        alert('Tournament not found. It may have been deleted. Please log in again.');
+        useAuthStore.getState().logout();
+        window.location.href = '/login';
+        return;
+      }
       // Show more specific message if filters are active
       const hasFilter = selectedCategoryId || selectedRoleCategory;
       const defaultMsg = hasFilter
         ? 'No players available in this category/role. Try clearing the filter.'
         : 'No available players';
-      alert(error.message || defaultMsg);
+      alert(errorMsg || defaultMsg);
     } finally {
       setLoading(false);
     }
@@ -282,11 +376,11 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   };
 
   const handleTimerUp = useCallback(() => {
-    console.log('Timer expired');
+    // Timer expired - player auto-unsold handling is done server-side
   }, []);
 
   const handleTeamBid = useCallback(async (team: Team) => {
-    if (!currentPlayer || status !== 'bidding') return;
+    if (!currentPlayer || status !== 'bidding' || biddingTeamId) return;
 
     // Use team budget to determine appropriate bid increment
     const teamBudget = teams[0]?.total_budget;
@@ -305,8 +399,10 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       return;
     }
 
+    setBiddingTeamId(team.id);
     try {
-      await api.placeBid(team.id, newBid);
+      // Pass expectedBid for optimistic locking - prevents race conditions
+      await api.placeBid(team.id, newBid, currentBid);
       // Socket will broadcast teams:updated, no need to call loadTeams()
     } catch (error: any) {
       setToast({
@@ -315,8 +411,10 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
         type: 'error'
       });
       setTimeout(() => setToast(null), 4000);
+    } finally {
+      setBiddingTeamId(null);
     }
-  }, [currentPlayer, currentBid, currentTeam, status, teams]);
+  }, [currentPlayer, currentBid, currentTeam, status, teams, biddingTeamId]);
 
   const handleIncrementBid = useCallback(async () => {
     if (!currentPlayer || status !== 'bidding') return;
@@ -346,7 +444,6 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
 
     // Constraint: Cannot go below base price
     if (newBid < basePrice) {
-      console.log('Cannot decrease below base price:', basePrice);
       return;
     }
 
@@ -370,11 +467,12 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   }, []);
 
   const handleSold = async () => {
-    if (!currentPlayer || !currentTeam) {
-      alert('Please place a bid first');
+    if (!currentPlayer || !currentTeam || soldLoading) {
+      if (!currentTeam) alert('Please place a bid first');
       return;
     }
 
+    setSoldLoading(true);
     try {
       // Save for undo before marking sold
       setLastAction({ player: currentPlayer, type: 'sold' });
@@ -383,12 +481,15 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     } catch (error: any) {
       setLastAction(null);
       alert(error.message || 'Failed to mark as sold');
+    } finally {
+      setSoldLoading(false);
     }
   };
 
   const handleUnsold = async () => {
-    if (!currentPlayer) return;
+    if (!currentPlayer || unsoldLoading) return;
 
+    setUnsoldLoading(true);
     try {
       // Save for undo before marking unsold
       setLastAction({ player: currentPlayer, type: 'unsold' });
@@ -396,12 +497,15 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     } catch (error: any) {
       setLastAction(null);
       alert(error.message || 'Failed to mark as unsold');
+    } finally {
+      setUnsoldLoading(false);
     }
   };
 
   const handleUndo = async () => {
-    if (!lastAction) return;
+    if (!lastAction || undoLoading) return;
 
+    setUndoLoading(true);
     try {
       // Reset the player in database
       await api.resetPlayer(lastAction.player.id);
@@ -429,13 +533,16 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       setTimeout(() => setToast(null), 3000);
     } catch (error: any) {
       alert(error.message || 'Failed to undo');
+    } finally {
+      setUndoLoading(false);
     }
   };
 
   const handleSearchPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerSearch.trim()) return;
+    if (!playerSearch.trim() || searchLoading) return;
 
+    setSearchLoading(true);
     try {
       const player = await api.searchPlayerByUID(playerSearch) as Player;
       const updatedPlayer = await api.getPlayerForAuction(player.id) as Player;
@@ -458,6 +565,8 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       setShowSearch(false);
     } catch (error: any) {
       alert('Player not found');
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -468,6 +577,29 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     onDecrementBid: handleDecrementBid,
     enabled: status === 'bidding',
   });
+
+  // Show Completion Screen when tournament is completed
+  if (tournament?.status === 'completed') {
+    const themeMap: Record<string, 'classic' | 'premium' | 'fire' | 'city'> = {
+      'premium-broadcast': 'premium',
+      'fire': 'fire',
+      'city': 'city',
+      'classic': 'classic',
+    };
+    return (
+      <CompletionScreen
+        tournament={tournament}
+        stats={{
+          totalTeams: teams.length,
+          totalPlayers: availablePlayers.length,
+          soldPlayers: teams.reduce((acc, t) => acc + (t.player_count || 0), 0),
+          totalSpent: teams.reduce((acc, t) => acc + (t.spent_points || 0), 0),
+        }}
+        theme={themeMap[selectedLayout] || 'classic'}
+        onClose={onClose}
+      />
+    );
+  }
 
   // Premium Broadcast Layout
   if (selectedLayout === 'premium-broadcast') {
@@ -505,7 +637,14 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             timerSeconds={effectiveTimerDuration}
             timerKey={timerResetKey.current}
             onNewPlayer={handleNewPlayer}
+            onClose={onClose}
             loading={loading}
+            auctionStarted={auctionStarted}
+            lastPlayer={lastPlayer}
+            lastStatus={lastStatus}
+            lastTeam={lastTeam}
+            lastPrice={lastPrice}
+            availablePlayersCount={availablePlayersCount ?? 0}
           />
         </div>
 
@@ -577,6 +716,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
                 onTeamBid={handleTeamBid}
                 currentTeamId={currentTeam?.id}
                 disabled={status !== 'bidding'}
+                loadingTeamId={biddingTeamId}
               />
             </div>
 
@@ -706,7 +846,14 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             timerSeconds={effectiveTimerDuration}
             timerKey={timerResetKey.current}
             onNewPlayer={handleNewPlayer}
+            onClose={onClose}
             loading={loading}
+            auctionStarted={auctionStarted}
+            lastPlayer={lastPlayer}
+            lastStatus={lastStatus}
+            lastTeam={lastTeam}
+            lastPrice={lastPrice}
+            availablePlayersCount={availablePlayersCount ?? 0}
           />
         </div>
 
@@ -943,7 +1090,14 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             timerSeconds={effectiveTimerDuration}
             timerKey={timerResetKey.current}
             onNewPlayer={handleNewPlayer}
+            onClose={onClose}
             loading={loading}
+            auctionStarted={auctionStarted}
+            lastPlayer={lastPlayer}
+            lastStatus={lastStatus}
+            lastTeam={lastTeam}
+            lastPrice={lastPrice}
+            availablePlayersCount={availablePlayersCount ?? 0}
           />
         </div>
 
@@ -1457,13 +1611,44 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
         />
       )}
 
-      {/* Classic Idle Welcome Screen when no player selected - Full Screen */}
-      {!currentPlayer && !isAuctionPaused && tournament && (
+      {/* New Player Screen - Only when players are available */}
+      {!currentPlayer && !isAuctionPaused && tournament && tournament.status !== 'completed' && (availablePlayersCount === null || availablePlayersCount > 0) && (
         <ClassicIdleScreen
           tournament={tournament}
           accentColor={template.accentColor}
           onNewPlayer={handleNewPlayer}
+          onClose={onClose}
           loading={loading}
+        />
+      )}
+
+      {/* Resume Auction Screen - When no players available but auction not completed */}
+      {!currentPlayer && !isAuctionPaused && tournament && tournament.status !== 'completed' && availablePlayersCount === 0 && (
+        <AuctionResumeScreen
+          tournament={tournament}
+          lastPlayer={lastPlayer}
+          lastStatus={lastStatus}
+          lastTeam={lastTeam}
+          lastPrice={lastPrice}
+          availablePlayers={0}
+          onNewPlayer={handleNewPlayer}
+          onClose={onClose}
+          loading={loading}
+          theme="classic"
+        />
+      )}
+
+      {/* Completion Screen - Only when admin marks tournament as completed */}
+      {!currentPlayer && !isAuctionPaused && tournament && tournament.status === 'completed' && (
+        <CompletionScreen
+          tournament={tournament}
+          stats={{
+            totalPlayers: teams.reduce((sum, t) => sum + (t.player_count || 0), 0),
+            totalSpent: teams.reduce((sum, t) => sum + (t.spent_points || 0), 0),
+            teamsCount: teams.length,
+          }}
+          theme="classic"
+          onClose={onClose}
         />
       )}
 
@@ -1665,30 +1850,30 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleSold}
-                  disabled={!currentTeam || status !== 'bidding'}
+                  disabled={!currentTeam || status !== 'bidding' || soldLoading}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <Check size={18} />
-                  <span>Sold</span>
+                  {soldLoading ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                  <span>{soldLoading ? 'Saving...' : 'Sold'}</span>
                 </button>
 
                 <button
                   onClick={handleUnsold}
-                  disabled={!currentPlayer || status !== 'bidding'}
+                  disabled={!currentPlayer || status !== 'bidding' || unsoldLoading}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <X size={18} />
-                  <span>Unsold</span>
+                  {unsoldLoading ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />}
+                  <span>{unsoldLoading ? 'Saving...' : 'Unsold'}</span>
                 </button>
 
                 <button
                   onClick={handleUndo}
-                  disabled={!lastAction}
+                  disabled={!lastAction || undoLoading}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   title={lastAction ? `Undo ${lastAction.type} for ${lastAction.player.name}` : 'No action to undo'}
                 >
-                  <Undo2 size={18} />
-                  <span>Undo</span>
+                  {undoLoading ? <Loader2 size={18} className="animate-spin" /> : <Undo2 size={18} />}
+                  <span>{undoLoading ? 'Undoing...' : 'Undo'}</span>
                 </button>
 
                 <button

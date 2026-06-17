@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuctionStore } from '../../stores/auctionStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { socketClient } from '../../socket/client';
 import { api } from '../../utils/api';
-import { Team, Player } from '../../types';
+import { Team, Player, AuctionState } from '../../types';
 import PlayerCard from './PlayerCard';
 import BidDisplay from './BidDisplay';
 import TeamButtons from './TeamButtons';
 import AuctionTimer from './AuctionTimer';
 import SoldCelebration from './SoldCelebration';
 import { getBidIncrement } from '../../config/budgetPresets';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Undo2 } from 'lucide-react';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Undo2, Loader2 } from 'lucide-react';
 import RoleFilterDropdown from './RoleFilterDropdown';
 
 export default function AuctionPanel() {
@@ -30,6 +30,11 @@ export default function AuctionPanel() {
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
+  const [soldLoading, setSoldLoading] = useState(false);
+  const [unsoldLoading, setUnsoldLoading] = useState(false);
+  const [undoLoading, setUndoLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [biddingTeamId, setBiddingTeamId] = useState<string | null>(null);
   const [playerSearch, setPlayerSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
@@ -55,8 +60,16 @@ export default function AuctionPanel() {
   }, []);
 
   useEffect(() => {
-    // Initial load (immediate)
-    api.getTeams().then(data => setTeams(data as Team[])).catch(console.error);
+    // Initial load (immediate) with proper error handling
+    const loadInitialData = async () => {
+      try {
+        const data = await api.getTeams();
+        setTeams(data as Team[]);
+      } catch (error) {
+        console.error('Failed to load teams:', error);
+      }
+    };
+    loadInitialData();
     loadAuctionState();
 
     // Listen for team updates via socket (debounced)
@@ -93,17 +106,17 @@ export default function AuctionPanel() {
 
   const loadAuctionState = async () => {
     try {
-      const state = await api.getAuctionState() as any;
+      const state = await api.getAuctionState() as AuctionState;
       setAuctionState(state);
     } catch (error) {
       console.error('Failed to load auction state:', error);
     }
   };
 
-  const handleNewPlayer = async () => {
+  const handleNewPlayer = useCallback(async () => {
     setLoading(true);
     try {
-      const player = await api.getNextPlayer(selectedCategoryId || undefined, selectedRoleCategory || undefined) as any;
+      const player = await api.getNextPlayer(selectedCategoryId || undefined, selectedRoleCategory || undefined) as Player;
       // Reset timer when new player is fetched
       timerResetKey.current += 1;
       // Also update state directly in case socket event is missed
@@ -116,30 +129,39 @@ export default function AuctionPanel() {
           status: 'bidding'
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : '';
+      // Handle tournament not found - clear cache and redirect
+      if (errorMsg.includes('not found') || errorMsg.includes('deleted')) {
+        alert('Tournament not found. It may have been deleted. Please log in again.');
+        useAuthStore.getState().logout();
+        window.location.href = '/login';
+        return;
+      }
       const hasFilter = selectedCategoryId || selectedRoleCategory;
       const defaultMsg = hasFilter
         ? 'No players available in this category/role. Try clearing the filter.'
         : 'No available players';
-      alert(error.message || defaultMsg);
+      alert(errorMsg || defaultMsg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedCategoryId, selectedRoleCategory, setAuctionState]);
 
   const handleTimerUp = useCallback(() => {
-    // Auto-action when timer expires - could mark unsold if no bids
-    console.log('Timer expired');
+    // Auto-action when timer expires - handled server-side
   }, []);
 
-  const handleTeamBid = useCallback(async (team: Team) => {
-    if (!currentPlayer || status !== 'bidding') return;
+  // Memoize team budget and bid increment to prevent recalculation
+  const teamBudget = useMemo(() => teams[0]?.total_budget, [teams]);
+  const bidIncrement = useMemo(() => getBidIncrement(currentBid, teamBudget), [currentBid, teamBudget]);
 
-    // Use team budget to determine appropriate bid increment
-    const teamBudget = teams[0]?.total_budget;
-    const increment = getBidIncrement(currentBid, teamBudget);
+  const handleTeamBid = useCallback(async (team: Team) => {
+    if (!currentPlayer || status !== 'bidding' || biddingTeamId) return;
+
+    // Use memoized bid increment
     const newBid = currentTeam
-      ? currentBid + increment
+      ? currentBid + bidIncrement
       : currentPlayer.base_price;
 
     if (newBid > team.max_bid) {
@@ -147,26 +169,28 @@ export default function AuctionPanel() {
       return;
     }
 
+    setBiddingTeamId(team.id);
     try {
-      await api.placeBid(team.id, newBid);
+      // Pass expectedBid for optimistic locking - prevents race conditions
+      await api.placeBid(team.id, newBid, currentBid);
       // Socket will broadcast teams:updated, no need to call loadTeams()
-    } catch (error: any) {
-      alert(error.message || 'Failed to place bid');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to place bid';
+      alert(message);
+    } finally {
+      setBiddingTeamId(null);
     }
-  }, [currentPlayer, currentBid, currentTeam, status, teams]);
+  }, [currentPlayer, currentBid, currentTeam, status, biddingTeamId, bidIncrement]);
 
   const handleIncrementBid = useCallback(async () => {
     if (!currentPlayer || status !== 'bidding') return;
 
-    // Use team budget to determine appropriate bid increment
-    const teamBudget = teams[0]?.total_budget;
-    const increment = getBidIncrement(currentBid, teamBudget);
     try {
-      await api.incrementBid(currentBid + increment);
-    } catch (error: any) {
+      await api.incrementBid(currentBid + bidIncrement);
+    } catch (error: unknown) {
       console.error('Failed to increment bid:', error);
     }
-  }, [currentPlayer, currentBid, status, teams]);
+  }, [currentPlayer, currentBid, status, bidIncrement]);
 
   const handleDecrementBid = useCallback(async () => {
     if (!currentPlayer || status !== 'bidding') return;
@@ -174,57 +198,61 @@ export default function AuctionPanel() {
     // Get the base price - cannot go below this
     const basePrice = currentPlayer.base_price || 0;
 
-    // Use team budget to determine appropriate bid increment
-    const teamBudget = teams[0]?.total_budget;
-    const increment = getBidIncrement(currentBid, teamBudget);
-
-    // Calculate new bid amount
-    const newBid = currentBid - increment;
+    // Calculate new bid amount using memoized increment
+    const newBid = currentBid - bidIncrement;
 
     // Constraint: Cannot go below base price
     if (newBid < basePrice) {
-      console.log('Cannot decrease below base price:', basePrice);
       return;
     }
 
     try {
       await api.incrementBid(newBid);
-    } catch (error: any) {
-      console.error('Failed to decrement bid:', error);
+    } catch {
+      // Failed to decrement bid - silently ignore
     }
-  }, [currentPlayer, currentBid, status, teams]);
+  }, [currentPlayer, currentBid, status, bidIncrement]);
 
-  const handleSold = async () => {
-    if (!currentPlayer || !currentTeam) {
-      alert('Please place a bid first');
+  const handleSold = useCallback(async () => {
+    if (!currentPlayer || !currentTeam || soldLoading) {
+      if (!currentTeam) alert('Please place a bid first');
       return;
     }
 
+    setSoldLoading(true);
     try {
       setLastAction({ player: currentPlayer, type: 'sold' });
       await api.markSold();
       // Socket will broadcast teams:updated, no need to call loadTeams()
-    } catch (error: any) {
+    } catch (error: unknown) {
       setLastAction(null);
-      alert(error.message || 'Failed to mark as sold');
+      const message = error instanceof Error ? error.message : 'Failed to mark as sold';
+      alert(message);
+    } finally {
+      setSoldLoading(false);
     }
-  };
+  }, [currentPlayer, currentTeam, soldLoading]);
 
-  const handleUnsold = async () => {
-    if (!currentPlayer) return;
+  const handleUnsold = useCallback(async () => {
+    if (!currentPlayer || unsoldLoading) return;
 
+    setUnsoldLoading(true);
     try {
       setLastAction({ player: currentPlayer, type: 'unsold' });
       await api.markUnsold();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setLastAction(null);
-      alert(error.message || 'Failed to mark as unsold');
+      const message = error instanceof Error ? error.message : 'Failed to mark as unsold';
+      alert(message);
+    } finally {
+      setUnsoldLoading(false);
     }
-  };
+  }, [currentPlayer, unsoldLoading]);
 
-  const handleUndo = async () => {
-    if (!lastAction) return;
+  const handleUndo = useCallback(async () => {
+    if (!lastAction || undoLoading) return;
 
+    setUndoLoading(true);
     try {
       // Reset the player in database
       await api.resetPlayer(lastAction.player.id);
@@ -245,24 +273,30 @@ export default function AuctionPanel() {
 
       alert(`Undid ${lastAction.type} for ${lastAction.player.name} - Auction restarted`);
       setLastAction(null);
-    } catch (error: any) {
-      alert(error.message || 'Failed to undo');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to undo';
+      alert(message);
+    } finally {
+      setUndoLoading(false);
     }
-  };
+  }, [lastAction, undoLoading, setAuctionState]);
 
-  const handleSearchPlayer = async (e: React.FormEvent) => {
+  const handleSearchPlayer = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerSearch.trim()) return;
+    if (!playerSearch.trim() || searchLoading) return;
 
+    setSearchLoading(true);
     try {
       const player = await api.searchPlayerByUID(playerSearch) as Player;
       await api.getPlayerForAuction(player.id);
       setPlayerSearch('');
       setShowSearch(false);
-    } catch (error: any) {
+    } catch {
       alert('Player not found');
+    } finally {
+      setSearchLoading(false);
     }
-  };
+  }, [playerSearch, searchLoading]);
 
   useKeyboardShortcuts({
     teams,
@@ -337,12 +371,17 @@ export default function AuctionPanel() {
                   <button
                     onClick={handleNewPlayer}
                     disabled={loading || status === 'bidding'}
+                    aria-label="Start auction for next player"
                     className="relative group flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-primary-600 to-purple-600 group-hover:from-primary-500 group-hover:to-purple-500 transition-all" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                    <UserPlus size={20} className="relative text-white" />
-                    <span className="relative text-white">New Player</span>
+                    {loading ? (
+                      <Loader2 size={20} className="relative text-white animate-spin" />
+                    ) : (
+                      <UserPlus size={20} className="relative text-white" />
+                    )}
+                    <span className="relative text-white">{loading ? 'Loading...' : 'New Player'}</span>
                   </button>
 
                   <RoleFilterDropdown disabled={status === 'bidding'} />
@@ -354,19 +393,29 @@ export default function AuctionPanel() {
                         value={playerSearch}
                         onChange={(e) => setPlayerSearch(e.target.value.toUpperCase())}
                         placeholder="P001"
+                        aria-label="Enter player ID to search"
                         className="w-24 bg-slate-800/80 border border-slate-600/50 rounded-xl px-3 py-2.5 text-white text-center focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all"
                         autoFocus
+                        disabled={searchLoading}
                       />
                       <button
                         type="submit"
-                        className="bg-slate-700/80 hover:bg-slate-600 text-white p-2.5 rounded-xl transition-colors"
+                        disabled={searchLoading}
+                        aria-label="Search for player by ID"
+                        className="bg-slate-700/80 hover:bg-slate-600 text-white p-2.5 rounded-xl transition-colors disabled:opacity-50"
                       >
-                        <Search size={20} />
+                        {searchLoading ? (
+                          <Loader2 size={20} className="animate-spin" />
+                        ) : (
+                          <Search size={20} />
+                        )}
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowSearch(false)}
+                        aria-label="Close search"
                         className="text-slate-400 hover:text-white p-2"
+                        disabled={searchLoading}
                       >
                         <X size={20} />
                       </button>
@@ -374,6 +423,7 @@ export default function AuctionPanel() {
                   ) : (
                     <button
                       onClick={() => setShowSearch(true)}
+                      aria-label="Open player search"
                       className="flex items-center gap-2 bg-slate-700/80 hover:bg-slate-600 text-white p-3 rounded-xl transition-colors"
                       title="Search by Player ID"
                     >
@@ -389,6 +439,7 @@ export default function AuctionPanel() {
                     onTeamBid={handleTeamBid}
                     currentTeamId={currentTeam?.id}
                     disabled={status !== 'bidding'}
+                    loadingTeamId={biddingTeamId}
                   />
                 </div>
 
@@ -396,41 +447,57 @@ export default function AuctionPanel() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleSold}
-                    disabled={!currentTeam || status !== 'bidding'}
+                    disabled={!currentTeam || status !== 'bidding' || soldLoading}
+                    aria-label="Mark player as sold to current bidder"
                     className="relative group flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-green-600 group-hover:from-emerald-500 group-hover:to-green-500 transition-all" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                    <Check size={20} className="relative text-white" />
-                    <span className="relative text-white">Sold</span>
+                    {soldLoading ? (
+                      <Loader2 size={20} className="relative text-white animate-spin" />
+                    ) : (
+                      <Check size={20} className="relative text-white" />
+                    )}
+                    <span className="relative text-white">{soldLoading ? 'Saving...' : 'Sold'}</span>
                   </button>
 
                   <button
                     onClick={handleUnsold}
-                    disabled={!currentPlayer || status !== 'bidding'}
+                    disabled={!currentPlayer || status !== 'bidding' || unsoldLoading}
+                    aria-label="Mark player as unsold"
                     className="relative group flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-rose-600 group-hover:from-red-500 group-hover:to-rose-500 transition-all" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                    <X size={20} className="relative text-white" />
-                    <span className="relative text-white">Unsold</span>
+                    {unsoldLoading ? (
+                      <Loader2 size={20} className="relative text-white animate-spin" />
+                    ) : (
+                      <X size={20} className="relative text-white" />
+                    )}
+                    <span className="relative text-white">{unsoldLoading ? 'Saving...' : 'Unsold'}</span>
                   </button>
 
                   <button
                     onClick={handleUndo}
-                    disabled={!lastAction}
+                    disabled={!lastAction || undoLoading}
+                    aria-label={lastAction ? `Undo ${lastAction.type} for ${lastAction.player.name}` : 'Undo last action'}
                     className="relative group flex items-center gap-2 px-5 py-3 rounded-xl font-bold transition-all overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
                     title={lastAction ? `Undo ${lastAction.type} for ${lastAction.player.name}` : 'No action to undo'}
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-amber-600 to-orange-600 group-hover:from-amber-500 group-hover:to-orange-500 transition-all" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                    <Undo2 size={20} className="relative text-white" />
-                    <span className="relative text-white">Undo</span>
+                    {undoLoading ? (
+                      <Loader2 size={20} className="relative text-white animate-spin" />
+                    ) : (
+                      <Undo2 size={20} className="relative text-white" />
+                    )}
+                    <span className="relative text-white">{undoLoading ? 'Undoing...' : 'Undo'}</span>
                   </button>
 
                   <button
                     onClick={handleNewPlayer}
                     disabled={status !== 'sold' && status !== 'unsold'}
+                    aria-label="Proceed to next player"
                     className="flex items-center gap-2 bg-amber-600/80 hover:bg-amber-500 disabled:bg-slate-700/50 disabled:text-slate-500 text-white p-3 rounded-xl font-semibold transition-all disabled:cursor-not-allowed"
                     title="Next Player"
                   >

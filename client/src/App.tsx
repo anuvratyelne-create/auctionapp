@@ -11,6 +11,60 @@ import OverlayView from './pages/OverlayView';
 import TopPlayers from './pages/TopPlayers';
 import PlayerRegister from './pages/PlayerRegister';
 
+// Admin Panel imports
+import AdminLogin from './admin/pages/AdminLogin';
+import AdminDashboard from './admin/pages/AdminDashboard';
+import UserManagement from './admin/pages/UserManagement';
+import TournamentManagement from './admin/pages/TournamentManagement';
+import AuctionControl from './admin/pages/AuctionControl';
+import AuditLogs from './admin/pages/AuditLogs';
+import SystemSettings from './admin/pages/SystemSettings';
+import { useAdminStore } from './admin/stores/adminStore';
+import { adminApi } from './admin/utils/adminApi';
+
+// Admin Protected Route
+function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, token } = useAdminStore();
+  const [isReady, setIsReady] = useState(false);
+  const [hasStoredAuth, setHasStoredAuth] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('admin-auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.state?.token && parsed?.state?.isAuthenticated) {
+          setHasStoredAuth(true);
+          adminApi.setToken(parsed.state.token);
+        }
+      }
+    } catch (e) {
+      console.error('Error reading admin auth:', e);
+    }
+    setIsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      adminApi.setToken(token);
+    }
+  }, [token]);
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated && !hasStoredAuth) {
+    return <Navigate to="/admin/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, token } = useAuthStore();
   const [isReady, setIsReady] = useState(false);
@@ -96,6 +150,57 @@ function App() {
       <Route path="/overlay/:shareCode" element={<OverlayView />} />
       <Route path="/register/:shareCode" element={<PlayerRegister />} />
       <Route path="/" element={<Navigate to="/manage" replace />} />
+
+      {/* Admin Panel Routes */}
+      <Route path="/admin/login" element={<AdminLogin />} />
+      <Route
+        path="/admin"
+        element={
+          <AdminProtectedRoute>
+            <AdminDashboard />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <AdminProtectedRoute>
+            <UserManagement />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/tournaments"
+        element={
+          <AdminProtectedRoute>
+            <TournamentManagement />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/auctions"
+        element={
+          <AdminProtectedRoute>
+            <AuctionControl />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/logs"
+        element={
+          <AdminProtectedRoute>
+            <AuditLogs />
+          </AdminProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={
+          <AdminProtectedRoute>
+            <SystemSettings />
+          </AdminProtectedRoute>
+        }
+      />
     </Routes>
   );
 }

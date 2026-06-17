@@ -1,5 +1,6 @@
 import { memo, useMemo, useEffect, useState } from 'react';
-import { Zap, UserPlus, Trophy } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Zap, UserPlus, Trophy, X } from 'lucide-react';
 import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface CityIdleScreenProps {
@@ -10,6 +11,7 @@ interface CityIdleScreenProps {
     broadcaster_name?: string;
   };
   onNewPlayer?: () => void;
+  onClose?: () => void;
   loading?: boolean;
 }
 
@@ -91,7 +93,9 @@ const DataTicker = memo(function DataTicker() {
   );
 });
 
-export default memo(function CityIdleScreen({ tournament, onNewPlayer, loading }: CityIdleScreenProps) {
+export default memo(function CityIdleScreen({ tournament, onNewPlayer, onClose, loading }: CityIdleScreenProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center z-50">
       {/* Solid dark city-themed background */}
@@ -101,6 +105,24 @@ export default memo(function CityIdleScreen({ tournament, onNewPlayer, loading }
           background: 'linear-gradient(180deg, #0a1628 0%, #0f172a 30%, #1e293b 60%, #0f172a 100%)',
         }}
       />
+
+      {/* Close Button - Top Left */}
+      <button
+        onClick={() => {
+          if (onClose) {
+            onClose();
+          } else {
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => {});
+            }
+            navigate('/manage');
+          }
+        }}
+        className="absolute top-6 left-6 p-3 rounded-xl bg-slate-800/90 hover:bg-red-600 border border-cyan-500/30 hover:border-red-500 text-white transition-all z-[100] backdrop-blur-sm shadow-lg"
+        title="Exit to Dashboard (or press ESC)"
+      >
+        <X size={24} />
+      </button>
 
       {/* Radial neon glow in center */}
       <div

@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
-import { Flame, UserPlus, Trophy } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Flame, UserPlus, Trophy, X } from 'lucide-react';
 import BroadcasterLogo from '../../common/BroadcasterLogo';
 
 interface FireIdleScreenProps {
@@ -10,6 +11,7 @@ interface FireIdleScreenProps {
     broadcaster_name?: string;
   };
   onNewPlayer?: () => void;
+  onClose?: () => void;
   loading?: boolean;
 }
 
@@ -71,7 +73,9 @@ const BottomGlow = memo(function BottomGlow() {
   );
 });
 
-export default memo(function FireIdleScreen({ tournament, onNewPlayer, loading }: FireIdleScreenProps) {
+export default memo(function FireIdleScreen({ tournament, onNewPlayer, onClose, loading }: FireIdleScreenProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center z-50">
       {/* Solid dark fire-themed background - fully opaque */}
@@ -81,6 +85,24 @@ export default memo(function FireIdleScreen({ tournament, onNewPlayer, loading }
           background: 'linear-gradient(180deg, #0a0505 0%, #120808 30%, #150a0a 50%, #120808 70%, #0a0505 100%)',
         }}
       />
+
+      {/* Close Button - Top Left */}
+      <button
+        onClick={() => {
+          if (onClose) {
+            onClose();
+          } else {
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch(() => {});
+            }
+            navigate('/manage');
+          }
+        }}
+        className="absolute top-6 left-6 p-3 rounded-xl bg-slate-900/90 hover:bg-red-600 border border-orange-500/30 hover:border-red-500 text-white transition-all z-[100] backdrop-blur-sm shadow-lg"
+        title="Exit to Dashboard (or press ESC)"
+      >
+        <X size={24} />
+      </button>
 
       {/* Radial warm glow in center */}
       <div

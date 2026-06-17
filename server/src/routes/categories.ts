@@ -182,8 +182,6 @@ router.post('/update-standard-prices', authenticateToken, async (req: AuthReques
       };
     }
 
-    console.log('Updating categories with prices:', categoryPrices);
-
     const results = [];
     for (const [name, base_price] of Object.entries(categoryPrices)) {
       const { data, error } = await supabase

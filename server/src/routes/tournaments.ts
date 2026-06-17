@@ -1,9 +1,16 @@
 import { Router, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { clearTournamentState } from '../socket/handlers';
 import { z } from 'zod';
+import { auditLog } from '../utils/auditLog';
+
+// Generate cryptographically secure share code
+function generateSecureShareCode(): string {
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
 
 const router = Router();
 
@@ -38,6 +45,16 @@ const optionalString = z.preprocess(
   z.string().nullable().optional()
 );
 
+// Overlay settings schema for OBS/streaming overlays
+const overlaySettingsSchema = z.object({
+  theme: z.enum(['auto', 'classic', 'fire', 'city', 'premium']).default('auto'),
+  mode: z.enum(['minimal', 'standard', 'full']).default('standard'),
+  accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#22c55e'),
+  showParticles: z.boolean().default(true),
+  showTimer: z.boolean().default(true),
+  showTeamLogo: z.boolean().default(true),
+}).optional();
+
 const updateTournamentSchema = z.object({
   name: z.string().optional(),
   logo_url: optionalUrl,
@@ -48,7 +65,10 @@ const updateTournamentSchema = z.object({
   max_players: z.number().min(1).optional(),
   bid_increment: z.number().min(100).optional(),
   status: z.enum(['setup', 'live', 'paused', 'completed']).optional(),
-  player_display_mode: z.enum(['random', 'sequential']).optional()
+  player_display_mode: z.enum(['random', 'sequential']).optional(),
+  overlay_settings: overlaySettingsSchema,
+  // Optimistic locking - client passes current version to prevent concurrent edit conflicts
+  version: z.number().int().positive().optional()
 });
 
 // Create new tournament
@@ -61,8 +81,8 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const data = createTournamentSchema.parse(req.body);
 
-    // Generate unique share code
-    const shareCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    // Generate cryptographically secure share code
+    const shareCode = generateSecureShareCode();
 
     // Check if userId is a valid UUID (demo user has "demo" as userId)
     const isValidUUID = req.userId && req.userId !== 'demo' &&
@@ -81,7 +101,6 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         ownerIdToUse = req.userId!;
       } else {
         // User doesn't exist in users table - create them with minimal info
-        console.log('User not found in users table, creating user record');
         const shortId = req.userId!.substring(0, 8);
         const { data: newUser, error: createUserError } = await supabase
           .from('users')
@@ -101,7 +120,6 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         } else {
           ownerIdToUse = newUser.id;
           createdMigratedUserId = newUser.id; // Track for rollback
-          console.log('Created user record successfully:', newUser.id);
         }
       }
     }
@@ -152,7 +170,6 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           // This is non-fatal - owner_id is the source of truth
         }
       }
-      console.log('Tournament created with owner_id:', ownerIdToUse);
     }
 
     // Step 3: Create categories for the new tournament
@@ -188,6 +205,12 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       { expiresIn: '7d' }
     );
 
+    // Audit log - tournament created
+    auditLog.tournamentCreated(req.userId!, tournament.id, {
+      name: tournament.name,
+      sportsType: tournament.sports_type
+    });
+
     res.status(201).json({
       tournament,
       token,
@@ -195,18 +218,14 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     // Rollback in reverse order
-    console.error('Create tournament error, rolling back:', error);
-
     if (createdTournamentId) {
       await supabase.from('categories').delete().eq('tournament_id', createdTournamentId);
       await supabase.from('tournaments').delete().eq('id', createdTournamentId);
-      console.log('Rolled back tournament:', createdTournamentId);
     }
 
     if (createdMigratedUserId) {
       // Only delete if we created this user during this request
       await supabase.from('users').delete().eq('id', createdMigratedUserId);
-      console.log('Rolled back migrated user:', createdMigratedUserId);
     }
 
     if (error instanceof z.ZodError) {
@@ -383,7 +402,6 @@ router.post('/:id/select', authenticateToken, async (req: AuthRequest, res: Resp
 
           orphanedTournament.owner_id = req.userId;
           tournament = orphanedTournament;
-          console.log('Claimed orphaned tournament:', tournamentId);
         }
       }
     }
@@ -412,12 +430,12 @@ router.post('/:id/select', authenticateToken, async (req: AuthRequest, res: Resp
   }
 });
 
-// Get tournament by share code (public)
+// Get tournament by share code (public) - includes overlay settings for OBS
 router.get('/share/:shareCode', async (req, res) => {
   try {
     const { data: tournament, error } = await supabase
       .from('tournaments')
-      .select('id, name, logo_url, status, share_code')
+      .select('id, name, logo_url, broadcaster_logo_url, broadcaster_name, status, share_code, overlay_settings')
       .eq('share_code', req.params.shareCode.toUpperCase())
       .single();
 
@@ -455,11 +473,15 @@ router.put('/current', authenticateToken, async (req: AuthRequest, res: Response
   try {
     const parsed = updateTournamentSchema.parse(req.body);
 
+    // Extract version for optimistic locking (don't include in updates)
+    const clientVersion = parsed.version;
+
     // Filter out undefined values - only update fields that were explicitly provided
     // This prevents accidentally clearing fields that weren't in the request
     const updates: Record<string, any> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (value !== undefined) {
+      // Don't include version in updates - it's auto-incremented by trigger
+      if (value !== undefined && key !== 'version') {
         updates[key] = value;
       }
     }
@@ -469,15 +491,62 @@ router.put('/current', authenticateToken, async (req: AuthRequest, res: Response
       return res.status(400).json({ error: 'No valid fields to update' });
     }
 
-    // Update the tournament
-    const { error: updateError } = await supabase
+    // Check if trying to go live - require admin approval first (skip in development if column doesn't exist)
+    if (updates.status === 'live') {
+      const { data: currentTournament } = await supabase
+        .from('tournaments')
+        .select('approval_status')
+        .eq('id', req.tournamentId)
+        .single();
+
+      // In development mode, allow going live if approval_status column doesn't exist yet
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      const approvalStatus = currentTournament?.approval_status;
+
+      // Only block if: approval column exists AND status is not 'approved'
+      // In dev mode, also allow if column doesn't exist (undefined/null)
+      if (approvalStatus !== 'approved' && !(isDevelopment && approvalStatus === undefined)) {
+        return res.status(403).json({
+          error: 'Tournament must be approved by admin before going live',
+          approval_status: approvalStatus || 'pending'
+        });
+      }
+    }
+
+    // Build update query with optimistic locking if version provided
+    let updateQuery = supabase
       .from('tournaments')
       .update(updates)
       .eq('id', req.tournamentId);
 
+    // If client provided a version, use optimistic locking
+    if (clientVersion !== undefined) {
+      updateQuery = updateQuery.eq('version', clientVersion);
+    }
+
+    const { data: updatedRows, error: updateError } = await updateQuery.select();
+
     if (updateError) {
       console.error('Tournament update error:', updateError);
       return res.status(500).json({ error: 'Failed to update tournament' });
+    }
+
+    // If version was provided and no rows updated, it's a conflict
+    if (clientVersion !== undefined && (!updatedRows || updatedRows.length === 0)) {
+      // Fetch current version to return to client
+      const { data: currentTournament } = await supabase
+        .from('tournaments')
+        .select('version')
+        .eq('id', req.tournamentId)
+        .single();
+
+      return res.status(409).json({
+        error: 'Conflict: Tournament was modified by another user',
+        code: 'VERSION_CONFLICT',
+        currentVersion: currentTournament?.version,
+        yourVersion: clientVersion,
+        hint: 'Refresh the data and try again'
+      });
     }
 
     // Fetch the FULL tournament record to ensure all fields are returned
@@ -491,6 +560,11 @@ router.put('/current', authenticateToken, async (req: AuthRequest, res: Response
       console.error('Tournament fetch error:', fetchError);
       return res.status(500).json({ error: 'Failed to fetch updated tournament' });
     }
+
+    // Audit log - tournament updated
+    auditLog.tournamentUpdated(req.userId!, req.tournamentId!, {
+      updatedFields: Object.keys(updates)
+    });
 
     res.json(tournament);
   } catch (error) {
@@ -608,7 +682,6 @@ router.delete('/sponsors/:id', authenticateToken, async (req: AuthRequest, res: 
 
 // Delete tournament and all related data (DEPRECATED - use /:id instead)
 router.delete('/current', authenticateToken, async (req: AuthRequest, res: Response) => {
-  console.log('DELETE /tournaments/current called - tournamentId:', req.tournamentId);
   try {
     const tournamentId = req.tournamentId;
 
@@ -677,7 +750,6 @@ router.delete('/current', authenticateToken, async (req: AuthRequest, res: Respo
 // Delete tournament by ID (explicit - preferred method)
 router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   const tournamentId = req.params.id;
-  console.log('DELETE /tournaments/:id called - tournamentId:', tournamentId, 'userId:', req.userId);
 
   try {
     // Verify the user owns this tournament
@@ -699,8 +771,6 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     const isDemo = req.userId === 'demo';
     const isOwner = tournament.owner_id === req.userId;
     const isCurrentTournament = req.tournamentId === tournamentId;
-
-    console.log('Delete permission check:', { isDemo, isOwner, isCurrentTournament, userId: req.userId, ownerId: tournament.owner_id, reqTournamentId: req.tournamentId });
 
     if (!isDemo && !isOwner && !isCurrentTournament) {
       return res.status(403).json({ error: 'You do not have permission to delete this tournament' });
@@ -776,7 +846,6 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
             .from('users')
             .update({ tournament_id: fallbackTournament.id })
             .eq('id', req.userId);
-          console.log('Set fallback tournament:', fallbackTournament.id);
         } else {
           // No other tournaments, clear the reference
           await supabase
@@ -790,7 +859,6 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     // Clear in-memory state for this tournament
     clearTournamentState(tournamentId);
 
-    console.log('Tournament deleted successfully:', tournamentId);
     res.json({
       success: true,
       message: 'Tournament deleted successfully',

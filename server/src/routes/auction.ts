@@ -3,8 +3,65 @@ import supabase from '../config/supabase';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { getAuctionState, getAuctionStateAsync, updateAuctionState } from '../socket/handlers';
 import { getRolesByFilterCategory } from '../config/roleMapping';
+import { auditLog } from '../utils/auditLog';
+import { z } from 'zod';
+
+// Validation schemas for auction endpoints
+const bidSchema = z.object({
+  team_id: z.string().uuid('Invalid team ID'),
+  amount: z.number().positive('Bid amount must be positive').int('Bid amount must be a whole number'),
+  expectedBid: z.number().nonnegative('Expected bid must be non-negative').int().optional()
+});
+
+const soldSchema = z.object({
+  player_id: z.string().uuid().optional(),
+  team_id: z.string().uuid().optional(),
+  amount: z.number().positive().int().optional()
+});
 
 const router = Router();
+
+// Simple mutex lock for bid operations per tournament
+// Prevents race conditions when multiple bids come in simultaneously
+const bidLocks = new Map<string, Promise<void>>();
+
+async function withBidLock<T>(tournamentId: string, operation: () => Promise<T>): Promise<T> {
+  // Wait for any existing lock to release
+  const existingLock = bidLocks.get(tournamentId);
+  if (existingLock) {
+    await existingLock;
+  }
+
+  // Create a new lock
+  let releaseLock: () => void;
+  const lockPromise = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  bidLocks.set(tournamentId, lockPromise);
+
+  try {
+    return await operation();
+  } finally {
+    releaseLock!();
+    bidLocks.delete(tournamentId);
+  }
+}
+
+// Helper to check if tournament exists and is approved for auction
+async function checkTournamentApproval(tournamentId: string): Promise<{ exists: boolean; approved: boolean; status: string }> {
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('approval_status')
+    .eq('id', tournamentId)
+    .single();
+
+  if (error || !data) {
+    return { exists: false, approved: false, status: 'not_found' };
+  }
+
+  const status = data.approval_status || 'pending';
+  return { exists: true, approved: status === 'approved', status };
+}
 
 // Dynamic bid increment based on current bid amount
 function getBidIncrement(currentBid: number): number {
@@ -17,15 +74,33 @@ function getBidIncrement(currentBid: number): number {
 // Get next available player (random or sequential)
 router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    // Check if tournament exists and is approved before allowing auction
+    const approval = await checkTournamentApproval(req.tournamentId!);
+    if (!approval.exists) {
+      return res.status(404).json({
+        error: 'Tournament not found. It may have been deleted.',
+        code: 'TOURNAMENT_NOT_FOUND'
+      });
+    }
+    if (!approval.approved) {
+      return res.status(403).json({
+        error: 'Tournament must be approved by admin before starting auction',
+        approval_status: approval.status
+      });
+    }
+
     const { category_id, role_category } = req.query;
 
-    // Reset any stuck 'bidding' players back to 'available' first
-    // This handles cases where the auction was abandoned mid-bid
+    // Reset any STUCK 'bidding' players back to 'available'
+    // Only reset players that have been in 'bidding' status for more than 5 minutes
+    // This prevents race conditions where a real ongoing bid gets cancelled
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     await supabase
       .from('players')
       .update({ status: 'available' })
       .eq('tournament_id', req.tournamentId)
-      .eq('status', 'bidding');
+      .eq('status', 'bidding')
+      .lt('updated_at', fiveMinutesAgo);
 
     // Get tournament settings
     const { data: tournament } = await supabase
@@ -100,7 +175,8 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
       currentBid: basePrice,
       currentTeam: null,
       bidHistory: [],
-      status: 'bidding'
+      status: 'bidding',
+      auctionStarted: true // Mark auction as started
     });
 
     // Broadcast to all rooms
@@ -118,6 +194,21 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
 // Get specific player for auction (manual/recall)
 router.get('/player/:playerId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    // Check if tournament exists and is approved before allowing auction
+    const approval = await checkTournamentApproval(req.tournamentId!);
+    if (!approval.exists) {
+      return res.status(404).json({
+        error: 'Tournament not found. It may have been deleted.',
+        code: 'TOURNAMENT_NOT_FOUND'
+      });
+    }
+    if (!approval.approved) {
+      return res.status(403).json({
+        error: 'Tournament must be approved by admin before starting auction',
+        approval_status: approval.status
+      });
+    }
+
     // First update player status to 'bidding' in database
     // This is critical for the /sold endpoint which checks for status='bidding'
     const { error: updateError } = await supabase
@@ -152,7 +243,8 @@ router.get('/player/:playerId', authenticateToken, async (req: AuthRequest, res:
       currentBid: player.sold_price || player.base_price,
       currentTeam: player.teams || null,
       bidHistory: [],
-      status: 'bidding'
+      status: 'bidding',
+      auctionStarted: true // Mark auction as started
     });
 
     io.to(`tournament:${req.tournamentId}`).emit('auction:state', state);
@@ -165,113 +257,132 @@ router.get('/player/:playerId', authenticateToken, async (req: AuthRequest, res:
   }
 });
 
-// Place bid (with optimistic locking)
+// Place bid (with mutex lock and optimistic locking)
 router.post('/bid', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const { team_id, amount, expectedBid } = req.body;
+  // Use mutex lock to prevent race conditions when multiple bids arrive simultaneously
+  return withBidLock(req.tournamentId!, async () => {
+    try {
+      // Validate input
+      const validationResult = bidSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: 'Invalid bid data',
+          details: validationResult.error.format()
+        });
+      }
+      const { team_id, amount, expectedBid } = validationResult.data;
 
-    // Get tournament settings
-    const { data: tournament } = await supabase
-      .from('tournaments')
-      .select('total_points, min_players')
-      .eq('id', req.tournamentId)
-      .single();
+      // Get tournament settings
+      const { data: tournament } = await supabase
+        .from('tournaments')
+        .select('total_points, min_players')
+        .eq('id', req.tournamentId)
+        .single();
 
-    // Get team details with players for stats calculation
-    const { data: team } = await supabase
-      .from('teams')
-      .select(`
-        *,
-        players:players(id, sold_price, status)
-      `)
-      .eq('id', team_id)
-      .single();
+      // Get team details with players for stats calculation
+      const { data: team } = await supabase
+        .from('teams')
+        .select(`
+          *,
+          players:players(id, sold_price, status)
+        `)
+        .eq('id', team_id)
+        .single();
 
-    if (!team) {
-      return res.status(404).json({ error: 'Team not found' });
-    }
+      if (!team) {
+        return res.status(404).json({ error: 'Team not found' });
+      }
 
-    // Calculate team stats
-    const soldPlayers = team.players?.filter((p: any) => p.status === 'sold') || [];
-    const spentPoints = soldPlayers.reduce((sum: number, p: any) => sum + (p.sold_price || 0), 0);
-    const playerCount = soldPlayers.length;
-    // Subtract 1 from remaining slots to account for the player being auctioned
-    const remainingSlots = Math.max(0, (tournament?.min_players || 7) - playerCount - 1);
-    const minBasePrice = 1000;
-    const reservePoints = remainingSlots * minBasePrice;
-    const totalBudget = team.total_budget || tournament?.total_points || 100000;
-    const remainingBudget = totalBudget - spentPoints;
-    const maxBid = Math.max(0, remainingBudget - reservePoints);
+      // Calculate team stats
+      const soldPlayers = team.players?.filter((p: any) => p.status === 'sold') || [];
+      const spentPoints = soldPlayers.reduce((sum: number, p: any) => sum + (p.sold_price || 0), 0);
+      const playerCount = soldPlayers.length;
+      // Subtract 1 from remaining slots to account for the player being auctioned
+      const remainingSlots = Math.max(0, (tournament?.min_players || 7) - playerCount - 1);
+      const minBasePrice = 1000;
+      const reservePoints = remainingSlots * minBasePrice;
+      const totalBudget = team.total_budget || tournament?.total_points || 100000;
+      const remainingBudget = totalBudget - spentPoints;
+      const maxBid = Math.max(0, remainingBudget - reservePoints);
 
-    // Create team object with stats (without players array)
-    const teamWithStats = {
-      ...team,
-      spent_points: spentPoints,
-      remaining_budget: remainingBudget,
-      player_count: playerCount,
-      reserve_points: reservePoints,
-      max_bid: maxBid,
-      players: undefined
-    };
+      // Create team object with stats (without players array)
+      const teamWithStats = {
+        ...team,
+        spent_points: spentPoints,
+        remaining_budget: remainingBudget,
+        player_count: playerCount,
+        reserve_points: reservePoints,
+        max_bid: maxBid,
+        players: undefined
+      };
 
-    const state = getAuctionState(req.tournamentId!);
+      const state = getAuctionState(req.tournamentId!);
 
-    if (!state.currentPlayer) {
-      return res.status(400).json({ error: 'No player in auction' });
-    }
+      if (!state.currentPlayer) {
+        return res.status(400).json({ error: 'No player in auction' });
+      }
 
-    // Optimistic locking: if expectedBid is provided, verify it matches current bid
-    if (expectedBid !== undefined && state.currentBid !== expectedBid) {
-      return res.status(409).json({
-        error: 'Bid state changed. Please refresh and try again.',
-        currentBid: state.currentBid
+      // Optimistic locking: if expectedBid is provided, verify it matches current bid
+      if (expectedBid !== undefined && state.currentBid !== expectedBid) {
+        return res.status(409).json({
+          error: 'Bid state changed. Please refresh and try again.',
+          currentBid: state.currentBid
+        });
+      }
+
+      // Check if this is the first bid for this player (bidHistory is empty)
+      const isFirstBid = state.bidHistory.length === 0;
+
+      // Check if same team is trying to bid again
+      // Only block if NOT the first bid AND currentTeam matches the bidding team
+      if (!isFirstBid && state.currentTeam?.id === team_id) {
+        return res.status(400).json({ error: 'Same team cannot bid again. Wait for another team to bid.' });
+      }
+
+      // Check if bid exceeds team capacity (using already calculated maxBid)
+      if (amount > maxBid) {
+        return res.status(400).json({
+          error: 'Bid exceeds team capacity',
+          maxBid
+        });
+      }
+
+      // Update auction state with team including stats
+      const io = req.app.get('io');
+      const newState = updateAuctionState(req.tournamentId!, {
+        currentBid: amount,
+        currentTeam: teamWithStats,
+        bidHistory: [...state.bidHistory, { teamId: team.id, amount, timestamp: new Date() }]
       });
-    }
 
-    // Check if this is the first bid for this player (bidHistory is empty)
-    const isFirstBid = state.bidHistory.length === 0;
-
-    // Check if same team is trying to bid again
-    // Only block if NOT the first bid AND currentTeam matches the bidding team
-    if (!isFirstBid && state.currentTeam?.id === team_id) {
-      return res.status(400).json({ error: 'Same team cannot bid again. Wait for another team to bid.' });
-    }
-
-    // Check if bid exceeds team capacity (using already calculated maxBid)
-    if (amount > maxBid) {
-      return res.status(400).json({
-        error: 'Bid exceeds team capacity',
-        maxBid
+      // Record bid in database
+      await supabase.from('bids').insert({
+        player_id: state.currentPlayer.id,
+        team_id: team.id,
+        amount,
+        tournament_id: req.tournamentId
       });
+
+      // Audit log - don't await to avoid slowing down response
+      auditLog.bidPlaced(req.userId!, req.tournamentId!, state.currentPlayer.id, {
+        teamId: team.id,
+        teamName: team.name,
+        amount,
+        playerName: state.currentPlayer.name
+      });
+
+      io.to(`tournament:${req.tournamentId}`).emit('auction:state', newState);
+      io.to(`live:${req.tournamentId}`).emit('auction:state', newState);
+      io.to(`overlay:${req.tournamentId}`).emit('auction:state', newState);
+      // Refresh teams so BidDisplay shows accurate balance/squad
+      io.to(`tournament:${req.tournamentId}`).emit('teams:updated');
+
+      res.json({ success: true, state: newState });
+    } catch (error) {
+      console.error('Bid error:', error);
+      res.status(500).json({ error: 'Failed to place bid' });
     }
-
-    // Update auction state with team including stats
-    const io = req.app.get('io');
-    const newState = updateAuctionState(req.tournamentId!, {
-      currentBid: amount,
-      currentTeam: teamWithStats,
-      bidHistory: [...state.bidHistory, { teamId: team.id, amount, timestamp: new Date() }]
-    });
-
-    // Record bid in database
-    await supabase.from('bids').insert({
-      player_id: state.currentPlayer.id,
-      team_id: team.id,
-      amount,
-      tournament_id: req.tournamentId
-    });
-
-    io.to(`tournament:${req.tournamentId}`).emit('auction:state', newState);
-    io.to(`live:${req.tournamentId}`).emit('auction:state', newState);
-    io.to(`overlay:${req.tournamentId}`).emit('auction:state', newState);
-    // Refresh teams so BidDisplay shows accurate balance/squad
-    io.to(`tournament:${req.tournamentId}`).emit('teams:updated');
-
-    res.json({ success: true, state: newState });
-  } catch (error) {
-    console.error('Bid error:', error);
-    res.status(500).json({ error: 'Failed to place bid' });
-  }
+  });
 });
 
 // Get current bid increment for display
@@ -317,7 +428,15 @@ router.post('/increment', authenticateToken, async (req: AuthRequest, res: Respo
 // Mark player as sold (with race condition protection)
 router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { player_id, team_id, amount } = req.body;
+    // Validate optional overrides if provided
+    const validationResult = soldSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: 'Invalid sold data',
+        details: validationResult.error.format()
+      });
+    }
+    const { player_id, team_id, amount } = validationResult.data;
     const state = getAuctionState(req.tournamentId!);
 
     const playerId = player_id || state.currentPlayer?.id;
@@ -367,10 +486,22 @@ router.post('/sold', authenticateToken, async (req: AuthRequest, res: Response) 
       tournament_id: req.tournamentId
     });
 
-    // Update auction state
+    // Audit log - don't await to avoid slowing down response
+    auditLog.playerSold(req.userId!, req.tournamentId!, playerId, {
+      teamId,
+      teamName: state.currentTeam?.name || player?.teams?.name,
+      amount: soldAmount,
+      playerName: player?.name || state.currentPlayer?.name
+    });
+
+    // Update auction state - save last player info for resume
     const io = req.app.get('io');
     const newState = updateAuctionState(req.tournamentId!, {
-      status: 'sold'
+      status: 'sold',
+      lastPlayer: state.currentPlayer,
+      lastStatus: 'sold',
+      lastTeam: state.currentTeam,
+      lastPrice: soldAmount
     });
 
     // Broadcast auction state to all relevant rooms
@@ -419,10 +550,17 @@ router.post('/unsold', authenticateToken, async (req: AuthRequest, res: Response
       return res.status(409).json({ error: 'Player state changed' });
     }
 
-    // Update auction state
+    // Audit log - don't await to avoid slowing down response
+    auditLog.playerUnsold(req.userId!, req.tournamentId!, state.currentPlayer.id);
+
+    // Update auction state - save last player info for resume
     const io = req.app.get('io');
     const newState = updateAuctionState(req.tournamentId!, {
-      status: 'unsold'
+      status: 'unsold',
+      lastPlayer: state.currentPlayer,
+      lastStatus: 'unsold',
+      lastTeam: null,
+      lastPrice: state.currentBid
     });
 
     io.to(`tournament:${req.tournamentId}`).emit('auction:state', newState);
@@ -507,7 +645,7 @@ router.post('/reset', authenticateToken, async (req: AuthRequest, res: Response)
       return res.status(500).json({ error: 'Failed to clear bids' });
     }
 
-    // Reset auction state completely (including timer and RTM)
+    // Reset auction state completely (including timer, RTM, and auction lifecycle)
     const io = req.app.get('io');
     const state = updateAuctionState(tournamentId, {
       currentPlayer: null,
@@ -521,7 +659,13 @@ router.post('/reset', authenticateToken, async (req: AuthRequest, res: Response)
         duration: 30
       },
       rtmEnabled: false,
-      rtmTeam: null
+      rtmTeam: null,
+      // Reset auction lifecycle
+      auctionStarted: false,
+      lastPlayer: null,
+      lastStatus: null,
+      lastTeam: null,
+      lastPrice: 0
     });
 
     // Broadcast reset to all rooms
@@ -534,7 +678,9 @@ router.post('/reset', authenticateToken, async (req: AuthRequest, res: Response)
     io.to(`tournament:${tournamentId}`).emit('teams:updated');
     io.to(`summary:${tournamentId}`).emit('teams:updated');
 
-    console.log(`Auction reset for tournament: ${tournamentId}`);
+    // Audit log - important operation
+    auditLog.auctionReset(req.userId!, tournamentId);
+
     res.json({ success: true, message: 'Auction reset including all retentions' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to reset auction' });
@@ -567,6 +713,78 @@ router.post('/update-points', authenticateToken, async (req: AuthRequest, res: R
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update points' });
+  }
+});
+
+// ============================================
+// TIMER ENDPOINTS (REST API for reliable timer control)
+// ============================================
+
+// Start timer
+router.post('/timer/start', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { timeLeft, duration } = req.body;
+    const tournamentId = req.tournamentId!;
+
+    const newState = updateAuctionState(tournamentId, {
+      timer: { timeLeft: timeLeft || duration || 30, isRunning: true, duration: duration || 30 }
+    });
+
+    // Broadcast to all rooms
+    const io = req.app.get('io');
+    const rooms = [`tournament:${tournamentId}`, `live:${tournamentId}`, `overlay:${tournamentId}`];
+    rooms.forEach(room => io.to(room).emit('timer:sync', newState.timer));
+
+    res.json({ success: true, timer: newState.timer });
+  } catch (error) {
+    console.error('Timer start error:', error);
+    res.status(500).json({ error: 'Failed to start timer' });
+  }
+});
+
+// Pause timer
+router.post('/timer/pause', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { timeLeft } = req.body;
+    const tournamentId = req.tournamentId!;
+
+    const state = getAuctionState(tournamentId);
+    const newState = updateAuctionState(tournamentId, {
+      timer: { ...state.timer, timeLeft: timeLeft ?? state.timer.timeLeft, isRunning: false }
+    });
+
+    // Broadcast to all rooms
+    const io = req.app.get('io');
+    const rooms = [`tournament:${tournamentId}`, `live:${tournamentId}`, `overlay:${tournamentId}`];
+    rooms.forEach(room => io.to(room).emit('timer:sync', newState.timer));
+
+    res.json({ success: true, timer: newState.timer });
+  } catch (error) {
+    console.error('Timer pause error:', error);
+    res.status(500).json({ error: 'Failed to pause timer' });
+  }
+});
+
+// Reset timer
+router.post('/timer/reset', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { duration } = req.body;
+    const tournamentId = req.tournamentId!;
+    const timerDuration = duration || 30;
+
+    const newState = updateAuctionState(tournamentId, {
+      timer: { timeLeft: timerDuration, isRunning: false, duration: timerDuration }
+    });
+
+    // Broadcast to all rooms
+    const io = req.app.get('io');
+    const rooms = [`tournament:${tournamentId}`, `live:${tournamentId}`, `overlay:${tournamentId}`];
+    rooms.forEach(room => io.to(room).emit('timer:sync', newState.timer));
+
+    res.json({ success: true, timer: newState.timer });
+  } catch (error) {
+    console.error('Timer reset error:', error);
+    res.status(500).json({ error: 'Failed to reset timer' });
   }
 });
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Timer, Play, Pause, RotateCcw } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
 import { soundManager } from '../../utils/soundManager';
+import { api } from '../../utils/api';
 
 interface AuctionTimerProps {
   duration?: number; // Default duration in seconds
@@ -33,7 +34,15 @@ export default function AuctionTimer({
   useEffect(() => {
     if (autoStart && !disabled) {
       setIsRunning(true);
-      socket.emit('timer:start', { tournamentId, timeLeft: duration, duration });
+      // Use REST API for reliable timer control
+      const startTimerAsync = async () => {
+        try {
+          await api.startTimer(duration, duration);
+        } catch (error) {
+          console.error('Failed to start timer:', error);
+        }
+      };
+      startTimerAsync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, disabled]); // Run when autoStart or disabled changes
@@ -82,21 +91,42 @@ export default function AuctionTimer({
     return () => clearInterval(interval);
   }, [isRunning, onTimeUp]);
 
-  const handleStart = useCallback(() => {
+  const handleStart = useCallback(async () => {
     if (disabled) return;
     setIsRunning(true);
-    socket.emit('timer:start', { tournamentId, timeLeft, duration: initialDuration });
+    try {
+      // Use REST API for reliable timer control
+      await api.startTimer(timeLeft, initialDuration);
+    } catch (error) {
+      console.error('Failed to start timer:', error);
+      // Fallback to socket event
+      socket.emit('timer:start', { tournamentId, timeLeft, duration: initialDuration });
+    }
   }, [disabled, socket, tournamentId, timeLeft, initialDuration]);
 
-  const handlePause = useCallback(() => {
+  const handlePause = useCallback(async () => {
     setIsRunning(false);
-    socket.emit('timer:pause', { tournamentId, timeLeft });
+    try {
+      // Use REST API for reliable timer control
+      await api.pauseTimer(timeLeft);
+    } catch (error) {
+      console.error('Failed to pause timer:', error);
+      // Fallback to socket event
+      socket.emit('timer:pause', { tournamentId, timeLeft });
+    }
   }, [socket, tournamentId, timeLeft]);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     setTimeLeft(initialDuration);
     setIsRunning(false);
-    socket.emit('timer:reset', { tournamentId, duration: initialDuration });
+    try {
+      // Use REST API for reliable timer control
+      await api.resetTimer(initialDuration);
+    } catch (error) {
+      console.error('Failed to reset timer:', error);
+      // Fallback to socket event
+      socket.emit('timer:reset', { tournamentId, duration: initialDuration });
+    }
   }, [socket, tournamentId, initialDuration]);
 
   // Calculate progress percentage

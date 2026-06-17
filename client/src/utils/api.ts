@@ -2,6 +2,86 @@ import { localCache } from './localCache';
 
 const API_URL = '/api';
 
+// User-friendly error message mappings
+const ERROR_MESSAGES: Record<string, string> = {
+  // PostgreSQL/Supabase error codes
+  'PGRST116': 'Record not found. It may have been deleted.',
+  'PGRST301': 'Unable to connect to the database. Please try again.',
+  'PGRST302': 'Database connection timed out. Please try again.',
+  '23505': 'This record already exists. Please use a different value.',
+  '23503': 'Cannot delete this item because it is referenced by other records.',
+  '23502': 'Required field is missing. Please fill in all required fields.',
+  '22P02': 'Invalid data format. Please check your input.',
+  '42501': 'You do not have permission to perform this action.',
+  '57014': 'The request took too long. Please try again.',
+
+  // Network errors
+  'Failed to fetch': 'Unable to connect to the server. Please check your internet connection.',
+  'NetworkError': 'Network error. Please check your internet connection.',
+  'AbortError': 'Request was cancelled. Please try again.',
+  'TypeError': 'Connection failed. Please check your internet connection.',
+
+  // Auth errors
+  'Invalid credentials': 'Invalid email/mobile or password. Please try again.',
+  'User not found': 'Account not found. Please check your email/mobile or register.',
+  'Invalid password': 'Incorrect password. Please try again.',
+  'Token expired': 'Your session has expired. Please log in again.',
+  'jwt expired': 'Your session has expired. Please log in again.',
+  'jwt malformed': 'Invalid session. Please log in again.',
+  'Unauthorized': 'Please log in to continue.',
+
+  // Tournament errors
+  'Tournament not found': 'Tournament not found. It may have been deleted.',
+  'Not authorized': 'You do not have permission to access this tournament.',
+
+  // Rate limiting
+  'Too many requests': 'Too many requests. Please wait a moment and try again.',
+  'Rate limit exceeded': 'Too many requests. Please wait a moment and try again.',
+};
+
+/**
+ * Convert raw error messages to user-friendly messages
+ */
+function getUserFriendlyError(errorMsg: string): string {
+  // Check for exact matches first
+  if (ERROR_MESSAGES[errorMsg]) {
+    return ERROR_MESSAGES[errorMsg];
+  }
+
+  // Check for partial matches (error codes in message)
+  for (const [key, friendlyMsg] of Object.entries(ERROR_MESSAGES)) {
+    if (errorMsg.includes(key)) {
+      return friendlyMsg;
+    }
+  }
+
+  // Check for common patterns
+  if (errorMsg.toLowerCase().includes('timeout')) {
+    return 'The request took too long. Please try again.';
+  }
+  if (errorMsg.toLowerCase().includes('network')) {
+    return 'Network error. Please check your internet connection.';
+  }
+  if (errorMsg.toLowerCase().includes('duplicate')) {
+    return 'This record already exists. Please use a different value.';
+  }
+  if (errorMsg.toLowerCase().includes('not found')) {
+    return 'The requested item was not found.';
+  }
+  if (errorMsg.toLowerCase().includes('permission') || errorMsg.toLowerCase().includes('forbidden')) {
+    return 'You do not have permission to perform this action.';
+  }
+
+  // Return original message if no mapping found, but clean it up
+  // Remove technical prefixes and make it more readable
+  const cleanedMsg = errorMsg
+    .replace(/^Error:\s*/i, '')
+    .replace(/^PGRST\d+:\s*/i, '')
+    .replace(/^\d+:\s*/, '');
+
+  return cleanedMsg || 'Something went wrong. Please try again.';
+}
+
 // TTL-based cache for API responses
 interface CacheEntry<T> {
   data: T;
@@ -65,7 +145,6 @@ class ApiClient {
       // Also clear teams promise cache
       this.teamsPromise = null;
       this.teamsPromiseTime = 0;
-      console.log('API cache invalidated due to token change');
     }
   }
 
@@ -108,7 +187,8 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    timeoutMs: number = 30000 // 30 second default timeout
   ): Promise<T> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -120,23 +200,43 @@ class ApiClient {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({ error: 'Request failed' }));
-      let errorMsg = 'Request failed';
-      if (typeof data.error === 'string') {
-        errorMsg = data.error;
-      } else if (Array.isArray(data.error)) {
-        errorMsg = data.error.map((e: any) => e.message || e).join(', ');
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Request failed' }));
+        let errorMsg = 'Request failed';
+        if (typeof data.error === 'string') {
+          errorMsg = data.error;
+        } else if (Array.isArray(data.error)) {
+          errorMsg = data.error.map((e: { message?: string }) => e.message || e).join(', ');
+        } else if (data.message) {
+          errorMsg = data.message;
+        } else if (data.code) {
+          errorMsg = data.code;
+        }
+        // Convert to user-friendly message
+        throw new Error(getUserFriendlyError(errorMsg));
       }
-      throw new Error(errorMsg);
-    }
 
-    return response.json();
+      return response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(getUserFriendlyError('timeout'));
+      }
+      throw error;
+    }
   }
 
   // Auth
@@ -162,10 +262,10 @@ class ApiClient {
     });
   }
 
-  async resetPassword(email: string, newPassword: string) {
+  async resetPassword(email: string, currentPassword: string, newPassword: string) {
     return this.request('/auth/reset-password', {
       method: 'POST',
-      body: JSON.stringify({ email, newPassword }),
+      body: JSON.stringify({ email, currentPassword, newPassword }),
     });
   }
 
@@ -227,6 +327,14 @@ class ApiClient {
     bid_increment: number;
     status: string;
     player_display_mode: string;
+    overlay_settings: {
+      theme: 'auto' | 'classic' | 'fire' | 'city' | 'premium';
+      mode: 'minimal' | 'standard' | 'full';
+      accentColor: string;
+      showParticles: boolean;
+      showTimer: boolean;
+      showTeamLogo: boolean;
+    };
   }>) {
     return this.request('/tournaments/current', {
       method: 'PUT',
@@ -336,8 +444,8 @@ class ApiClient {
       const data = await this.request('/teams');
       apiCache.set('teams', data, CACHE_TTL.TEAMS);
       localCache.setTeams(data as any[]);
-    } catch (e) {
-      console.log('[API] Background teams refresh failed:', e);
+    } catch {
+      // Background refresh failed silently
     }
   }
 
@@ -427,8 +535,8 @@ class ApiClient {
       const data = await this.request('/categories');
       apiCache.set('categories', data, CACHE_TTL.CATEGORIES);
       localCache.setCategories(data as any[]);
-    } catch (e) {
-      console.log('[API] Background categories refresh failed:', e);
+    } catch {
+      // Background refresh failed silently
     }
   }
 
@@ -518,8 +626,8 @@ class ApiClient {
       const data = await this.request('/players');
       apiCache.set('players', data, CACHE_TTL.PLAYERS);
       localCache.setPlayers(data as any[]);
-    } catch (e) {
-      console.log('[API] Background players refresh failed:', e);
+    } catch {
+      // Background refresh failed silently
     }
   }
 
@@ -651,10 +759,10 @@ class ApiClient {
     return this.request(`/auction/player/${playerId}`);
   }
 
-  async placeBid(team_id: string, amount: number) {
+  async placeBid(team_id: string, amount: number, expectedBid?: number) {
     return this.request('/auction/bid', {
       method: 'POST',
-      body: JSON.stringify({ team_id, amount }),
+      body: JSON.stringify({ team_id, amount, expectedBid }),
     });
   }
 
@@ -697,6 +805,28 @@ class ApiClient {
 
   async updatePoints() {
     return this.request('/auction/update-points', { method: 'POST' });
+  }
+
+  // Timer control (REST API for reliable timer sync)
+  async startTimer(timeLeft: number, duration: number) {
+    return this.request('/auction/timer/start', {
+      method: 'POST',
+      body: JSON.stringify({ timeLeft, duration }),
+    });
+  }
+
+  async pauseTimer(timeLeft: number) {
+    return this.request('/auction/timer/pause', {
+      method: 'POST',
+      body: JSON.stringify({ timeLeft }),
+    });
+  }
+
+  async resetTimer(duration: number) {
+    return this.request('/auction/timer/reset', {
+      method: 'POST',
+      body: JSON.stringify({ duration }),
+    });
   }
 
   // Retention

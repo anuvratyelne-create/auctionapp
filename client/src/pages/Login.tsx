@@ -14,6 +14,8 @@ export default function Login() {
   // Forgot password state
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
@@ -51,7 +53,7 @@ export default function Login() {
     try {
       const response = await api.login(identifier, password) as any;
       api.setToken(response.token);
-      setAuth(response.user, response.tournament, response.token);
+      setAuth(response.user, response.tournament, response.token, response.tournaments || []);
       navigate('/manage');
     } catch (err: any) {
       const msg = typeof err?.message === 'string' ? err.message : 'Login failed';
@@ -70,7 +72,7 @@ export default function Login() {
     try {
       const response = await api.login('demo', 'demo123') as any;
       api.setToken(response.token);
-      setAuth(response.user, response.tournament, response.token);
+      setAuth(response.user, response.tournament, response.token, response.tournaments || []);
       navigate('/manage');
     } catch (err: any) {
       const msg = typeof err?.message === 'string' ? err.message : 'Demo login failed';
@@ -85,28 +87,34 @@ export default function Login() {
     setResetError('');
     setResetMessage('');
 
-    if (!resetEmail || !newPassword) {
-      setResetError('Please enter email and new password');
+    if (!resetEmail || !currentPassword || !newPassword) {
+      setResetError('Please fill in all fields');
       return;
     }
 
     if (newPassword.length < 6) {
-      setResetError('Password must be at least 6 characters');
+      setResetError('New password must be at least 6 characters');
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setResetError('New password must be different from current password');
       return;
     }
 
     setResetLoading(true);
     try {
-      await api.resetPassword(resetEmail, newPassword);
-      setResetMessage('Password reset successfully! You can now login.');
+      await api.resetPassword(resetEmail, currentPassword, newPassword);
+      setResetMessage('Password changed successfully! You can now login.');
       setResetEmail('');
+      setCurrentPassword('');
       setNewPassword('');
       setTimeout(() => {
         setShowForgotPassword(false);
         setResetMessage('');
       }, 2000);
     } catch (err: any) {
-      setResetError(err.message || 'Failed to reset password');
+      setResetError(err.message || 'Failed to change password');
     } finally {
       setResetLoading(false);
     }
@@ -369,6 +377,9 @@ export default function Login() {
             <button
               onClick={() => {
                 setShowForgotPassword(false);
+                setResetEmail('');
+                setCurrentPassword('');
+                setNewPassword('');
                 setResetError('');
                 setResetMessage('');
               }}
@@ -381,8 +392,8 @@ export default function Login() {
               <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <KeyRound size={32} className="text-white" />
               </div>
-              <h3 className="text-2xl font-bold text-white">Reset Password</h3>
-              <p className="text-slate-400 mt-2">Enter your email and new password</p>
+              <h3 className="text-2xl font-bold text-white">Change Password</h3>
+              <p className="text-slate-400 mt-2">Verify your identity with current password</p>
             </div>
 
             <form onSubmit={handleResetPassword} className="space-y-4">
@@ -409,6 +420,28 @@ export default function Login() {
                     placeholder="Enter your email"
                     required
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Current Password</label>
+                <div className="relative">
+                  <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-12 pr-12 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
+                    placeholder="Enter current password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-amber-400 transition-colors"
+                  >
+                    {showCurrentPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
                 </div>
               </div>
 
@@ -440,7 +473,7 @@ export default function Login() {
                 disabled={resetLoading}
                 className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:from-slate-600 disabled:to-slate-600 text-white font-bold py-3 rounded-xl transition-all"
               >
-                {resetLoading ? 'Resetting...' : 'Reset Password'}
+                {resetLoading ? 'Changing...' : 'Change Password'}
               </button>
             </form>
           </div>

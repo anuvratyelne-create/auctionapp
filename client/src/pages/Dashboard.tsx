@@ -4,7 +4,9 @@ import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../utils/api';
-import { Team, Player, Category } from '../types';
+import { Team, Player, Category, OverlaySettings, OverlayTheme, OverlayMode } from '../types';
+import { defaultOverlaySettings } from '../config/overlayThemes';
+import { socketClient } from '../socket/client';
 
 // Lazy load heavy components for better initial load performance
 const ProAuctionLayout = lazy(() => import('../components/auction/ProAuctionLayout'));
@@ -72,6 +74,10 @@ import {
   Download,
   X,
   Loader2,
+  Monitor,
+  Eye,
+  Layout,
+  Timer,
 } from 'lucide-react';
 
 // Panel types - Account level and Auction level
@@ -107,7 +113,7 @@ const getInitialState = (): { panel: SidebarPanel; viewMode: ViewMode } => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { tournament, user, token, logout, updateTournament } = useAuthStore();
+  const { tournament, user, token, logout, updateTournament, refreshTournament } = useAuthStore();
   const socket = useSocket();
 
   const initialState = getInitialState();
@@ -118,6 +124,7 @@ export default function Dashboard() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allTournaments, setAllTournaments] = useState<any[]>([]);
+  const [checkingApproval, setCheckingApproval] = useState(false);
 
   // On mount, validate saved state against actual tournament
   useEffect(() => {
@@ -376,6 +383,81 @@ export default function Dashboard() {
 
   // Full screen mode for auction panel - with all features
   if (activePanel === 'auction-panel') {
+    // Check if tournament requires approval
+    // In development (localhost), treat undefined approval_status as approved (migration might not be run)
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const needsApproval = tournament && tournament.approval_status !== 'approved' && !(isDev && tournament.approval_status === undefined);
+    if (needsApproval) {
+      // Auto-refresh to check if approval status changed
+      const handleCheckApproval = async () => {
+        setCheckingApproval(true);
+        await refreshTournament();
+        setCheckingApproval(false);
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-slate-900/80 border border-amber-500/30 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Shield className="w-8 h-8 text-amber-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-3">Awaiting Approval</h2>
+            <p className="text-slate-400 mb-6">
+              Your tournament needs to be approved by an admin before you can start the auction.
+              This usually happens within 24 hours.
+            </p>
+            <div className="bg-slate-800/50 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Status</span>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  tournament.approval_status === 'pending'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : tournament.approval_status === 'rejected'
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                    : 'bg-slate-700 text-slate-400'
+                }`}>
+                  {tournament.approval_status === 'pending' ? 'Pending Review' :
+                   tournament.approval_status === 'rejected' ? 'Rejected' :
+                   tournament.approval_status || 'Pending Review'}
+                </span>
+              </div>
+              {tournament.admin_notes && (
+                <div className="mt-3 pt-3 border-t border-slate-700">
+                  <p className="text-xs text-slate-500 mb-1">Admin Notes</p>
+                  <p className="text-sm text-slate-300">{tournament.admin_notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={handleCheckApproval}
+                disabled={checkingApproval}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                {checkingApproval ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle size={18} />
+                    Check Approval Status
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => setActivePanel('auction-overview')}
+                className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowLeft size={18} />
+                Back to Overview
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return <FullAuctionLayout onBack={() => setActivePanel('auction-overview')} />;
   }
 
@@ -831,8 +913,45 @@ function AuctionOverview({ tournament, teams, players, categories, onNavigate, o
     );
   }
 
+  // In development (localhost), treat undefined approval_status as approved (migration might not be run)
+  const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isApproved = tournament.approval_status === 'approved' || (isDevMode && tournament.approval_status === undefined);
+  const isPending = !isApproved && (!tournament.approval_status || tournament.approval_status === 'pending');
+  const isRejected = tournament.approval_status === 'rejected';
+
   return (
     <div className="space-y-6">
+      {/* Approval Status Banner */}
+      {!isApproved && (
+        <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+          isRejected
+            ? 'bg-red-500/10 border-red-500/30'
+            : 'bg-amber-500/10 border-amber-500/30'
+        }`}>
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+            isRejected ? 'bg-red-500/20' : 'bg-amber-500/20'
+          }`}>
+            <Shield className={isRejected ? 'text-red-400' : 'text-amber-400'} size={20} />
+          </div>
+          <div className="flex-1">
+            <h3 className={`font-semibold ${isRejected ? 'text-red-400' : 'text-amber-400'}`}>
+              {isRejected ? 'Tournament Rejected' : 'Awaiting Admin Approval'}
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
+              {isRejected
+                ? 'Your tournament has been rejected by an admin. Please review the notes below and make necessary changes.'
+                : 'Your tournament is pending admin approval. You can set up teams and players while waiting, but cannot start the auction.'}
+            </p>
+            {tournament.admin_notes && (
+              <div className="mt-2 p-2 bg-slate-800/50 rounded-lg">
+                <p className="text-xs text-slate-500">Admin Notes:</p>
+                <p className="text-sm text-slate-300">{tournament.admin_notes}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Auction Header */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
@@ -856,6 +975,16 @@ function AuctionOverview({ tournament, teams, players, categories, onNavigate, o
                       : 'bg-amber-500/20 text-amber-400'
                   }`}>
                     {tournament.status?.toUpperCase() || 'SETUP'}
+                  </span>
+                  {/* Approval Status Badge */}
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    isApproved
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                      : isRejected
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  }`}>
+                    {isApproved ? '✓ Approved' : isRejected ? '✗ Rejected' : '⏳ Pending'}
                   </span>
                 </div>
               </div>
@@ -928,12 +1057,25 @@ function AuctionOverview({ tournament, teams, players, categories, onNavigate, o
           <p className="text-sm text-slate-400">{categories.length} categories</p>
         </button>
         <button
-          onClick={() => onNavigate('auction-panel')}
-          className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 hover:border-amber-500/50 rounded-xl p-4 text-left transition-all group"
+          onClick={() => isApproved && onNavigate('auction-panel')}
+          disabled={!isApproved}
+          className={`rounded-xl p-4 text-left transition-all group ${
+            isApproved
+              ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 hover:border-amber-500/50'
+              : 'bg-slate-800/50 border border-slate-700 cursor-not-allowed opacity-60'
+          }`}
         >
-          <Gavel className="text-amber-400 mb-2" size={24} />
-          <h3 className="font-semibold text-amber-400">Open Auction</h3>
-          <p className="text-sm text-slate-400">Start live bidding</p>
+          {isApproved ? (
+            <Gavel className="text-amber-400 mb-2" size={24} />
+          ) : (
+            <Shield className="text-slate-500 mb-2" size={24} />
+          )}
+          <h3 className={`font-semibold ${isApproved ? 'text-amber-400' : 'text-slate-500'}`}>
+            {isApproved ? 'Open Auction' : 'Awaiting Approval'}
+          </h3>
+          <p className="text-sm text-slate-400">
+            {isApproved ? 'Start live bidding' : 'Approval required'}
+          </p>
         </button>
       </div>
 
@@ -1783,6 +1925,9 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // In development (localhost), treat undefined approval_status as approved (migration might not be run)
+  const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isApproved = tournament?.approval_status === 'approved' || (isDevMode && tournament?.approval_status === undefined);
   const baseUrl = window.location.origin;
   const publicViewUrl = `${baseUrl}/live/${tournament?.share_code}`;
   const overlayUrl = `${baseUrl}/overlay/${tournament?.share_code}`;
@@ -1859,11 +2004,16 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
       {/* Go to Auction Panel Link */}
       <div className="flex justify-end">
         <button
-          onClick={() => onNavigate('auction-panel')}
-          className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+          onClick={() => isApproved && onNavigate('auction-panel')}
+          disabled={!isApproved}
+          className={`flex items-center gap-2 transition-colors ${
+            isApproved
+              ? 'text-cyan-400 hover:text-cyan-300'
+              : 'text-slate-500 cursor-not-allowed'
+          }`}
         >
-          <span>Go to Auction Panel</span>
-          <ExternalLink size={16} />
+          <span>{isApproved ? 'Go to Auction Panel' : 'Awaiting Approval'}</span>
+          {isApproved ? <ExternalLink size={16} /> : <Shield size={16} />}
         </button>
       </div>
 
@@ -1941,11 +2091,16 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
               )}
             </button>
             <button
-              onClick={() => onNavigate('auction-panel')}
-              className="w-12 h-12 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 rounded-xl flex items-center justify-center text-amber-400 transition-colors"
-              title="Edit Settings"
+              onClick={() => isApproved && onNavigate('auction-panel')}
+              disabled={!isApproved}
+              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+                isApproved
+                  ? 'bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-400'
+                  : 'bg-slate-700/50 border border-slate-600 text-slate-500 cursor-not-allowed'
+              }`}
+              title={isApproved ? 'Auction Panel' : 'Awaiting Approval'}
             >
-              <Edit3 size={20} />
+              {isApproved ? <Edit3 size={20} /> : <Shield size={20} />}
             </button>
             <button
               onClick={handleDeleteTournament}
@@ -2005,14 +2160,27 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 space-y-4">
           {/* Auction Panel Link */}
           <button
-            onClick={() => onNavigate('auction-panel')}
-            className="w-full flex items-center justify-between bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30 rounded-xl p-4 transition-all group"
+            onClick={() => isApproved && onNavigate('auction-panel')}
+            disabled={!isApproved}
+            className={`w-full flex items-center justify-between rounded-xl p-4 transition-all group ${
+              isApproved
+                ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30'
+                : 'bg-slate-800/50 border border-slate-700 cursor-not-allowed'
+            }`}
           >
             <div className="flex items-center gap-3">
-              <Gavel size={24} className="text-amber-400" />
-              <span className="font-semibold text-white">Auction Panel</span>
+              {isApproved ? (
+                <Gavel size={24} className="text-amber-400" />
+              ) : (
+                <Shield size={24} className="text-slate-500" />
+              )}
+              <span className={`font-semibold ${isApproved ? 'text-white' : 'text-slate-500'}`}>
+                {isApproved ? 'Auction Panel' : 'Awaiting Approval'}
+              </span>
             </div>
-            <ArrowRight size={20} className="text-amber-400 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight size={20} className={`transition-transform ${
+              isApproved ? 'text-amber-400 group-hover:translate-x-1' : 'text-slate-600'
+            }`} />
           </button>
 
           {/* Public View URL */}
@@ -2186,6 +2354,20 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
 
             {/* Requirements Checklist */}
             <div className="space-y-3">
+              {/* Admin Approval Requirement */}
+              <div className="flex items-center gap-3">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  isApproved ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {isApproved ? '✓' : '⏳'}
+                </div>
+                <span className="text-slate-300">
+                  Admin Approval: <span className={isApproved ? 'text-green-400' : 'text-amber-400'}>
+                    {isApproved ? 'Approved' : 'Pending'}
+                  </span>
+                </span>
+              </div>
+
               {/* Teams Requirement */}
               <div className="flex items-center gap-3">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
@@ -2249,7 +2431,7 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
               const teamsOk = teams.length >= 2 && teams.length <= 20;
               const playersOk = players.length >= 22 && players.length <= 300;
               const categoriesOk = categories.length >= 1;
-              const canStart = teamsOk && playersOk && categoriesOk;
+              const canStart = teamsOk && playersOk && categoriesOk && isApproved;
 
               return (
                 <>
@@ -2262,10 +2444,15 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
                         : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                     }`}
                   >
-                    <Gavel size={24} />
-                    START AUCTION
+                    {isApproved ? <Gavel size={24} /> : <Shield size={24} />}
+                    {isApproved ? 'START AUCTION' : 'AWAITING APPROVAL'}
                   </button>
-                  {!canStart && (
+                  {!isApproved && (
+                    <p className="text-xs text-amber-400">
+                      Your tournament is pending admin approval
+                    </p>
+                  )}
+                  {isApproved && !canStart && (
                     <p className="text-xs text-red-400">
                       Complete all requirements to start
                     </p>
@@ -4487,6 +4674,9 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
         )}
       </div>
 
+      {/* Overlay Settings Section */}
+      <OverlaySettingsSection tournament={tournament} />
+
       {/* Save Button */}
       <div className="flex items-center justify-between">
         <button
@@ -4497,14 +4687,327 @@ function CustomizeThemePanel({ tournament, onNavigate }: { tournament: any; onNa
           Back to Auction Detail
         </button>
         <button
-          onClick={() => {
-            // Settings are already saved via uiStore
-            onNavigate('auction-detail');
+          onClick={async () => {
+            // Save all pending changes before navigating
+            try {
+              // Save tournament settings if changed
+              if (tournamentName !== tournament?.name || tournamentLogoUrl !== tournament?.logo_url) {
+                await handleSaveTournament();
+              }
+              // Save broadcaster settings if changed
+              if (broadcasterLogoUrl !== tournament?.broadcaster_logo_url || broadcasterName !== tournament?.broadcaster_name) {
+                await handleSaveBroadcaster();
+              }
+              onNavigate('auction-detail');
+            } catch (error) {
+              console.error('Failed to save changes:', error);
+            }
           }}
-          className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-purple-500/25"
+          disabled={savingTournament || savingBroadcaster}
+          className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-purple-500/25 disabled:opacity-50"
         >
-          Save Changes
+          {savingTournament || savingBroadcaster ? 'Saving...' : 'Save Changes'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Overlay Settings Section Component for CustomizeThemePanel
+function OverlaySettingsSection({ tournament }: { tournament: any }) {
+  const { updateTournament } = useAuthStore();
+  const [overlaySettings, setOverlaySettings] = useState<OverlaySettings>(
+    tournament?.overlay_settings || defaultOverlaySettings
+  );
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const shareCode = tournament?.share_code || '';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  // Update local state when tournament changes
+  useEffect(() => {
+    if (tournament?.overlay_settings) {
+      setOverlaySettings(tournament.overlay_settings);
+    }
+  }, [tournament?.overlay_settings]);
+
+  const handleSettingChange = async <K extends keyof OverlaySettings>(
+    key: K,
+    value: OverlaySettings[K]
+  ) => {
+    const newSettings = { ...overlaySettings, [key]: value };
+    setOverlaySettings(newSettings);
+
+    // Save to server
+    setSaving(true);
+    try {
+      await api.updateTournament({ overlay_settings: newSettings });
+      // Update local auth store
+      if (tournament) {
+        updateTournament({ ...tournament, overlay_settings: newSettings });
+      }
+      // Broadcast to connected overlays
+      if (tournament?.id) {
+        socketClient.emit('overlay:settingsUpdate', { tournamentId: tournament.id, settings: newSettings });
+      }
+    } catch (error) {
+      console.error('Failed to save overlay settings:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getOverlayUrl = () => {
+    const params = new URLSearchParams();
+    if (overlaySettings.theme !== 'auto') {
+      params.set('theme', overlaySettings.theme);
+    }
+    // Map 'full' to 'premium' for URL (OverlayView uses 'premium' for full broadcast mode)
+    if (overlaySettings.mode !== 'standard') {
+      const modeParam = overlaySettings.mode === 'full' ? 'premium' : overlaySettings.mode;
+      params.set('mode', modeParam);
+    }
+    if (overlaySettings.accentColor !== '#22c55e') {
+      params.set('color', overlaySettings.accentColor);
+    }
+    const queryString = params.toString();
+    return `${baseUrl}/overlay/${shareCode}${queryString ? `?${queryString}` : ''}`;
+  };
+
+  const copyOverlayUrl = () => {
+    navigator.clipboard.writeText(getOverlayUrl());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openPreview = () => {
+    window.open(getOverlayUrl(), '_blank', 'width=1280,height=720');
+  };
+
+  const themeOptions: { value: OverlayTheme; label: string; description: string; colors: string[] }[] = [
+    { value: 'auto', label: 'Auto-sync', description: 'Match admin layout', colors: ['#22c55e', '#0ea5e9'] },
+    { value: 'classic', label: 'Classic', description: 'Clean, professional', colors: ['#22c55e', '#3b82f6'] },
+    { value: 'fire', label: 'Fire', description: 'Embers & flames', colors: ['#f97316', '#ef4444', '#fbbf24'] },
+    { value: 'city', label: 'City', description: 'Neon cyberpunk', colors: ['#06b6d4', '#a855f7', '#ec4899'] },
+    { value: 'premium', label: 'Premium', description: 'Luxury gold', colors: ['#d4af37', '#ffd700', '#b8860b'] },
+  ];
+
+  const modeOptions: { value: OverlayMode; label: string; description: string }[] = [
+    { value: 'minimal', label: 'Minimal', description: 'Small floating card' },
+    { value: 'standard', label: 'Standard', description: 'Balanced layout' },
+    { value: 'full', label: 'Full', description: 'Full broadcast view' },
+  ];
+
+  return (
+    <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-xl flex items-center justify-center">
+            <Monitor size={20} className="text-cyan-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">OBS Overlay Settings</h3>
+            <p className="text-sm text-slate-500">Customize streaming overlay appearance</p>
+          </div>
+        </div>
+        {saving && (
+          <span className="text-xs text-cyan-400 animate-pulse">Saving...</span>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        {/* Theme Selection */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Palette size={16} className="text-purple-400" />
+            <span className="text-sm text-slate-400">Overlay Theme</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            {themeOptions.map((theme) => (
+              <button
+                key={theme.value}
+                onClick={() => handleSettingChange('theme', theme.value)}
+                className={`relative p-3 rounded-xl text-left transition-all ${
+                  overlaySettings.theme === theme.value
+                    ? 'bg-gradient-to-br from-slate-700 to-slate-800 ring-2 ring-cyan-500 scale-[1.02]'
+                    : 'bg-slate-800/50 hover:bg-slate-800 hover:scale-[1.01]'
+                }`}
+              >
+                {/* Color preview dots */}
+                <div className="flex gap-1 mb-2">
+                  {theme.colors.map((color, i) => (
+                    <div
+                      key={i}
+                      className="w-3 h-3 rounded-full"
+                      style={{ background: color, boxShadow: `0 0 8px ${color}50` }}
+                    />
+                  ))}
+                </div>
+                <p className="text-sm font-medium text-white">{theme.label}</p>
+                <p className="text-xs text-slate-500">{theme.description}</p>
+                {overlaySettings.theme === theme.value && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center">
+                    <Check size={12} className="text-white" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Mode Selection */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Layout size={16} className="text-blue-400" />
+            <span className="text-sm text-slate-400">Display Mode</span>
+          </div>
+          <div className="flex gap-2">
+            {modeOptions.map((mode) => (
+              <button
+                key={mode.value}
+                onClick={() => handleSettingChange('mode', mode.value)}
+                className={`flex-1 p-3 rounded-xl text-center transition-all ${
+                  overlaySettings.mode === mode.value
+                    ? 'bg-blue-600/30 border border-blue-500/50 text-white'
+                    : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <p className="font-medium">{mode.label}</p>
+                <p className="text-xs opacity-70">{mode.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Effect Toggles */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Particles */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50">
+            <div className="flex items-center gap-2">
+              <Sparkles size={18} className="text-amber-400" />
+              <span className="text-sm text-white">Particles</span>
+            </div>
+            <button
+              onClick={() => handleSettingChange('showParticles', !overlaySettings.showParticles)}
+              className={`relative w-12 h-6 rounded-full transition-all ${
+                overlaySettings.showParticles ? 'bg-amber-500' : 'bg-slate-600'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                  overlaySettings.showParticles ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Timer */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50">
+            <div className="flex items-center gap-2">
+              <Timer size={18} className="text-green-400" />
+              <span className="text-sm text-white">Timer</span>
+            </div>
+            <button
+              onClick={() => handleSettingChange('showTimer', !overlaySettings.showTimer)}
+              className={`relative w-12 h-6 rounded-full transition-all ${
+                overlaySettings.showTimer ? 'bg-green-500' : 'bg-slate-600'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                  overlaySettings.showTimer ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Team Logo */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50">
+            <div className="flex items-center gap-2">
+              <Users size={18} className="text-blue-400" />
+              <span className="text-sm text-white">Team Logo</span>
+            </div>
+            <button
+              onClick={() => handleSettingChange('showTeamLogo', !overlaySettings.showTeamLogo)}
+              className={`relative w-12 h-6 rounded-full transition-all ${
+                overlaySettings.showTeamLogo ? 'bg-blue-500' : 'bg-slate-600'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
+                  overlaySettings.showTeamLogo ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Accent Color */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Palette size={16} className="text-pink-400" />
+            <span className="text-sm text-slate-400">Accent Color</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={overlaySettings.accentColor}
+              onChange={(e) => handleSettingChange('accentColor', e.target.value)}
+              className="w-12 h-10 rounded-lg cursor-pointer border-0 bg-transparent"
+            />
+            <input
+              type="text"
+              value={overlaySettings.accentColor}
+              onChange={(e) => {
+                if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                  handleSettingChange('accentColor', e.target.value);
+                }
+              }}
+              className="flex-1 px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-mono"
+              placeholder="#22c55e"
+            />
+            <div
+              className="w-10 h-10 rounded-lg"
+              style={{ background: overlaySettings.accentColor, boxShadow: `0 0 20px ${overlaySettings.accentColor}50` }}
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 pt-4 border-t border-slate-700">
+          <button
+            onClick={openPreview}
+            disabled={!shareCode}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-medium hover:from-cyan-500 hover:to-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Eye size={18} />
+            Preview Overlay
+          </button>
+          <button
+            onClick={copyOverlayUrl}
+            disabled={!shareCode}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+              copied
+                ? 'bg-green-600/20 border-green-500/50 text-green-400'
+                : 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700'
+            }`}
+          >
+            {copied ? <Check size={18} /> : <Copy size={18} />}
+            {copied ? 'Copied!' : 'Copy URL'}
+          </button>
+        </div>
+
+        {/* URL Display */}
+        <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-slate-400">OBS Browser Source URL</span>
+            <ExternalLink size={12} className="text-slate-500" />
+          </div>
+          <p className="text-xs text-cyan-400 font-mono break-all">
+            {shareCode ? getOverlayUrl() : 'Save tournament to generate overlay URL'}
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -15,6 +15,11 @@ const createTeamSchema = z.object({
   total_budget: z.number().optional()
 });
 
+const updateTeamSchema = createTeamSchema.partial().extend({
+  // Optimistic locking - client passes current version to prevent concurrent edit conflicts
+  version: z.number().int().positive().optional()
+});
+
 // Compare multiple teams
 router.get('/compare', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -124,23 +129,38 @@ router.get('/compare', authenticateToken, async (req: AuthRequest, res: Response
   }
 });
 
-// Get all teams
+// Get all teams (with optional pagination)
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const { page, limit } = req.query;
+
+    // Pagination support (optional - if not provided, returns all)
+    const pageNum = page ? parseInt(page as string, 10) : null;
+    const limitNum = limit ? Math.min(parseInt(limit as string, 10), 50) : null; // Max 50 per page
+    const usePagination = pageNum !== null && limitNum !== null && pageNum > 0 && limitNum > 0;
+
     const { data: tournament } = await supabase
       .from('tournaments')
       .select('total_points, min_players')
       .eq('id', req.tournamentId)
       .single();
 
-    const { data: teams, error } = await supabase
+    let query = supabase
       .from('teams')
       .select(`
         *,
         players:players(id, sold_price, retention_price, status, is_retained)
-      `)
+      `, usePagination ? { count: 'exact' } : undefined)
       .eq('tournament_id', req.tournamentId)
       .order('created_at', { ascending: true });
+
+    // Apply pagination if requested
+    if (usePagination) {
+      const offset = (pageNum - 1) * limitNum;
+      query = query.range(offset, offset + limitNum - 1);
+    }
+
+    const { data: teams, error, count } = await query;
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch teams' });
@@ -181,7 +201,23 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       };
     }) || [];
 
-    res.json(teamsWithStats);
+    // Return paginated response with metadata if pagination was requested
+    if (usePagination && count !== null) {
+      const totalPages = Math.ceil(count / limitNum);
+      res.json({
+        data: teamsWithStats,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: count,
+          totalPages,
+          hasMore: pageNum < totalPages
+        }
+      });
+    } else {
+      // Backward compatible - return array directly
+      res.json(teamsWithStats);
+    }
   } catch (error) {
     console.error('Error fetching teams:', error);
     res.status(500).json({ error: 'Failed to fetch teams' });
@@ -345,19 +381,61 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 // Update team
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const updates = createTeamSchema.partial().parse(req.body);
+    const parsed = updateTeamSchema.parse(req.body);
 
-    const { data: team, error } = await supabase
+    // Extract version for optimistic locking (don't include in updates)
+    const clientVersion = parsed.version;
+
+    // Build updates object without version field
+    const updates: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value !== undefined && key !== 'version') {
+        updates[key] = value;
+      }
+    }
+
+    // Don't update if no valid fields provided
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    // Build update query with optimistic locking if version provided
+    let updateQuery = supabase
       .from('teams')
       .update(updates)
       .eq('id', req.params.id)
-      .eq('tournament_id', req.tournamentId)
-      .select()
-      .single();
+      .eq('tournament_id', req.tournamentId);
+
+    // If client provided a version, use optimistic locking
+    if (clientVersion !== undefined) {
+      updateQuery = updateQuery.eq('version', clientVersion);
+    }
+
+    const { data: updatedRows, error } = await updateQuery.select();
 
     if (error) {
       return res.status(500).json({ error: 'Failed to update team' });
     }
+
+    // If version was provided and no rows updated, it's a conflict
+    if (clientVersion !== undefined && (!updatedRows || updatedRows.length === 0)) {
+      // Fetch current version to return to client
+      const { data: currentTeam } = await supabase
+        .from('teams')
+        .select('version')
+        .eq('id', req.params.id)
+        .single();
+
+      return res.status(409).json({
+        error: 'Conflict: Team was modified by another user',
+        code: 'VERSION_CONFLICT',
+        currentVersion: currentTeam?.version,
+        yourVersion: clientVersion,
+        hint: 'Refresh the data and try again'
+      });
+    }
+
+    const team = updatedRows?.[0];
 
     const io = req.app.get('io');
     io.to(`tournament:${req.tournamentId}`).emit('teams:updated');
