@@ -39,14 +39,38 @@ async function logAuthEvent(
   }
 }
 
+// Blocked email domains - prevent fake/placeholder emails
+const BLOCKED_EMAIL_DOMAINS = ['migrated.local', 'fake.local', 'placeholder.local', 'temp.local'];
+
+// Validate email is not from a blocked domain
+function isValidEmail(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return false;
+  return !BLOCKED_EMAIL_DOMAINS.some(blocked => domain === blocked || domain.endsWith('.' + blocked));
+}
+
+// Check if user has fake/migrated data
+function isMigratedUser(user: { email?: string; mobile?: string; name?: string }): boolean {
+  if (user.email?.includes('@migrated.local')) return true;
+  if (user.mobile?.startsWith('user_')) return true;
+  if (user.name === 'User' && user.email?.includes('migrated')) return true;
+  return false;
+}
+
 const registerSchema = z.object({
-  email: z.string().email(),
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email().refine(
+    (email) => isValidEmail(email),
+    { message: 'Please use a valid email address' }
+  ),
   mobile: z.string().min(10).max(15),
   password: z.string().min(6),
   tournamentName: z.string().min(1),
   totalPoints: z.number().min(1000).default(100000),
   minPlayers: z.number().min(1).default(7),
-  maxPlayers: z.number().min(1).default(15)
+  maxPlayers: z.number().min(1).default(15),
+  state: z.string().optional(),
+  city: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -55,8 +79,11 @@ const loginSchema = z.object({
 });
 
 const signupSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email().refine(
+    (email) => isValidEmail(email),
+    { message: 'Please use a valid email address' }
+  ),
   mobile: z.string().min(10).max(15),
   password: z.string().min(6),
   state: z.string().min(1),
@@ -198,9 +225,12 @@ router.post('/register', async (req: Request, res: Response) => {
     const { data: user, error: userError } = await supabase
       .from('users')
       .insert({
+        name: data.name,
         email: data.email.toLowerCase(),
         mobile: data.mobile,
         password_hash: passwordHash,
+        state: data.state || null,
+        city: data.city || null,
         tournament_id: tournament.id
       })
       .select()
@@ -374,6 +404,26 @@ router.post('/login', async (req: Request, res: Response) => {
     if (error || !user) {
       await logAuthEvent(null, 'failed_login', false, { reason: 'user_not_found' }, req);
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check if this is a migrated/placeholder user that needs to be fixed
+    if (isMigratedUser(user)) {
+      await logAuthEvent(user.id, 'failed_login', false, { reason: 'migrated_user' }, req);
+      return res.status(403).json({
+        error: 'Your account has incomplete data. Please contact the administrator to update your profile.',
+        code: 'MIGRATED_USER',
+        userId: user.id
+      });
+    }
+
+    // Check for suspended user
+    if (user.suspended_at) {
+      await logAuthEvent(user.id, 'failed_login', false, { reason: 'suspended' }, req);
+      return res.status(403).json({
+        error: 'Your account has been suspended. Please contact support.',
+        code: 'USER_SUSPENDED',
+        reason: user.suspension_reason
+      });
     }
 
     const validPassword = await bcrypt.compare(data.password, user.password_hash);

@@ -112,6 +112,13 @@ class AdminApiClient {
     });
   }
 
+  async updateUser(id: string, updates: { name?: string; email?: string; mobile?: string; state?: string; city?: string }) {
+    return this.request(`/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
   async deleteUser(id: string) {
     return this.request(`/users/${id}`, { method: 'DELETE' });
   }

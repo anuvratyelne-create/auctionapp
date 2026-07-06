@@ -11,10 +11,18 @@ const createCategorySchema = z.object({
   display_order: z.number().optional()
 });
 
+// Default categories to create if none exist
+const DEFAULT_CATEGORIES = [
+  { name: 'Platinum', base_price: 50000, display_order: 1 },
+  { name: 'Gold', base_price: 30000, display_order: 2 },
+  { name: 'Silver', base_price: 20000, display_order: 3 },
+  { name: 'Bronze', base_price: 10000, display_order: 4 }
+];
+
 // Get all categories with stats
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { data: categories, error } = await supabase
+    let { data: categories, error } = await supabase
       .from('categories')
       .select(`
         *,
@@ -25,6 +33,35 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch categories' });
+    }
+
+    // Auto-create default categories if none exist (self-healing for older tournaments)
+    if (!categories || categories.length === 0) {
+      console.log(`No categories found for tournament ${req.tournamentId}, creating defaults...`);
+
+      const { error: insertError } = await supabase.from('categories').insert(
+        DEFAULT_CATEGORIES.map(cat => ({
+          ...cat,
+          tournament_id: req.tournamentId
+        }))
+      );
+
+      if (insertError) {
+        console.error('Failed to create default categories:', insertError);
+      } else {
+        // Re-fetch categories after creation
+        const { data: newCategories } = await supabase
+          .from('categories')
+          .select(`
+            *,
+            players:players(id, status, sold_price, retention_price, is_retained)
+          `)
+          .eq('tournament_id', req.tournamentId)
+          .order('display_order', { ascending: true });
+
+        categories = newCategories;
+        console.log(`Created ${categories?.length || 0} default categories for tournament ${req.tournamentId}`);
+      }
     }
 
     // Calculate stats for each category (include retained players)
@@ -183,21 +220,42 @@ router.post('/update-standard-prices', authenticateToken, async (req: AuthReques
     }
 
     const results = [];
+    let displayOrder = 1;
+
     for (const [name, base_price] of Object.entries(categoryPrices)) {
-      const { data, error } = await supabase
+      // First try to update existing category
+      const { data: existingData } = await supabase
         .from('categories')
         .update({ base_price })
         .eq('tournament_id', req.tournamentId)
         .eq('name', name)
         .select();
 
-      if (data && data.length > 0) {
+      if (existingData && existingData.length > 0) {
         results.push({ name, base_price, updated: true });
+      } else {
+        // Category doesn't exist - create it
+        const { data: newData, error: createError } = await supabase
+          .from('categories')
+          .insert({
+            name,
+            base_price,
+            tournament_id: req.tournamentId,
+            display_order: displayOrder
+          })
+          .select();
+
+        if (newData && newData.length > 0) {
+          results.push({ name, base_price, created: true });
+        } else if (createError) {
+          console.error(`Failed to create category ${name}:`, createError);
+        }
       }
+      displayOrder++;
     }
 
     res.json({
-      message: 'Categories updated with budget-appropriate prices',
+      message: 'Categories set up with budget-appropriate prices',
       budget,
       updated: results
     });

@@ -76,7 +76,6 @@ const updateTournamentSchema = z.object({
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   // Track created resources for rollback
   let createdTournamentId: string | null = null;
-  let createdMigratedUserId: string | null = null;
 
   try {
     const data = createTournamentSchema.parse(req.body);
@@ -88,7 +87,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const isValidUUID = req.userId && req.userId !== 'demo' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.userId);
 
-    // Check if user exists in users table, create if not
+    // Check if user exists in users table - require proper registration
     let ownerIdToUse: string | null = null;
     if (isValidUUID) {
       const { data: existingUser } = await supabase
@@ -100,27 +99,11 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       if (existingUser) {
         ownerIdToUse = req.userId!;
       } else {
-        // User doesn't exist in users table - create them with minimal info
-        const shortId = req.userId!.substring(0, 8);
-        const { data: newUser, error: createUserError } = await supabase
-          .from('users')
-          .insert({
-            id: req.userId,
-            mobile: `user_${shortId}`,
-            email: `user_${shortId}@migrated.local`,
-            password_hash: 'migrated_user',
-            name: 'User',
-          })
-          .select()
-          .single();
-
-        if (createUserError) {
-          console.error('Failed to create user record:', createUserError);
-          // Continue without owner_id rather than failing
-        } else {
-          ownerIdToUse = newUser.id;
-          createdMigratedUserId = newUser.id; // Track for rollback
-        }
+        // User doesn't exist - require proper registration instead of creating fake user
+        return res.status(401).json({
+          error: 'User account not found. Please register or login again.',
+          code: 'USER_NOT_FOUND'
+        });
       }
     }
 
@@ -221,11 +204,6 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (createdTournamentId) {
       await supabase.from('categories').delete().eq('tournament_id', createdTournamentId);
       await supabase.from('tournaments').delete().eq('id', createdTournamentId);
-    }
-
-    if (createdMigratedUserId) {
-      // Only delete if we created this user during this request
-      await supabase.from('users').delete().eq('id', createdMigratedUserId);
     }
 
     if (error instanceof z.ZodError) {

@@ -196,6 +196,79 @@ router.get('/users/:id/tournaments', authenticateAdmin, async (req: AdminRequest
   }
 });
 
+// Update user details (for fixing fake/migrated users)
+const updateUserSchema = z.object({
+  name: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  mobile: z.string().min(10).optional(),
+  state: z.string().optional(),
+  city: z.string().optional(),
+});
+
+router.put('/users/:id', authenticateAdmin, async (req: AdminRequest, res: Response) => {
+  try {
+    const updates = updateUserSchema.parse(req.body);
+    const userId = req.params.id;
+
+    // Check if email is being changed and if it's already in use
+    if (updates.email) {
+      const { data: existingEmail } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', updates.email.toLowerCase())
+        .neq('id', userId)
+        .single();
+
+      if (existingEmail) {
+        return res.status(400).json({ error: 'Email already in use by another user' });
+      }
+      updates.email = updates.email.toLowerCase();
+    }
+
+    // Check if mobile is being changed and if it's already in use
+    if (updates.mobile) {
+      const { data: existingMobile } = await supabase
+        .from('users')
+        .select('id')
+        .eq('mobile', updates.mobile)
+        .neq('id', userId)
+        .single();
+
+      if (existingMobile) {
+        return res.status(400).json({ error: 'Mobile number already in use by another user' });
+      }
+    }
+
+    const { data: updatedUser, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId)
+      .select('id, name, email, mobile, state, city')
+      .single();
+
+    if (error) {
+      console.error('Error updating user:', error);
+      return res.status(500).json({ error: 'Failed to update user' });
+    }
+
+    await logAdminAction(
+      req.adminId!,
+      'user_updated',
+      'user',
+      userId,
+      { updated_fields: Object.keys(updates) },
+      req
+    );
+
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
 // Suspend/activate user
 router.put('/users/:id/status', authenticateAdmin, async (req: AdminRequest, res: Response) => {
   try {

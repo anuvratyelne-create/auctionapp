@@ -12,7 +12,9 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Trophy
+  Trophy,
+  Pencil,
+  Save
 } from 'lucide-react';
 import AdminLayout from '../components/AdminLayout';
 import { adminApi } from '../utils/adminApi';
@@ -43,13 +45,15 @@ function UserDetailsModal({
   onClose,
   onStatusChange,
   onResetPassword,
-  onDelete
+  onDelete,
+  onUpdate
 }: {
   user: User;
   onClose: () => void;
   onStatusChange: (status: 'active' | 'suspended', reason?: string) => void;
   onResetPassword: (password: string) => void;
   onDelete: () => void;
+  onUpdate: (updates: Partial<User>) => Promise<void>;
 }) {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +62,27 @@ function UserDetailsModal({
   const [showSuspendForm, setShowSuspendForm] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({
+    name: user.name || '',
+    email: user.email || '',
+    mobile: user.mobile || '',
+    state: user.state || '',
+    city: user.city || '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      await onUpdate(editData);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Failed to save:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     loadTournaments();
@@ -82,47 +107,135 @@ function UserDetailsModal({
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 border-b border-slate-800 p-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">User Details</h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
+              >
+                <Pencil size={16} />
+                Edit
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* User Info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-slate-500">Name</label>
-              <p className="text-white font-medium">{user.name || 'N/A'}</p>
+          {isEditing ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Name</label>
+                  <input
+                    type="text"
+                    value={editData.name}
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Email</label>
+                  <input
+                    type="email"
+                    value={editData.email}
+                    onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Mobile</label>
+                  <input
+                    type="text"
+                    value={editData.mobile}
+                    onChange={(e) => setEditData({ ...editData, mobile: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">State</label>
+                  <input
+                    type="text"
+                    value={editData.state}
+                    onChange={(e) => setEditData({ ...editData, state: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-sm text-slate-500 mb-1 block">City</label>
+                  <input
+                    type="text"
+                    value={editData.city}
+                    onChange={(e) => setEditData({ ...editData, city: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:border-rose-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg disabled:opacity-50"
+                >
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditData({
+                      name: user.name || '',
+                      email: user.email || '',
+                      mobile: user.mobile || '',
+                      state: user.state || '',
+                      city: user.city || '',
+                    });
+                  }}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="text-sm text-slate-500">Email</label>
-              <p className="text-white font-medium">{user.email}</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-slate-500">Name</label>
+                <p className="text-white font-medium">{user.name || 'N/A'}</p>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Email</label>
+                <p className="text-white font-medium">{user.email}</p>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Mobile</label>
+                <p className="text-white font-medium">{user.mobile}</p>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Location</label>
+                <p className="text-white font-medium">{user.city || '-'}, {user.state || '-'}</p>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Registered</label>
+                <p className="text-white font-medium">
+                  {new Date(user.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Last Login</label>
+                <p className="text-white font-medium">
+                  {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="text-sm text-slate-500">Mobile</label>
-              <p className="text-white font-medium">{user.mobile}</p>
-            </div>
-            <div>
-              <label className="text-sm text-slate-500">Location</label>
-              <p className="text-white font-medium">{user.city}, {user.state}</p>
-            </div>
-            <div>
-              <label className="text-sm text-slate-500">Registered</label>
-              <p className="text-white font-medium">
-                {new Date(user.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div>
-              <label className="text-sm text-slate-500">Last Login</label>
-              <p className="text-white font-medium">
-                {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Status */}
           {isSuspended && (
@@ -358,6 +471,18 @@ export default function UserManagement() {
     }
   };
 
+  const handleUpdateUser = async (userId: string, updates: Partial<User>) => {
+    try {
+      await adminApi.updateUser(userId, updates);
+      loadUsers();
+      // Update the selected user with new data
+      setSelectedUser(prev => prev ? { ...prev, ...updates } : null);
+    } catch (error: any) {
+      alert(error.message || 'Failed to update user');
+      throw error;
+    }
+  };
+
   return (
     <AdminLayout>
       {/* Search & Filters */}
@@ -537,6 +662,7 @@ export default function UserManagement() {
           onStatusChange={(status, reason) => handleStatusChange(selectedUser.id, status, reason)}
           onResetPassword={(password) => handleResetPassword(selectedUser.id, password)}
           onDelete={() => handleDeleteUser(selectedUser.id)}
+          onUpdate={(updates) => handleUpdateUser(selectedUser.id, updates)}
         />
       )}
     </AdminLayout>

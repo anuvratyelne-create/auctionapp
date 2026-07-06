@@ -239,8 +239,9 @@ class ApiClient {
     }
   }
 
-  // Auth
+  // Auth - Register with tournament (requires name for proper account creation)
   async register(data: {
+    name: string;
     email: string;
     mobile: string;
     password: string;
@@ -248,6 +249,8 @@ class ApiClient {
     totalPoints?: number;
     minPlayers?: number;
     maxPlayers?: number;
+    state?: string;
+    city?: string;
   }) {
     return this.request('/auth/register', {
       method: 'POST',

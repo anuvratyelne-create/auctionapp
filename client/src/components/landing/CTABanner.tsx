@@ -33,7 +33,7 @@ export default function CTABanner() {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-full mb-8">
           <Sparkles size={16} className="text-amber-400" />
-          <span className="text-amber-400 text-sm font-medium">Join 500+ successful auctions</span>
+          <span className="text-amber-400 text-sm font-medium">Join our growing community</span>
         </div>
 
         {/* Headline */}
@@ -46,7 +46,7 @@ export default function CTABanner() {
 
         {/* Subheadline */}
         <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto">
-          Join thousands of tournament organizers who trust our platform for their player auctions.
+          Start running professional player auctions with our easy-to-use platform.
         </p>
 
         {/* CTA Button */}

@@ -2,9 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { Trophy, Users, Gavel, Star } from 'lucide-react';
 
 const stats = [
-  { icon: Trophy, value: 500, suffix: '+', label: 'Auctions Completed', color: 'text-amber-400' },
-  { icon: Users, value: 10000, suffix: '+', label: 'Players Auctioned', color: 'text-blue-400' },
-  { icon: Gavel, value: 50000, suffix: '+', label: 'Total Bids Placed', color: 'text-green-400' },
+  { icon: Trophy, value: 10, suffix: '+', label: 'Auctions Completed', color: 'text-amber-400' },
+  { icon: Users, value: 150, suffix: '+', label: 'Players Auctioned', color: 'text-blue-400' },
+  { icon: Gavel, value: 500, suffix: '+', label: 'Total Bids Placed', color: 'text-green-400' },
   { icon: Star, value: 4.9, suffix: '', label: 'User Rating', color: 'text-purple-400', decimals: 1 }
 ];
 

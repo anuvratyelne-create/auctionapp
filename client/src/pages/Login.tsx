@@ -238,7 +238,7 @@ export default function Login() {
                 <p className="text-slate-400 mt-2">Sign in to your auction dashboard</p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off">
                 {error && (
                   <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
                     <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -263,6 +263,7 @@ export default function Login() {
                         onChange={(e) => setIdentifier(e.target.value)}
                         className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:bg-slate-800 transition-all"
                         placeholder="Enter email or mobile number"
+                        autoComplete="off"
                         required
                       />
                     </div>
@@ -286,6 +287,7 @@ export default function Login() {
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-12 pr-12 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:bg-slate-800 transition-all"
                         placeholder="Enter password"
+                        autoComplete="new-password"
                         required
                       />
                       <button

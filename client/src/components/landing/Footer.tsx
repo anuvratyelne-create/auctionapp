@@ -1,5 +1,4 @@
 import { Gavel, Github, Twitter, Mail, Heart } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();

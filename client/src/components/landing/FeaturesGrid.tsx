@@ -63,7 +63,7 @@ const quickFeatures = [
 
 export default function FeaturesGrid() {
   return (
-    <section className="relative py-24 bg-slate-950">
+    <section id="features" className="relative py-24 bg-slate-950">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-1/2 left-0 w-72 h-72 bg-amber-500/5 rounded-full blur-[100px]" />
