@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Player, Team } from '../../../types';
 import { User, Flame } from 'lucide-react';
 
@@ -51,6 +52,18 @@ export default function FireOverlay({
   bidAnimating,
   showParticles = true,
 }: FireOverlayProps) {
+  const [showAppLogo, setShowAppLogo] = useState(!tournament?.broadcaster_logo_url);
+
+  // Rotating logo effect
+  useEffect(() => {
+    if (!tournament?.broadcaster_logo_url) {
+      setShowAppLogo(true);
+      return;
+    }
+    const interval = setInterval(() => setShowAppLogo((prev) => !prev), 5000);
+    return () => clearInterval(interval);
+  }, [tournament?.broadcaster_logo_url]);
+
   if (!player || status === 'idle') {
     return <div className="overlay-bg min-h-screen" />;
   }
@@ -81,17 +94,15 @@ export default function FireOverlay({
         </div>
       )}
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
-        <div className="absolute top-6 right-6 z-30 animate-fade-in">
-          <img
-            src={tournament.broadcaster_logo_url}
-            alt={tournament.broadcaster_name || 'Broadcaster'}
-            className="h-40 w-auto object-contain"
-            style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.7))' }}
-          />
-        </div>
-      )}
+      {/* Rotating Logo - Top Right (Broadcaster ↔ App Logo) */}
+      <div className="absolute top-6 right-6 z-30 animate-fade-in">
+        <img
+          src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+          alt={showAppLogo ? 'Game Auction' : (tournament?.broadcaster_name || 'Broadcaster')}
+          className="h-40 w-auto object-contain transition-opacity duration-500"
+          style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.7))' }}
+        />
+      </div>
 
       {/* ==================== PLAYER CARD (Center-Left) ==================== */}
       <div className="absolute left-12 top-1/2 -translate-y-1/2 w-[380px] z-10 animate-slide-up">

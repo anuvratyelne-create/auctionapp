@@ -9,8 +9,6 @@ interface LayoutSelectorProps {
 const layoutIcons: Record<LayoutType, React.ReactNode> = {
   'classic': <Layout size={28} />,
   'premium-broadcast': <Layout size={28} />,
-  'minimal-card': <Layout size={28} />,
-  'ipl-style': <Layout size={28} />,
   'fire': <span className="text-2xl">🔥</span>,
   'city': <span className="text-2xl">🌃</span>,
 };

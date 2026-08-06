@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Player, Team } from '../../../types';
 import { User, Zap, Crown } from 'lucide-react';
 
@@ -70,6 +71,18 @@ export default function PremiumOverlay({
   bidAnimating,
   showParticles = true,
 }: PremiumOverlayProps) {
+  const [showAppLogo, setShowAppLogo] = useState(!tournament?.broadcaster_logo_url);
+
+  // Rotating logo effect
+  useEffect(() => {
+    if (!tournament?.broadcaster_logo_url) {
+      setShowAppLogo(true);
+      return;
+    }
+    const interval = setInterval(() => setShowAppLogo((prev) => !prev), 5000);
+    return () => clearInterval(interval);
+  }, [tournament?.broadcaster_logo_url]);
+
   if (!player || status === 'idle') {
     return <div className="overlay-bg min-h-screen" />;
   }
@@ -106,20 +119,18 @@ export default function PremiumOverlay({
         </div>
       </div>
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
-        <div className="absolute top-6 right-6 z-30 animate-slide-in-right">
-          <div className="relative">
-            <div className="absolute -inset-3 rounded-full opacity-30 blur-xl" style={{ background: '#d4af37' }} />
-            <img
-              src={tournament.broadcaster_logo_url}
-              alt={tournament.broadcaster_name || 'Broadcaster'}
-              className="relative h-40 w-auto object-contain"
-              style={{ filter: 'drop-shadow(0 4px 20px rgba(212,175,55,0.6))' }}
-            />
-          </div>
+      {/* Rotating Logo - Top Right (Broadcaster ↔ App Logo) */}
+      <div className="absolute top-6 right-6 z-30 animate-slide-in-right">
+        <div className="relative">
+          <div className="absolute -inset-3 rounded-full opacity-30 blur-xl transition-colors duration-500" style={{ background: showAppLogo ? '#06b6d4' : '#d4af37' }} />
+          <img
+            src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+            alt={showAppLogo ? 'Game Auction' : (tournament?.broadcaster_name || 'Broadcaster')}
+            className="relative h-40 w-auto object-contain transition-opacity duration-500"
+            style={{ filter: `drop-shadow(0 4px 20px ${showAppLogo ? 'rgba(6,182,212,0.6)' : 'rgba(212,175,55,0.6)'})` }}
+          />
         </div>
-      )}
+      </div>
 
       {/* ==================== PLAYER CARD (LEFT) ==================== */}
       <div className="absolute left-6 top-56 bottom-6 w-[420px] z-10 animate-slide-in-left" style={{ animationDelay: '0.1s' }}>

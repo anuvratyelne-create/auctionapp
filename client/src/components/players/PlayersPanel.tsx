@@ -72,6 +72,7 @@ export default function PlayersPanel() {
     bidding: 'bg-amber-500/20 text-amber-400 border-amber-500/50',
     sold: 'bg-green-500/20 text-green-400 border-green-500/50',
     unsold: 'bg-red-500/20 text-red-400 border-red-500/50',
+    retained: 'bg-purple-500/20 text-purple-400 border-purple-500/50',
   };
 
   const categoryColors: Record<string, string> = {

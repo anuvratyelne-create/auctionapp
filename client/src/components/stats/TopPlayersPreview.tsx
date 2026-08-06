@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Player } from '../../types';
-import { Trophy, Crown, Medal, Star } from 'lucide-react';
+import { Trophy, Crown } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -51,13 +51,6 @@ export default function TopPlayersPreview({ players, title, accentColor = 'amber
   };
 
   const colors = colorMap[accentColor] || colorMap.amber;
-
-  const getRankIcon = (index: number) => {
-    if (index === 0) return <Crown size={16} className="text-yellow-400" />;
-    if (index === 1) return <Medal size={16} className="text-slate-300" />;
-    if (index === 2) return <Medal size={16} className="text-amber-600" />;
-    return <Star size={14} className="text-slate-500" />;
-  };
 
   const getRankBg = (index: number) => {
     if (index === 0) return 'bg-gradient-to-br from-yellow-500 via-amber-500 to-yellow-600';

@@ -25,6 +25,8 @@ import { PLAYER_CATEGORIES } from '../config/playerRoles';
 import { budgetPresets, formatBudgetLabel } from '../config/budgetPresets';
 import AnimatedBackground from '../components/auction/AnimatedBackground';
 import ImageUpload from '../components/common/ImageUpload';
+import ImageCropper from '../components/common/ImageCropper';
+import { fileToDataUrl } from '../utils/imageUtils';
 import {
   LayoutDashboard,
   Plus,
@@ -125,6 +127,11 @@ export default function Dashboard() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allTournaments, setAllTournaments] = useState<any[]>([]);
   const [checkingApproval, setCheckingApproval] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef<number>(0);
+  const retryCountRef = useRef<number>(0);
+  const MAX_RETRIES = 3;
 
   // On mount, validate saved state against actual tournament
   useEffect(() => {
@@ -198,25 +205,67 @@ export default function Dashboard() {
     }
   };
 
-  // Load data for current auction
-  const loadAuctionData = async () => {
+  // Load data for current auction with loading states
+  const loadAuctionData = async (showLoading = true, isRetry = false) => {
     if (!tournament?.id) return;
+
+    // Generate unique request ID to track stale responses
+    const requestId = ++loadRequestIdRef.current;
+
+    // Reset retry count on fresh loads
+    if (!isRetry) {
+      retryCountRef.current = 0;
+    }
+
+    if (showLoading && teams.length === 0 && players.length === 0) {
+      setIsLoadingData(true);
+    }
+    setDataLoadError(null);
+
     try {
       const [teamsData, playersData, categoriesData] = await Promise.all([
         api.getTeams(),
         api.getPlayers(),
         api.getCategories()
       ]);
-      setTeams(teamsData as Team[]);
-      setPlayers(playersData as Player[]);
-      setCategories(categoriesData as Category[]);
+
+      // Only update if this is still the most recent request
+      if (requestId === loadRequestIdRef.current) {
+        setTeams(teamsData as Team[]);
+        setPlayers(playersData as Player[]);
+        setCategories(categoriesData as Category[]);
+        setDataLoadError(null);
+        retryCountRef.current = 0; // Reset on success
+      }
     } catch (error: any) {
+      // Ignore if a newer request was made
+      if (requestId !== loadRequestIdRef.current) return;
+
       console.error('Failed to load auction data:', error);
+
       // Only logout if explicitly told token is invalid (not on network errors)
       const errorMsg = error?.message?.toLowerCase() || '';
       if (errorMsg.includes('invalid') && errorMsg.includes('token')) {
         logout();
         navigate('/login');
+        return;
+      }
+
+      // Auto-retry with limit
+      if (retryCountRef.current < MAX_RETRIES && tournament?.id) {
+        retryCountRef.current++;
+        setDataLoadError(`Failed to load data. Retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
+        setTimeout(() => {
+          if (tournament?.id && requestId === loadRequestIdRef.current) {
+            loadAuctionData(false, true);
+          }
+        }, 2000);
+      } else {
+        setDataLoadError('Failed to load data. Please refresh the page.');
+      }
+    } finally {
+      if (requestId === loadRequestIdRef.current) {
+        setIsLoadingData(false);
       }
     }
   };
@@ -254,19 +303,41 @@ export default function Dashboard() {
     // Only listen for updates if we have a tournament selected
     if (!tournament?.id) return;
 
+    let pendingUpdate = false;
+    let lastUpdateTime = 0;
+    const MIN_UPDATE_INTERVAL = 1000; // Minimum 1 second between updates
+
     const handleDataUpdate = () => {
+      const now = Date.now();
+
+      // Skip if we just updated
+      if (now - lastUpdateTime < MIN_UPDATE_INTERVAL) {
+        pendingUpdate = true;
+        return;
+      }
+
       // Invalidate cache to ensure fresh data
       api.invalidateCache('teams');
       api.invalidateCache('players');
 
-      // Debounce the actual load call
+      // Debounce the actual load call with longer delay
       if (debouncedLoadTimer.current) {
         clearTimeout(debouncedLoadTimer.current);
       }
+
       debouncedLoadTimer.current = setTimeout(() => {
-        loadAuctionDataRef.current();
-      }, 500);
+        lastUpdateTime = Date.now();
+        loadAuctionDataRef.current(false); // Don't show loading spinner for socket updates
+        pendingUpdate = false;
+      }, 800);
     };
+
+    // Process any pending updates periodically
+    const pendingInterval = setInterval(() => {
+      if (pendingUpdate && Date.now() - lastUpdateTime >= MIN_UPDATE_INTERVAL) {
+        handleDataUpdate();
+      }
+    }, MIN_UPDATE_INTERVAL);
 
     socket.onTeamsUpdated(handleDataUpdate);
     socket.onPlayersUpdated(handleDataUpdate);
@@ -275,6 +346,7 @@ export default function Dashboard() {
     return () => {
       socket.off('teams:updated');
       socket.off('players:updated');
+      clearInterval(pendingInterval);
       if (debouncedLoadTimer.current) {
         clearTimeout(debouncedLoadTimer.current);
       }
@@ -614,7 +686,48 @@ export default function Dashboard() {
         </header>
 
         {/* Page Content */}
-        <div className="p-6">
+        <div className="p-6 relative min-h-[calc(100vh-80px)]">
+          {/* Loading Overlay */}
+          {isLoadingData && (
+            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-20 rounded-lg">
+              <div className="flex flex-col items-center gap-3 bg-slate-900/90 px-8 py-6 rounded-2xl border border-slate-700">
+                <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-amber-400 font-medium text-lg">Loading data...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {dataLoadError && (
+            <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-red-500/20 rounded-full flex items-center justify-center">
+                  <AlertCircle size={18} className="text-red-400" />
+                </div>
+                <span className="text-red-400">{dataLoadError}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {dataLoadError.includes('refresh') && (
+                  <button
+                    onClick={() => {
+                      retryCountRef.current = 0;
+                      loadAuctionData(true);
+                    }}
+                    className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+                <button
+                  onClick={() => setDataLoadError(null)}
+                  className="text-red-400 hover:text-red-300 transition-colors p-1"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {renderContent()}
         </div>
       </main>
@@ -916,7 +1029,6 @@ function AuctionOverview({ tournament, teams, players, categories, onNavigate, o
   // In development (localhost), treat undefined approval_status as approved (migration might not be run)
   const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const isApproved = tournament.approval_status === 'approved' || (isDevMode && tournament.approval_status === undefined);
-  const isPending = !isApproved && (!tournament.approval_status || tournament.approval_status === 'pending');
   const isRejected = tournament.approval_status === 'rejected';
 
   return (
@@ -1238,15 +1350,33 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
     }
   };
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Cropper state for auction logo
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [cropperImageUrl, setCropperImageUrl] = useState('');
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setFormData(prev => ({
-        ...prev,
-        logo: file,
-        logoPreview: URL.createObjectURL(file)
-      }));
+      // Open cropper with the selected file
+      const dataUrl = await fileToDataUrl(file);
+      setCropperImageUrl(dataUrl);
+      setCropperOpen(true);
     }
+  };
+
+  const handleCropperSave = async (croppedImageUrl: string, croppedFile: File) => {
+    setCropperOpen(false);
+    setCropperImageUrl('');
+    setFormData(prev => ({
+      ...prev,
+      logo: croppedFile,
+      logoPreview: croppedImageUrl
+    }));
+  };
+
+  const handleCropperClose = () => {
+    setCropperOpen(false);
+    setCropperImageUrl('');
   };
 
   const uploadLogo = async (file: File): Promise<string | null> => {
@@ -1673,6 +1803,16 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
           </div>
         </div>
       </form>
+
+      {/* Image Cropper Modal for Auction Logo */}
+      <ImageCropper
+        isOpen={cropperOpen}
+        imageUrl={cropperImageUrl}
+        aspectRatio={1}
+        onSave={handleCropperSave}
+        onClose={handleCropperClose}
+        title="Adjust Auction Logo"
+      />
     </div>
   );
 }
@@ -1905,6 +2045,90 @@ function MyAuctionsPanel({ tournament, onNavigate, onRefresh, onTournamentDelete
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Public Listing Section Component
+interface PublicListingSectionProps {
+  tournament: any;
+  isApproved: boolean;
+}
+
+function PublicListingSection({ tournament, isApproved }: PublicListingSectionProps) {
+  const [isPublic, setIsPublic] = useState(tournament?.is_public || false);
+  const [updating, setUpdating] = useState(false);
+  const { refreshTournament } = useAuthStore();
+
+  const handleTogglePublic = async () => {
+    if (!isApproved) return;
+
+    setUpdating(true);
+    try {
+      const newValue = !isPublic;
+      await api.updateTournament({ is_public: newValue });
+      setIsPublic(newValue);
+      // Refresh tournament to get updated data from server
+      await refreshTournament();
+    } catch (err) {
+      console.error('Failed to update public listing:', err);
+      alert('Failed to update public listing setting');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Sync with tournament prop
+  useEffect(() => {
+    setIsPublic(tournament?.is_public || false);
+  }, [tournament?.is_public]);
+
+  return (
+    <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
+              <Eye size={20} className="text-green-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Public Listing</h3>
+              <p className="text-sm text-slate-500">Show your auction on the landing page for viewers to discover</p>
+            </div>
+          </div>
+          {!isApproved && (
+            <div className="flex items-center gap-2 mt-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <AlertCircle size={16} className="text-amber-400" />
+              <span className="text-sm text-amber-400">Public listing requires admin approval first</span>
+            </div>
+          )}
+          {isPublic && isApproved && (
+            <div className="flex items-center gap-2 mt-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+              <Check size={16} className="text-green-400" />
+              <span className="text-sm text-green-400">Your auction is visible on the landing page</span>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={handleTogglePublic}
+          disabled={!isApproved || updating}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            isPublic && isApproved
+              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+          }`}
+        >
+          {updating ? (
+            <Loader2 size={20} className="animate-spin" />
+          ) : isPublic ? (
+            <ToggleRight size={20} />
+          ) : (
+            <ToggleLeft size={20} />
+          )}
+          {isPublic ? 'Listed' : 'Not Listed'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -2321,6 +2545,9 @@ function AuctionDetailPanel({ tournament, teams, players, categories, onNavigate
           </div>
         )}
       </div>
+
+      {/* Public Listing Section */}
+      <PublicListingSection tournament={tournament} isApproved={isApproved} />
 
       {/* Customize Auction Theme Section */}
       <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 border-l-4 border-purple-500 rounded-2xl p-6">
@@ -2761,15 +2988,33 @@ function CreateTeamPanel({ tournament, onNavigate, onTeamCreated }: { tournament
 
   const availableKeys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Cropper state for team logo
+  const [teamCropperOpen, setTeamCropperOpen] = useState(false);
+  const [teamCropperImageUrl, setTeamCropperImageUrl] = useState('');
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setFormData(prev => ({
-        ...prev,
-        logo: file,
-        logoPreview: URL.createObjectURL(file)
-      }));
+      // Open cropper with the selected file
+      const dataUrl = await fileToDataUrl(file);
+      setTeamCropperImageUrl(dataUrl);
+      setTeamCropperOpen(true);
     }
+  };
+
+  const handleTeamCropperSave = async (croppedImageUrl: string, croppedFile: File) => {
+    setTeamCropperOpen(false);
+    setTeamCropperImageUrl('');
+    setFormData(prev => ({
+      ...prev,
+      logo: croppedFile,
+      logoPreview: croppedImageUrl
+    }));
+  };
+
+  const handleTeamCropperClose = () => {
+    setTeamCropperOpen(false);
+    setTeamCropperImageUrl('');
   };
 
   const uploadLogo = async (file: File): Promise<string | null> => {
@@ -2984,6 +3229,16 @@ function CreateTeamPanel({ tournament, onNavigate, onTeamCreated }: { tournament
         <ArrowLeft size={18} />
         Back to Teams
       </button>
+
+      {/* Image Cropper Modal for Team Logo */}
+      <ImageCropper
+        isOpen={teamCropperOpen}
+        imageUrl={teamCropperImageUrl}
+        aspectRatio={1}
+        onSave={handleTeamCropperSave}
+        onClose={handleTeamCropperClose}
+        title="Adjust Team Logo"
+      />
     </div>
   );
 }
@@ -4760,14 +5015,30 @@ function OverlaySettingsSection({ tournament }: { tournament: any }) {
 
   const getOverlayUrl = () => {
     const params = new URLSearchParams();
+
+    // Combine theme + mode for themes that have variants
+    // city + standard/full = city-standard
+    // premium + standard = premium-standard
+    let effectiveTheme: string = overlaySettings.theme;
+
     if (overlaySettings.theme !== 'auto') {
-      params.set('theme', overlaySettings.theme);
+      if (overlaySettings.theme === 'city') {
+        if (overlaySettings.mode === 'standard' || overlaySettings.mode === 'full') {
+          effectiveTheme = 'city-standard';
+        }
+      } else if (overlaySettings.theme === 'premium' && overlaySettings.mode === 'standard') {
+        effectiveTheme = 'premium-standard';
+      }
+      params.set('theme', effectiveTheme);
     }
-    // Map 'full' to 'premium' for URL (OverlayView uses 'premium' for full broadcast mode)
-    if (overlaySettings.mode !== 'standard') {
-      const modeParam = overlaySettings.mode === 'full' ? 'premium' : overlaySettings.mode;
-      params.set('mode', modeParam);
+
+    // Map 'full' to 'premium' for URL mode param (only for classic/fire themes)
+    if (overlaySettings.mode === 'full' && overlaySettings.theme !== 'city') {
+      params.set('mode', 'premium');
+    } else if (overlaySettings.mode === 'minimal' && (overlaySettings.theme === 'classic' || overlaySettings.theme === 'fire' || overlaySettings.theme === 'auto')) {
+      params.set('mode', 'minimal');
     }
+
     if (overlaySettings.accentColor !== '#22c55e') {
       params.set('color', overlaySettings.accentColor);
     }

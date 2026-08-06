@@ -159,7 +159,7 @@ export default function TopPlayersModal({ players, title, categoryIcon, accentCo
 
           {/* Podium - Top 3 */}
           <div className="flex items-end justify-center gap-6 lg:gap-10 mb-6">
-            {podiumOrder.map((playerIndex, displayIndex) => {
+            {podiumOrder.map((playerIndex, _displayIndex) => {
               const player = top5[playerIndex];
               if (!player) return null;
 

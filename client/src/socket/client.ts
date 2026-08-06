@@ -132,6 +132,32 @@ class SocketClient {
     }
   }
 
+  // Join public room for landing page (no auth, no tournament required)
+  joinPublicRoom() {
+    if (!this.socket) {
+      // Create a socket connection without tournament context
+      this.socket = io(SOCKET_URL, {
+        transports: ['websocket', 'polling'],
+        autoConnect: true,
+      });
+
+      this.socket.on('connect', () => {
+        this.setConnectionStatus('connected');
+        this.socket?.emit('join:public');
+      });
+
+      this.socket.on('disconnect', () => {
+        this.setConnectionStatus('disconnected');
+      });
+
+      this.socket.on('connect_error', () => {
+        this.setConnectionStatus('error');
+      });
+    } else if (this.socket.connected) {
+      this.socket.emit('join:public');
+    }
+  }
+
   onAuctionState(callback: (state: AuctionState) => void) {
     this.socket?.on('auction:state', callback);
   }

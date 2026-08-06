@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Gavel, Mail, Lock, UserPlus, User, MapPin, Building, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, UserPlus, User, MapPin, Building, ChevronDown, Eye, EyeOff } from 'lucide-react';
 
 // Indian states list
 const INDIAN_STATES = [
@@ -128,19 +128,13 @@ export default function Register() {
             {/* Logo with Glow */}
             <div className="flex items-center gap-5 mb-12">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-2xl blur-xl opacity-60 animate-pulse" />
-                <div className="relative w-20 h-20 bg-gradient-to-br from-cyan-500 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-2xl">
-                  <Gavel size={40} className="text-white drop-shadow-lg" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-black flex items-center justify-center">
-                  <span className="text-xs">✓</span>
-                </div>
-              </div>
-              <div>
-                <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400">
-                  PLAYER AUCTION
-                </h1>
-                <p className="text-cyan-400/80 font-medium text-lg tracking-wide">Pro Management System</p>
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-2xl blur-xl opacity-40 animate-pulse" />
+                <img
+                  src="/logo.png"
+                  alt="Game Auction"
+                  className="relative w-auto object-contain"
+                  style={{ height: '22.5rem', filter: 'drop-shadow(0 0 50px rgba(6, 182, 212, 0.5))' }}
+                />
               </div>
             </div>
 
@@ -192,10 +186,12 @@ export default function Register() {
           <div className="w-full max-w-md">
             {/* Mobile Logo */}
             <div className="lg:hidden text-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-2xl mb-4 shadow-xl shadow-purple-500/30">
-                <Gavel size={32} className="text-white" />
-              </div>
-              <h1 className="text-2xl font-bold text-white">Player Auction</h1>
+              <img
+                src="/logo.png"
+                alt="Game Auction"
+                className="w-auto object-contain mx-auto"
+                style={{ height: '10rem', filter: 'drop-shadow(0 0 30px rgba(6, 182, 212, 0.5))' }}
+              />
             </div>
 
             {/* Form Card - Glassmorphism */}

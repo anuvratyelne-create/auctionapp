@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, Gavel } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 export default function HeaderNav() {
@@ -28,10 +28,12 @@ export default function HeaderNav() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
-              <Gavel size={20} className="text-white" />
-            </div>
-            <span className="text-xl font-bold text-white">AuctionApp</span>
+            <img
+              src="/logo.png"
+              alt="Game Auction"
+              className="w-auto object-contain"
+              style={{ height: '5.5rem', filter: 'drop-shadow(0 0 10px rgba(6, 182, 212, 0.3))' }}
+            />
           </div>
 
           {/* Desktop Navigation */}

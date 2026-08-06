@@ -1,4 +1,4 @@
-import { Gavel, Github, Twitter, Mail, Heart } from 'lucide-react';
+import { Github, Twitter, Mail, Heart } from 'lucide-react';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -33,10 +33,12 @@ export default function Footer() {
           {/* Brand */}
           <div className="md:col-span-1">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl flex items-center justify-center">
-                <Gavel size={20} className="text-white" />
-              </div>
-              <span className="text-xl font-bold text-white">AuctionApp</span>
+              <img
+                src="/logo.png"
+                alt="Game Auction"
+                className="w-auto object-contain"
+                style={{ height: '7.5rem', filter: 'drop-shadow(0 0 15px rgba(6, 182, 212, 0.3))' }}
+              />
             </div>
             <p className="text-slate-400 text-sm mb-6">
               The professional platform for running player auctions. Trusted by tournament organizers worldwide.
@@ -119,7 +121,7 @@ export default function Footer() {
         <div className="pt-8 border-t border-slate-800/50">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-slate-500 text-sm">
-              © {currentYear} AuctionApp. All rights reserved.
+              © {currentYear} Game Auction. All rights reserved.
             </p>
             <p className="flex items-center gap-1 text-slate-500 text-sm">
               Made with <Heart size={14} className="text-red-500" fill="currentColor" /> for sports enthusiasts

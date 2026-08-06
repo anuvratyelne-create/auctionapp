@@ -53,8 +53,9 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
+        <img src="/logo.png" alt="Game Auction" className="h-16 w-auto object-contain opacity-80" />
+        <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -98,8 +99,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Show loading spinner while checking
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
+        <img src="/logo.png" alt="Game Auction" className="h-16 w-auto object-contain opacity-80" />
+        <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -135,8 +137,9 @@ function HomeRoute() {
 
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
+        <img src="/logo.png" alt="Game Auction" className="h-16 w-auto object-contain opacity-80" />
+        <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full" />
       </div>
     );
   }

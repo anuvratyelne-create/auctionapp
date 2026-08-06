@@ -1623,14 +1623,27 @@ function OverlaySettingsCard() {
 
   const getOverlayUrl = () => {
     const params = new URLSearchParams();
+
+    // Combine theme + mode for themes that have variants
+    // city + standard = city-standard, city + minimal = city
+    // premium + standard = premium-standard, premium + minimal = premium
+    let effectiveTheme: string = overlaySettings.theme;
+
     if (overlaySettings.theme !== 'auto') {
-      params.set('theme', overlaySettings.theme);
+      // For city and premium themes, combine with mode to create variant themes
+      if ((overlaySettings.theme === 'city' || overlaySettings.theme === 'premium') && overlaySettings.mode === 'standard') {
+        effectiveTheme = `${overlaySettings.theme}-standard`;
+      }
+      params.set('theme', effectiveTheme);
     }
+
     // Map 'full' to 'premium' for URL (OverlayView uses 'premium' for full broadcast mode)
-    if (overlaySettings.mode !== 'standard') {
-      const modeParam = overlaySettings.mode === 'full' ? 'premium' : overlaySettings.mode;
-      params.set('mode', modeParam);
+    if (overlaySettings.mode === 'full') {
+      params.set('mode', 'premium');
+    } else if (overlaySettings.mode === 'minimal' && (overlaySettings.theme === 'classic' || overlaySettings.theme === 'fire' || overlaySettings.theme === 'auto')) {
+      params.set('mode', 'minimal');
     }
+
     if (overlaySettings.accentColor !== '#22c55e') {
       params.set('color', overlaySettings.accentColor);
     }
@@ -1865,7 +1878,7 @@ function OverlaySettingsCard() {
           {/* URL Display */}
           <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-700/50">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-slate-400">OBS Browser Source URL</span>
+              <span className="text-xs text-slate-400">OBS Browser Source URL (Theme: {overlaySettings.theme}, Mode: {overlaySettings.mode})</span>
               <ExternalLink size={12} className="text-slate-500" />
             </div>
             <p className="text-xs text-cyan-400 font-mono break-all">{getOverlayUrl()}</p>

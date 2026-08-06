@@ -23,11 +23,11 @@ const CACHE_KEYS = {
 
 // Cache duration (how long before data is considered "stale" - but still usable)
 const CACHE_DURATION = {
-  TEAMS: 24 * 60 * 60 * 1000,      // 24 hours
-  PLAYERS: 24 * 60 * 60 * 1000,    // 24 hours
-  CATEGORIES: 7 * 24 * 60 * 60 * 1000,  // 7 days (rarely changes)
-  TOURNAMENT: 24 * 60 * 60 * 1000, // 24 hours
-  SPONSORS: 24 * 60 * 60 * 1000,   // 24 hours
+  TEAMS: 2 * 60 * 1000,           // 2 minutes (changes frequently during auction)
+  PLAYERS: 2 * 60 * 1000,         // 2 minutes (changes frequently during auction)
+  CATEGORIES: 30 * 60 * 1000,     // 30 minutes (rarely changes)
+  TOURNAMENT: 5 * 60 * 1000,      // 5 minutes
+  SPONSORS: 60 * 60 * 1000,       // 1 hour (rarely changes)
 };
 
 class LocalCache {

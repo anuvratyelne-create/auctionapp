@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import { api } from '../utils/api';
-import { socketClient } from '../socket/client';
 import { Team, Player } from '../types';
 import { getBidIncrement } from '../config/budgetPresets';
 

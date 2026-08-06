@@ -26,6 +26,21 @@ export interface Tournament {
   approved_by?: string;
   approved_at?: string;
   admin_notes?: string;
+  // Public listing
+  is_public?: boolean;
+}
+
+// Public tournament data exposed on landing page (minimal fields for privacy)
+export interface PublicTournament {
+  id: string;
+  name: string;
+  logo_url?: string;
+  sports_type: SportsType;
+  auction_date?: string;
+  auction_time?: string;
+  status: 'setup' | 'live' | 'paused' | 'completed';
+  share_code: string;
+  created_at: string;
 }
 
 export interface Team {
@@ -178,7 +193,7 @@ export interface AuthState {
 }
 
 // Overlay theme types - matches admin layout themes
-export type OverlayTheme = 'auto' | 'classic' | 'fire' | 'city' | 'premium' | 'premium-standard';
+export type OverlayTheme = 'auto' | 'classic' | 'fire' | 'city' | 'city-standard' | 'premium' | 'premium-standard';
 export type OverlayMode = 'minimal' | 'standard' | 'full';
 
 export interface OverlaySettings {

@@ -1,4 +1,5 @@
 import { localCache } from './localCache';
+import { AuctionState, OverlayTheme, OverlayMode } from '../types';
 
 const API_URL = '/api';
 
@@ -330,9 +331,10 @@ class ApiClient {
     bid_increment: number;
     status: string;
     player_display_mode: string;
+    is_public: boolean;
     overlay_settings: {
-      theme: 'auto' | 'classic' | 'fire' | 'city' | 'premium';
-      mode: 'minimal' | 'standard' | 'full';
+      theme: OverlayTheme;
+      mode: OverlayMode;
       accentColor: string;
       showParticles: boolean;
       showTimer: boolean;
@@ -378,6 +380,15 @@ class ApiClient {
       token: string;
       isDemo: boolean;
     }>('/tournaments/demo');
+  }
+
+  // Get public tournaments for landing page (no auth required)
+  async getPublicTournaments() {
+    return this.request<{
+      live: any[];
+      upcoming: any[];
+      completed: any[];
+    }>('/tournaments/public');
   }
 
   async getTournamentByShareCode(shareCode: string) {
@@ -802,8 +813,8 @@ class ApiClient {
     return this.request('/auction/reset', { method: 'POST' });
   }
 
-  async getAuctionState() {
-    return this.request('/auction/state');
+  async getAuctionState(): Promise<AuctionState> {
+    return this.request<AuctionState>('/auction/state');
   }
 
   async updatePoints() {

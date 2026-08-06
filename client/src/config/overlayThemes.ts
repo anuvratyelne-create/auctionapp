@@ -115,8 +115,8 @@ export const overlayThemes: Record<Exclude<OverlayTheme, 'auto'>, OverlayThemeCo
 
   city: {
     id: 'city',
-    name: 'City',
-    description: 'Cyberpunk neon city with glowing effects',
+    name: 'City Minimal',
+    description: 'Cyberpunk neon city with glowing effects (minimal overlay)',
     colors: {
       primary: '#06b6d4',
       secondary: '#a855f7',
@@ -147,6 +147,43 @@ export const overlayThemes: Record<Exclude<OverlayTheme, 'auto'>, OverlayThemeCo
       background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
       textColor: '#ffffff',
       glowColor: 'rgba(168, 85, 247, 0.6)',
+    },
+  },
+
+  'city-standard': {
+    id: 'city-standard',
+    name: 'City Standard',
+    description: 'Cyberpunk neon city with player card, scoreboard, and running ticker',
+    colors: {
+      primary: '#06b6d4',
+      secondary: '#0891b2',
+      accent: '#22d3ee',
+      background: 'rgba(10, 15, 25, 0.95)',
+      text: '#ffffff',
+      textMuted: '#67e8f9',
+    },
+    particles: {
+      enabled: false,
+      type: 'neon',
+      count: 15,
+      colors: ['#06b6d4', '#22d3ee'],
+    },
+    effects: {
+      glow: true,
+      glowColor: '#06b6d4',
+      shimmer: true,
+      gradientBorder: true,
+    },
+    font: 'Rajdhani',
+    soldStamp: {
+      background: 'linear-gradient(135deg, #10b981, #059669)',
+      textColor: '#ffffff',
+      glowColor: 'rgba(16, 185, 129, 0.7)',
+    },
+    unsoldStamp: {
+      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+      textColor: '#ffffff',
+      glowColor: 'rgba(239, 68, 68, 0.6)',
     },
   },
 
@@ -183,6 +220,42 @@ export const overlayThemes: Record<Exclude<OverlayTheme, 'auto'>, OverlayThemeCo
       background: 'linear-gradient(135deg, #374151, #1f2937)',
       textColor: '#d1d5db',
       glowColor: 'rgba(55, 65, 81, 0.6)',
+    },
+  },
+
+  'premium-standard': {
+    id: 'premium-standard',
+    name: 'Premium Standard',
+    description: 'Luxury gold theme with two-panel broadcast layout',
+    colors: {
+      primary: '#F5A623',
+      secondary: '#D4AF37',
+      accent: '#ffd700',
+      background: 'rgba(10, 15, 25, 0.95)',
+      text: '#ffffff',
+      textMuted: '#F5A623',
+    },
+    particles: {
+      enabled: true,
+      type: 'gold',
+      count: 20,
+      colors: ['#F5A623', '#D4AF37', '#ffd700'],
+    },
+    effects: {
+      glow: true,
+      glowColor: '#F5A623',
+      shimmer: true,
+      gradientBorder: true,
+    },
+    soldStamp: {
+      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+      textColor: '#ffffff',
+      glowColor: 'rgba(34, 197, 94, 0.7)',
+    },
+    unsoldStamp: {
+      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+      textColor: '#ffffff',
+      glowColor: 'rgba(239, 68, 68, 0.6)',
     },
   },
 };

@@ -1,10 +1,6 @@
 import { memo } from 'react';
 import LazyImage from './LazyImage';
 
-// Default fallback images
-const DEFAULT_PLAYER_FALLBACK = 'https://ui-avatars.com/api/?name=Player&background=1f2937&color=fff&size=200';
-const DEFAULT_TEAM_FALLBACK = 'https://ui-avatars.com/api/?name=Team&background=374151&color=fff&size=64';
-
 interface PlayerPhotoProps {
   src: string | undefined | null;
   name?: string;

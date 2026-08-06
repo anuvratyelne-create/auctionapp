@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Player, Team, Tournament } from '../../../types';
 import { User, Zap } from 'lucide-react';
 
@@ -40,12 +41,23 @@ export default function PremiumStandardOverlay({
   player,
   currentBid,
   currentTeam,
-  status,
+  status: _status,
   tournament,
   slideState,
   bidAnimating,
   showParticles = true,
 }: PremiumStandardOverlayProps) {
+  const [showAppLogo, setShowAppLogo] = useState(!tournament?.broadcaster_logo_url);
+
+  // Rotating logo effect
+  useEffect(() => {
+    if (!tournament?.broadcaster_logo_url) {
+      setShowAppLogo(true);
+      return;
+    }
+    const interval = setInterval(() => setShowAppLogo((prev) => !prev), 5000);
+    return () => clearInterval(interval);
+  }, [tournament?.broadcaster_logo_url]);
 
   return (
     <div className="overlay-bg min-h-screen relative overflow-hidden">
@@ -65,17 +77,15 @@ export default function PremiumStandardOverlay({
         </div>
       )}
 
-      {/* Broadcaster Logo - Top Right */}
-      {tournament?.broadcaster_logo_url && (
-        <div className="absolute top-6 right-6 z-30">
-          <img
-            src={tournament.broadcaster_logo_url}
-            alt={tournament.broadcaster_name || 'Broadcaster'}
-            className="h-48 w-auto object-contain"
-            style={{ filter: 'drop-shadow(0 4px 15px rgba(0,0,0,0.7))' }}
-          />
-        </div>
-      )}
+      {/* Rotating Logo - Top Right (Broadcaster ↔ App Logo) */}
+      <div className="absolute top-6 right-6 z-30">
+        <img
+          src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+          alt={showAppLogo ? 'Game Auction' : (tournament?.broadcaster_name || 'Broadcaster')}
+          className="h-48 w-auto object-contain transition-opacity duration-500"
+          style={{ filter: `drop-shadow(0 4px 15px ${showAppLogo ? 'rgba(6,182,212,0.5)' : 'rgba(0,0,0,0.7)'})` }}
+        />
+      </div>
 
       {/* ==================== PLAYER CARD (LEFT) ==================== */}
       <div className="absolute left-6 top-64 bottom-6 w-[400px] z-10 animate-slide-in-left">

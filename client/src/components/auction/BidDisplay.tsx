@@ -1,5 +1,5 @@
 import { Team, Player } from '../../types';
-import { TrendingUp, Wallet, Users, ArrowUp, ArrowDown, Sparkles } from 'lucide-react';
+import { TrendingUp, Wallet, Users, ArrowUp, Sparkles } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import AnimatedBidAmount from './AnimatedBidAmount';
 import { getBidIncrement, formatIncrement } from '../../config/budgetPresets';

@@ -50,3 +50,4 @@ coverage/
 
 # Claude memory (personal notes)
 .claude/
+deploy.tar.gz

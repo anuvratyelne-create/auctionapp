@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Gavel, Mail, Lock, LogIn, Sparkles, Trophy, Users, Zap, Eye, EyeOff, X, KeyRound } from 'lucide-react';
+import { Mail, Lock, LogIn, Sparkles, Trophy, Users, Zap, Eye, EyeOff, X, KeyRound } from 'lucide-react';
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('');
@@ -158,18 +158,12 @@ export default function Login() {
         <div className="max-w-lg">
           {/* Logo */}
           <div className="flex items-center gap-4 mb-8">
-            <div className="relative">
-              <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/30">
-                <Gavel size={32} className="text-white" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-slate-950">
-                <Sparkles size={10} className="text-white" />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-3xl font-black text-white tracking-tight">PLAYER AUCTION</h1>
-              <p className="text-amber-400 font-medium">Pro Management System</p>
-            </div>
+            <img
+              src="/logo.png"
+              alt="Game Auction"
+              className="w-auto object-contain"
+              style={{ height: '22.5rem', filter: 'drop-shadow(0 0 40px rgba(6, 182, 212, 0.5))' }}
+            />
           </div>
 
           {/* Tagline */}
@@ -220,11 +214,12 @@ export default function Login() {
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl mb-4 shadow-lg shadow-amber-500/30">
-              <Gavel size={32} className="text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-white">Player Auction</h1>
-            <p className="text-slate-400 mt-1">Pro Management System</p>
+            <img
+              src="/logo.png"
+              alt="Game Auction"
+              className="w-auto object-contain mx-auto mb-2"
+              style={{ height: '10rem', filter: 'drop-shadow(0 0 30px rgba(6, 182, 212, 0.5))' }}
+            />
           </div>
 
           {/* Login Card */}

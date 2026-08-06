@@ -5,7 +5,7 @@ import { ChevronDown, Users } from 'lucide-react';
 
 interface RoleFilterDropdownProps {
   disabled?: boolean;
-  theme?: 'default' | 'fire' | 'city' | 'premium';
+  theme?: 'default' | 'fire' | 'city' | 'premium' | 'classic';
 }
 
 export default function RoleFilterDropdown({ disabled, theme = 'default' }: RoleFilterDropdownProps) {

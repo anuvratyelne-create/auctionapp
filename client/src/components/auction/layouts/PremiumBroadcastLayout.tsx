@@ -5,7 +5,7 @@ import { formatAmountCompact } from '../../../utils/formatters';
 import { api } from '../../../utils/api';
 import { useUIStore } from '../../../stores/uiStore';
 import { getPremiumBackground } from '../../../config/premiumBackgrounds';
-import { Users, Zap, Trophy } from 'lucide-react';
+import { Zap, Trophy } from 'lucide-react';
 import PremiumIdleScreen from './PremiumIdleScreen';
 import AuctionResumeScreen from './AuctionResumeScreen';
 import CompletionScreen from './CompletionScreen';
@@ -227,7 +227,7 @@ export default function PremiumBroadcastLayout({
   onNewPlayer,
   onClose,
   loading,
-  auctionStarted = false,
+  auctionStarted: _auctionStarted = false,
   lastPlayer = null,
   lastStatus = null,
   lastTeam = null,
@@ -366,38 +366,28 @@ export default function PremiumBroadcastLayout({
             style={{ background: 'linear-gradient(90deg, transparent, #FFD700, #D4AF37, #FFD700, transparent)' }}
           />
 
-          <div className="flex items-center h-36 px-10">
+          <div className="relative flex items-center h-44 px-10">
             {/* Left: Big Logo */}
             <div className="flex items-center gap-5">
               {tournament?.logo_url ? (
                 <img
                   src={tournament.logo_url}
                   alt={tournament.name}
-                  className="h-28 w-auto object-contain"
+                  className="w-auto object-contain"
+                  style={{ height: '10rem' }}
                 />
               ) : (
                 <div
-                  className="h-28 w-28 rounded-2xl flex items-center justify-center"
-                  style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(212,175,55,0.1) 100%)' }}
+                  className="w-32 rounded-2xl flex items-center justify-center"
+                  style={{ height: '10rem', background: 'linear-gradient(135deg, rgba(255,215,0,0.2) 0%, rgba(212,175,55,0.1) 100%)' }}
                 >
-                  <Trophy size={56} className="text-amber-400" />
+                  <Trophy size={64} className="text-amber-400" />
                 </div>
               )}
 
-              {/* LIVE indicator */}
-              <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-red-500/20 border border-red-500/30">
-                <span className="relative flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
-                </span>
-                <span className="text-red-400 font-bold text-base tracking-wide">LIVE</span>
-              </div>
-            </div>
-
-            {/* Center: Tournament Name - Big & Centered */}
-            <div className="flex-1 text-center">
+              {/* Tournament Name */}
               <h1
-                className="text-5xl lg:text-6xl font-bold tracking-wide"
+                className="text-3xl lg:text-4xl font-bold tracking-wide"
                 style={{
                   background: 'linear-gradient(135deg, #FFFFFF 0%, #FFD700 50%, #D4AF37 100%)',
                   WebkitBackgroundClip: 'text',
@@ -407,22 +397,41 @@ export default function PremiumBroadcastLayout({
               >
                 {tournament?.name || 'Player Auction'}
               </h1>
-              <p className="text-base text-amber-500/60 tracking-[0.3em] uppercase mt-2">
-                Season {new Date().getFullYear()}
-              </p>
             </div>
 
-            {/* Right: Stats & Time */}
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-4">
-                <Users size={28} className="text-amber-500/50" />
-                <div>
-                  <p className="text-4xl font-bold text-white">{teams.reduce((acc, t) => acc + (t.player_count || 0), 0)}</p>
-                  <p className="text-sm text-amber-500/50 uppercase tracking-wider">Sold</p>
-                </div>
+            {/* Center: App Logo */}
+            <div className="absolute left-1/2 -translate-x-1/2">
+              <img
+                src="/logo.png"
+                alt="Game Auction"
+                className="w-auto object-contain"
+                style={{ height: '12rem', filter: 'drop-shadow(0 0 25px rgba(255, 215, 0, 0.5))' }}
+              />
+            </div>
+
+            {/* Right: LIVE + Sponsor */}
+            <div className="flex items-center gap-6 ml-auto">
+              {/* LIVE indicator */}
+              <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-red-500/20 border border-red-500/30">
+                <span className="relative flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
+                </span>
+                <span className="text-red-400 font-bold text-base tracking-wide">LIVE</span>
               </div>
 
-
+              {/* Sponsor */}
+              {showSponsors && currentSponsor?.logo_url && (
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-amber-500/60 uppercase tracking-wider">Powered By</span>
+                  <img
+                    src={currentSponsor.logo_url}
+                    alt={currentSponsor.name || 'Sponsor'}
+                    className="max-w-[250px] object-contain"
+                    style={{ height: '7rem', filter: 'drop-shadow(0 0 15px rgba(212, 175, 55, 0.4))' }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </GlassCard>
@@ -431,7 +440,7 @@ export default function PremiumBroadcastLayout({
       {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
       {/* MAIN CONTENT */}
       {/* ══════════════════════════════════════════════════════════════════════════════════════════ */}
-      <div className="absolute top-40 left-0 right-0 bottom-0 flex px-6 py-4 gap-5">
+      <div className="absolute top-48 left-0 right-0 bottom-0 flex px-6 py-4 gap-5">
 
         {/* LEFT: Team Standings */}
         <div className="w-72 flex-shrink-0">
@@ -689,30 +698,6 @@ export default function PremiumBroadcastLayout({
 
         {/* RIGHT: Team & Sponsor Panel */}
         <div className="w-80 flex-shrink-0 flex flex-col gap-4">
-          {/* Sponsor */}
-          {showSponsors && currentSponsor?.logo_url && (
-            <div className="flex flex-col items-center py-4">
-              <p className="text-[10px] text-amber-500/40 uppercase tracking-[0.25em] mb-2">Powered By</p>
-              <img
-                src={currentSponsor.logo_url}
-                alt={currentSponsor.name || 'Sponsor'}
-                className="h-20 max-w-[220px] object-contain opacity-80"
-              />
-              {sponsors.length > 1 && (
-                <div className="flex items-center gap-2 mt-3">
-                  {sponsors.map((_, idx) => (
-                    <div
-                      key={idx}
-                      className={`w-2 h-2 rounded-full transition-all ${
-                        idx === currentSponsorIndex ? 'bg-amber-400/60' : 'bg-amber-500/20'
-                      }`}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Bidding Team */}
           <GlassCard className="flex-1 rounded-2xl overflow-hidden" intensity="low" goldAccent>
             {currentTeam ? (

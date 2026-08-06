@@ -44,6 +44,16 @@ export default function HeroSection() {
       {/* Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-6 py-20 w-full">
         <div className="text-center">
+          {/* Logo */}
+          <div className="mb-10">
+            <img
+              src="/logo.png"
+              alt="Game Auction"
+              className="w-auto mx-auto object-contain"
+              style={{ height: '25rem', filter: 'drop-shadow(0 0 60px rgba(6, 182, 212, 0.6))' }}
+            />
+          </div>
+
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-full mb-6">
             <Zap size={16} className="text-amber-400" />

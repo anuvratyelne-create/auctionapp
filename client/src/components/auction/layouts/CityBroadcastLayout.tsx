@@ -398,7 +398,7 @@ export default function CityBroadcastLayout({
   onNewPlayer,
   onClose,
   loading,
-  auctionStarted = false,
+  auctionStarted: _auctionStarted = false,
   lastPlayer = null,
   lastStatus = null,
   lastTeam = null,
@@ -525,19 +525,19 @@ export default function CityBroadcastLayout({
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* HEADER - Tournament Name + LIVE + Sponsor */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
-        <div className="flex items-center justify-between px-8 py-6">
+        <div className="relative flex items-center justify-between px-8 py-6">
           {/* Tournament Name with Neon Gradient */}
           <div className="flex items-center gap-6">
             {tournament?.logo_url && (
               <img
                 src={tournament.logo_url}
                 alt=""
-                className="w-32 h-32 object-contain"
-                style={{ filter: `drop-shadow(0 0 20px ${CITY_COLORS.cyan}) drop-shadow(0 0 40px ${CITY_COLORS.purple}60)` }}
+                className="object-contain"
+                style={{ height: '10rem', filter: `drop-shadow(0 0 20px ${CITY_COLORS.cyan}) drop-shadow(0 0 40px ${CITY_COLORS.purple}60)` }}
               />
             )}
             <h1
-              className="text-4xl md:text-5xl font-black uppercase tracking-wider italic"
+              className="text-3xl md:text-4xl font-black uppercase tracking-wider italic"
               style={{
                 background: `linear-gradient(90deg, ${CITY_COLORS.cyan}, ${CITY_COLORS.purple}, ${CITY_COLORS.pink})`,
                 WebkitBackgroundClip: 'text',
@@ -548,6 +548,16 @@ export default function CityBroadcastLayout({
             >
               {tournament?.name || 'AUCTION'}
             </h1>
+          </div>
+
+          {/* Center: App Logo */}
+          <div className="absolute left-1/2 -translate-x-1/2">
+            <img
+              src="/logo.png"
+              alt="Game Auction"
+              className="object-contain"
+              style={{ height: '10rem', filter: `drop-shadow(0 0 25px ${CITY_COLORS.cyan}) drop-shadow(0 0 50px ${CITY_COLORS.purple}80)` }}
+            />
           </div>
 
           {/* LIVE Badge + Sponsor */}
@@ -579,7 +589,7 @@ export default function CityBroadcastLayout({
                   <img
                     src={currentSponsor.logo_url}
                     alt={currentSponsor.name || 'Sponsor'}
-                    className="h-48 max-w-[500px] object-contain"
+                    className="h-21 max-w-[200px] object-contain"
                     style={{
                       filter: `drop-shadow(0 0 20px ${CITY_COLORS.cyan}) drop-shadow(0 0 40px ${CITY_COLORS.purple})`,
                     }}

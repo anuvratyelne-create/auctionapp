@@ -490,6 +490,11 @@ const broadcastToAllRooms = (io: Server, tournamentId: string, event: string, da
   rooms.forEach(room => io.to(room).emit(event, data));
 };
 
+// Helper to broadcast public auction updates to landing page viewers
+const broadcastPublicAuctionUpdate = (io: Server) => {
+  io.to('public:landing').emit('public:auction-update');
+};
+
 export const setupSocketHandlers = (io: Server) => {
   // Add authentication middleware
   io.use(authenticateSocket);
@@ -551,6 +556,11 @@ export const setupSocketHandlers = (io: Server) => {
       socket.emit('auction:state', state);
       // Also emit timer state for views that listen separately
       socket.emit('timer:sync', state.timer);
+    });
+
+    // Join public room for landing page viewers (no auth required)
+    socket.on('join:public', () => {
+      socket.join('public:landing');
     });
 
     // Admin actions - these are handled via REST API and broadcast from there

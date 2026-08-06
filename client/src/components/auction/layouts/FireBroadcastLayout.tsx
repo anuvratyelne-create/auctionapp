@@ -275,7 +275,7 @@ export default function FireBroadcastLayout({
   onNewPlayer,
   onClose,
   loading,
-  auctionStarted = false,
+  auctionStarted: _auctionStarted = false,
   lastPlayer = null,
   lastStatus = null,
   lastTeam = null,
@@ -375,59 +375,44 @@ export default function FireBroadcastLayout({
 
         {/* Header */}
         <div className="flex items-center justify-center mb-6">
-          {/* Tournament Logo + Name together in center */}
-          <div className="flex items-center gap-8">
-            {tournament?.logo_url && (
+          {/* Tournament Logo - Left side */}
+          {tournament?.logo_url && (
+            <div className="absolute left-6 top-6">
               <img
                 src={tournament.logo_url}
                 alt=""
-                className="w-40 h-40 md:w-52 md:h-52 object-contain"
-                style={{ filter: `drop-shadow(0 0 30px ${FIRE_COLORS.orange})` }}
+                className="object-contain"
+                style={{ height: '10rem', width: 'auto', filter: `drop-shadow(0 0 30px ${FIRE_COLORS.orange})` }}
               />
-            )}
+            </div>
+          )}
 
-            {/* Tournament Name */}
-            <div className="text-left">
-              <h1
-                className="text-6xl md:text-8xl font-black uppercase tracking-wider"
-                style={{
-                  background: `linear-gradient(180deg, ${FIRE_COLORS.yellow} 0%, ${FIRE_COLORS.orange} 50%, ${FIRE_COLORS.red} 100%)`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  filter: `drop-shadow(0 0 30px ${FIRE_COLORS.orange})`,
-                }}
-              >
-                {tournament?.name || 'AUCTION'}
-              </h1>
-              <div className="flex items-center gap-3 mt-2">
-                <Flame size={24} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
-                <span className="text-lg uppercase tracking-[0.3em] font-medium" style={{ color: FIRE_COLORS.ember }}>
-                  Fire Mode Auction
-                </span>
-                <Flame size={24} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
-              </div>
+          {/* Tournament Name - Center */}
+          <div className="text-center">
+            <h1
+              className="text-4xl md:text-6xl font-black uppercase tracking-wider"
+              style={{
+                background: `linear-gradient(180deg, ${FIRE_COLORS.yellow} 0%, ${FIRE_COLORS.orange} 50%, ${FIRE_COLORS.red} 100%)`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                filter: `drop-shadow(0 0 30px ${FIRE_COLORS.orange})`,
+              }}
+            >
+              {tournament?.name || 'AUCTION'}
+            </h1>
+            <div className="flex items-center justify-center gap-3 mt-2">
+              <Flame size={24} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
+              <span className="text-lg uppercase tracking-[0.3em] font-medium" style={{ color: FIRE_COLORS.ember }}>
+                Fire Mode Auction
+              </span>
+              <Flame size={24} className="animate-pulse" style={{ color: FIRE_COLORS.orange }} />
             </div>
           </div>
 
-          {/* Right side - Status + Sponsor */}
-          <div className="absolute right-6 top-6 flex flex-col items-end gap-3">
-            {/* Status badge */}
-            <div
-              className="px-6 py-2 rounded-full font-bold uppercase tracking-wider"
-              style={{
-                background: status === 'bidding'
-                  ? `linear-gradient(135deg, ${FIRE_COLORS.orange}, ${FIRE_COLORS.red})`
-                  : status === 'sold'
-                  ? 'linear-gradient(135deg, #22c55e, #16a34a)'
-                  : 'linear-gradient(135deg, #64748b, #475569)',
-                boxShadow: status === 'bidding' ? `0 0 30px ${FIRE_COLORS.orange}80` : 'none',
-              }}
-            >
-              {status === 'bidding' ? '🔥 LIVE BIDDING' : status === 'sold' ? '✓ SOLD' : status.toUpperCase()}
-            </div>
-
-            {/* Sponsor - Large Logo (Fire themed, no border) */}
-            {showSponsors && (
+          {/* Right side - App Logo + Sponsor */}
+          <div className="absolute right-6 top-6 flex items-start gap-10">
+            {/* Sponsor Logo */}
+            {showSponsors && currentSponsor?.logo_url && (
               <div className="flex flex-col items-center">
                 <p
                   className="text-xs uppercase tracking-[0.3em] mb-3 font-semibold"
@@ -435,32 +420,12 @@ export default function FireBroadcastLayout({
                 >
                   Powered By
                 </p>
-
-                <div className="flex items-center justify-center">
-                  {currentSponsor?.logo_url ? (
-                    <img
-                      src={currentSponsor.logo_url}
-                      alt={currentSponsor.name || 'Sponsor'}
-                      className="h-24 md:h-32 max-w-[280px] object-contain transition-all duration-500"
-                      style={{ filter: `drop-shadow(0 0 20px ${FIRE_COLORS.orange}80)` }}
-                    />
-                  ) : (
-                    <span style={{ color: FIRE_COLORS.ember }} className="text-lg">Your Sponsor</span>
-                  )}
-                </div>
-
-                {currentSponsor?.name && (
-                  <p
-                    className="mt-2 text-sm font-bold uppercase tracking-wider"
-                    style={{
-                      color: FIRE_COLORS.yellow,
-                      textShadow: `0 0 15px ${FIRE_COLORS.orange}`,
-                    }}
-                  >
-                    {currentSponsor.name}
-                  </p>
-                )}
-
+                <img
+                  src={currentSponsor.logo_url}
+                  alt={currentSponsor.name || 'Sponsor'}
+                  className="max-w-[200px] object-contain transition-all duration-500"
+                  style={{ height: '9.25rem', filter: `drop-shadow(0 0 20px ${FIRE_COLORS.orange}80)` }}
+                />
                 {sponsors.length > 1 && (
                   <div className="flex items-center justify-center gap-2 mt-3">
                     {sponsors.map((_, idx) => (
@@ -477,6 +442,16 @@ export default function FireBroadcastLayout({
                 )}
               </div>
             )}
+
+            {/* App Logo */}
+            <div className="flex flex-col items-center">
+              <img
+                src="/logo.png"
+                alt="Game Auction"
+                className="object-contain"
+                style={{ height: '10rem', filter: 'drop-shadow(0 0 25px rgba(6, 182, 212, 0.7))' }}
+              />
+            </div>
           </div>
         </div>
 

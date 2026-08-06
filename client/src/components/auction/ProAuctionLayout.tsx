@@ -29,7 +29,7 @@ import CitySoldAnimation from './CitySoldAnimation';
 import ClassicIdleScreen from './layouts/ClassicIdleScreen';
 import AuctionResumeScreen from './layouts/AuctionResumeScreen';
 import { getBidIncrement } from '../../config/budgetPresets';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Volume2, VolumeX, Disc, FastForward, Layout, Undo2, Pause, Loader2 } from 'lucide-react';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Disc, Layout, Undo2, Pause, Loader2 } from 'lucide-react';
 import RoleFilterDropdown from './RoleFilterDropdown';
 
 interface ProAuctionLayoutProps {
@@ -38,7 +38,7 @@ interface ProAuctionLayoutProps {
 
 export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   const { tournament, updateTournament } = useAuthStore();
-  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, soundEnabled, toggleSound, timerDuration, acceleratedMode, acceleratedTimerDuration, toggleAcceleratedMode, showSponsors, sponsorRotationInterval, isAuctionPaused, setAuctionPaused } = useUIStore();
+  const { selectedThemeId, selectedLayout, setSelectedLayout, showTemplateSelector, toggleTemplateSelector, timerDuration, acceleratedMode, acceleratedTimerDuration, sponsorRotationInterval, isAuctionPaused, setAuctionPaused } = useUIStore();
   const template = getTemplate(selectedThemeId);
   const {
     currentPlayer,
@@ -73,11 +73,11 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   const [toast, setToast] = useState<{ message: string; team?: Team; type: 'error' | 'warning' | 'info' } | null>(null);
   const [showPlayerEntry, setShowPlayerEntry] = useState(false);
   const [entryPlayer, setEntryPlayer] = useState<Player | null>(null);
-  const [showLayoutPicker, setShowLayoutPicker] = useState(false);
   const [showSoldAnimation, setShowSoldAnimation] = useState(false);
   const [soldAnimationData, setSoldAnimationData] = useState<{ player: Player; team: Team; price: number } | null>(null);
   const [sponsors, setSponsors] = useState<Array<{ id: string; name?: string; logo_url: string }>>([]);
   const [currentSponsorIndex, setCurrentSponsorIndex] = useState(0);
+  const [, setShowAppLogo] = useState(false); // Toggle between sponsor and app logo
   const [lastAction, setLastAction] = useState<{ player: Player; type: 'sold' | 'unsold' } | null>(null);
   const [availablePlayersCount, setAvailablePlayersCount] = useState<number | null>(null);
   const timerResetKey = useRef(0);
@@ -151,7 +151,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     socketClient.on('players:updated', handlePlayersUpdated);
 
     // Listen for tournament status changes (e.g., when admin marks as completed)
-    const handleTournamentCompleted = (data: { status: string; by?: string }) => {
+    const handleTournamentCompleted = (_data: { status: string; by?: string }) => {
       if (tournament) {
         updateTournament({ ...tournament, status: 'completed' });
       }
@@ -273,6 +273,14 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     }, sponsorRotationInterval * 1000);
     return () => clearInterval(interval);
   }, [sponsors.length, sponsorRotationInterval]);
+
+  // Rotate between sponsor logo and app logo every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowAppLogo((prev) => !prev);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const currentSponsor = sponsors[currentSponsorIndex];
 
@@ -1386,12 +1394,14 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
               <img
                 src={tournament.logo_url}
                 alt={tournament.name}
-                className="h-24 w-auto object-contain"
+                className="w-auto object-contain"
+                style={{ height: '12.5rem' }}
               />
             ) : (
               <div
-                className="h-24 w-24 rounded-2xl flex items-center justify-center"
+                className="w-24 rounded-2xl flex items-center justify-center"
                 style={{
+                  height: '12.5rem',
                   background: `linear-gradient(135deg, ${template.accentColor}40, ${template.accentColor}20)`,
                   border: `2px solid ${template.accentColor}60`
                 }}
@@ -1403,29 +1413,29 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
 
           {/* Tournament Info */}
           <div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5">
               <h1
-                className="text-3xl font-black text-white tracking-tight uppercase"
-                style={{ textShadow: `0 0 30px ${template.accentColor}40` }}
+                className="text-5xl font-black text-white tracking-tight uppercase"
+                style={{ textShadow: `0 0 40px ${template.accentColor}40` }}
               >
                 {tournament?.name || 'PLAYERS AUCTION'}
               </h1>
               {/* LIVE Indicator */}
               {template.isAnimated && (
                 <div
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-full animate-pulse"
+                  className="flex items-center gap-2 px-5 py-2 rounded-full animate-pulse"
                   style={{
                     background: `linear-gradient(90deg, #dc2626, #ef4444)`,
-                    boxShadow: '0 0 20px rgba(220, 38, 38, 0.5)'
+                    boxShadow: '0 0 25px rgba(220, 38, 38, 0.5)'
                   }}
                 >
-                  <span className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />
-                  <span className="text-sm font-bold text-white uppercase tracking-wider">Live</span>
+                  <span className="w-3 h-3 bg-white rounded-full animate-ping" />
+                  <span className="text-base font-bold text-white uppercase tracking-wider">Live</span>
                 </div>
               )}
             </div>
             <p
-              className="text-lg uppercase tracking-widest mt-1"
+              className="text-2xl uppercase tracking-widest mt-2"
               style={{ color: `${template.accentColor}` }}
             >
               Players Auction
@@ -1449,141 +1459,33 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
           </div>
         )}
 
-        {/* Right: Sound Toggle + Sponsor + Template Selector */}
-        <div className="flex items-center gap-5">
-          {/* Sound Toggle Button */}
-          <button
-            onClick={toggleSound}
-            className="p-4 rounded-xl transition-all hover:scale-105"
-            style={{
-              background: soundEnabled
-                ? `linear-gradient(135deg, ${template.accentColor}30, ${template.accentColor}10)`
-                : 'linear-gradient(135deg, rgba(239,68,68,0.3), rgba(239,68,68,0.1))',
-              border: soundEnabled
-                ? `2px solid ${template.accentColor}50`
-                : '2px solid rgba(239,68,68,0.5)',
-              boxShadow: soundEnabled
-                ? `0 0 20px ${template.accentColor}20`
-                : '0 0 20px rgba(239,68,68,0.2)'
-            }}
-            title={soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}
-          >
-            {soundEnabled ? (
-              <Volume2 size={24} style={{ color: template.accentColor }} />
-            ) : (
-              <VolumeX size={24} className="text-red-400" />
-            )}
-          </button>
-
-          {/* Accelerated Mode Toggle */}
-          <button
-            onClick={toggleAcceleratedMode}
-            className="p-4 rounded-xl transition-all hover:scale-105 relative"
-            style={{
-              background: acceleratedMode
-                ? 'linear-gradient(135deg, rgba(249,115,22,0.4), rgba(249,115,22,0.2))'
-                : `linear-gradient(135deg, ${template.accentColor}30, ${template.accentColor}10)`,
-              border: acceleratedMode
-                ? '2px solid rgba(249,115,22,0.6)'
-                : `2px solid ${template.accentColor}50`,
-              boxShadow: acceleratedMode
-                ? '0 0 20px rgba(249,115,22,0.3)'
-                : `0 0 20px ${template.accentColor}20`
-            }}
-            title={acceleratedMode ? `Accelerated Mode ON (${acceleratedTimerDuration}s timer)` : 'Enable Accelerated Mode'}
-          >
-            <FastForward
-              size={24}
-              className={acceleratedMode ? 'text-orange-400' : ''}
-              style={{ color: acceleratedMode ? undefined : template.accentColor }}
-            />
-            {acceleratedMode && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
-            )}
-          </button>
-
-          {/* Layout Selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowLayoutPicker(!showLayoutPicker)}
-              className="p-4 rounded-xl transition-all hover:scale-105"
-              style={{
-                background: selectedLayout !== 'classic'
-                  ? 'linear-gradient(135deg, rgba(139,92,246,0.4), rgba(139,92,246,0.2))'
-                  : `linear-gradient(135deg, ${template.accentColor}30, ${template.accentColor}10)`,
-                border: selectedLayout !== 'classic'
-                  ? '2px solid rgba(139,92,246,0.6)'
-                  : `2px solid ${template.accentColor}50`,
-                boxShadow: selectedLayout !== 'classic'
-                  ? '0 0 20px rgba(139,92,246,0.3)'
-                  : `0 0 20px ${template.accentColor}20`
-              }}
-              title="Change Layout"
-            >
-              <Layout
-                size={24}
-                className={selectedLayout !== 'classic' ? 'text-purple-400' : ''}
-                style={{ color: selectedLayout !== 'classic' ? undefined : template.accentColor }}
-              />
-            </button>
-            {showLayoutPicker && (
-              <div className="absolute top-full right-0 mt-2 bg-slate-900/95 backdrop-blur-xl rounded-xl border border-slate-700 shadow-2xl p-3 z-50 min-w-[200px]">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 px-2">Select Layout</p>
-                {[
-                  { id: 'classic', name: 'Classic', desc: 'Default layout' },
-                  { id: 'premium-broadcast', name: 'Premium Broadcast', desc: 'TV broadcast style' },
-                  { id: 'fire', name: '🔥 Fire', desc: 'Dramatic fire theme' },
-                  { id: 'city', name: '🌃 City', desc: 'Night city skyline' },
-                ].map((layout) => (
-                  <button
-                    key={layout.id}
-                    onClick={() => {
-                      setSelectedLayout(layout.id as any);
-                      setShowLayoutPicker(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors mb-1 ${
-                      selectedLayout === layout.id
-                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                        : 'text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <p className="font-medium">{layout.name}</p>
-                    <p className="text-xs text-slate-500">{layout.desc}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Sponsor Area - Extra Large, no box */}
-          {showSponsors && (
+        {/* Right: Sponsor Logo + App Logo */}
+        <div className="flex items-center gap-16">
+          {/* Sponsor Logo */}
+          {currentSponsor?.logo_url && (
             <div className="flex flex-col items-center">
               <p
-                className="text-xs uppercase tracking-[0.3em] mb-3 font-semibold"
+                className="text-sm uppercase tracking-[0.3em] mb-2 font-semibold"
                 style={{ color: `${template.accentColor}cc` }}
               >
                 Powered By
               </p>
-              {currentSponsor?.logo_url ? (
-                <img
-                  src={currentSponsor.logo_url}
-                  alt={currentSponsor.name || 'Sponsor'}
-                  className="h-28 md:h-36 max-w-[320px] object-contain transition-all duration-500"
-                  style={{ filter: `drop-shadow(0 0 25px ${template.accentColor}80)` }}
-                />
-              ) : (
-                <span className="text-lg" style={{ color: `${template.accentColor}80` }}>Your Sponsor</span>
-              )}
-              {currentSponsor?.name && (
+              <img
+                src={currentSponsor.logo_url}
+                alt={currentSponsor.name || 'Sponsor'}
+                className="h-36 max-w-[320px] object-contain transition-all duration-500"
+                style={{ filter: `drop-shadow(0 0 25px ${template.accentColor}80)` }}
+              />
+              {currentSponsor.name && (
                 <p
-                  className="text-base font-bold uppercase tracking-wider mt-3"
-                  style={{ color: template.accentColor, textShadow: `0 0 15px ${template.accentColor}60` }}
+                  className="text-base font-bold uppercase tracking-wider mt-2"
+                  style={{ color: template.accentColor, textShadow: `0 0 10px ${template.accentColor}60` }}
                 >
                   {currentSponsor.name}
                 </p>
               )}
               {sponsors.length > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-3">
+                <div className="flex items-center justify-center gap-2 mt-2">
                   {sponsors.map((_, idx) => (
                     <div
                       key={idx}
@@ -1598,6 +1500,16 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
               )}
             </div>
           )}
+
+          {/* App Logo - Always visible */}
+          <div className="flex flex-col items-center">
+            <img
+              src="/logo.png"
+              alt="Game Auction"
+              className="max-w-[400px] object-contain"
+              style={{ height: '11.25rem', filter: 'drop-shadow(0 0 30px rgba(6, 182, 212, 0.8))' }}
+            />
+          </div>
         </div>
       </div>
 
@@ -1612,7 +1524,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       )}
 
       {/* New Player Screen - Only when players are available */}
-      {!currentPlayer && !isAuctionPaused && tournament && tournament.status !== 'completed' && (availablePlayersCount === null || availablePlayersCount > 0) && (
+      {!currentPlayer && !isAuctionPaused && tournament && (tournament.status as string) !== 'completed' && (availablePlayersCount === null || availablePlayersCount > 0) && (
         <ClassicIdleScreen
           tournament={tournament}
           accentColor={template.accentColor}
@@ -1623,7 +1535,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       )}
 
       {/* Resume Auction Screen - When no players available but auction not completed */}
-      {!currentPlayer && !isAuctionPaused && tournament && tournament.status !== 'completed' && availablePlayersCount === 0 && (
+      {!currentPlayer && !isAuctionPaused && tournament && (tournament.status as string) !== 'completed' && availablePlayersCount === 0 && (
         <AuctionResumeScreen
           tournament={tournament}
           lastPlayer={lastPlayer}
@@ -1639,7 +1551,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
       )}
 
       {/* Completion Screen - Only when admin marks tournament as completed */}
-      {!currentPlayer && !isAuctionPaused && tournament && tournament.status === 'completed' && (
+      {!currentPlayer && !isAuctionPaused && tournament && (tournament.status as string) === 'completed' && (
         <CompletionScreen
           tournament={tournament}
           stats={{

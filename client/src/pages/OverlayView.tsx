@@ -5,13 +5,13 @@ import { useAuctionStore } from '../stores/auctionStore';
 import { api } from '../utils/api';
 import { Tournament, OverlayTheme, OverlaySettings } from '../types';
 import OverlayCelebration from '../components/overlay/OverlayCelebration';
-import BroadcasterLogo from '../components/common/BroadcasterLogo';
 import FireOverlay from '../components/overlay/themes/FireOverlay';
 import CityOverlay from '../components/overlay/themes/CityOverlay';
+import CityStandardOverlay from '../components/overlay/themes/CityStandardOverlay';
 import PremiumOverlay from '../components/overlay/themes/PremiumOverlay';
 import PremiumStandardOverlay from '../components/overlay/themes/PremiumStandardOverlay';
 import { defaultOverlaySettings } from '../config/overlayThemes';
-import { User, TrendingUp, Users } from 'lucide-react';
+import { User } from 'lucide-react';
 
 type OverlayMode = 'minimal' | 'standard' | 'premium';
 
@@ -27,13 +27,14 @@ export default function OverlayView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [timerState, setTimerState] = useState({ timeLeft: 30, isRunning: false, duration: 30 });
-  const [localTimeLeft, setLocalTimeLeft] = useState(30);
+  const [, setLocalTimeLeft] = useState(30);
   const [showCelebration, setShowCelebration] = useState(false);
   const [bidAnimating, setBidAnimating] = useState(false);
   const [slideState, setSlideState] = useState<'entering' | 'active' | 'sold' | 'unsold'>('active');
   const [previousPlayer, setPreviousPlayer] = useState<string | null>(null);
   const previousStatusRef = useRef<string>('idle');
   const previousBidRef = useRef<number>(0);
+  const [showAppLogo, setShowAppLogo] = useState(false); // For rotating logo display
 
   const { currentPlayer, currentBid, currentTeam, status, setAuctionState } = useAuctionStore();
 
@@ -94,6 +95,22 @@ export default function OverlayView() {
       clearInterval(interval);
     };
   }, []);
+
+  // Rotating logo effect: alternate between broadcaster logo and app logo every 5 seconds
+  useEffect(() => {
+    // If no broadcaster logo, always show app logo
+    if (!tournament?.broadcaster_logo_url) {
+      setShowAppLogo(true);
+      return;
+    }
+
+    // Rotate between broadcaster and app logo every 5 seconds
+    const logoInterval = setInterval(() => {
+      setShowAppLogo((prev) => !prev);
+    }, 5000);
+
+    return () => clearInterval(logoInterval);
+  }, [tournament?.broadcaster_logo_url]);
 
   // Get effective accent color (URL > admin theme > settings > default)
   const effectiveAccentColor = urlAccentColor || adminAccentColor || overlaySettings.accentColor || '#22c55e';
@@ -218,16 +235,6 @@ export default function OverlayView() {
     };
   }, [tournament?.id]);
 
-  // Get timer color based on time
-  const getTimerColor = () => {
-    if (localTimeLeft <= 5) return '#ef4444';
-    if (localTimeLeft <= 10) return '#f59e0b';
-    return effectiveAccentColor;
-  };
-
-  // Calculate timer progress
-  const timerProgress = (localTimeLeft / timerState.duration) * 100;
-
   if (loading) {
     return <div className="overlay-bg" />;
   }
@@ -259,6 +266,22 @@ export default function OverlayView() {
   if (resolvedTheme === 'city') {
     return (
       <CityOverlay
+        player={currentPlayer}
+        currentBid={currentBid}
+        currentTeam={currentTeam}
+        status={status}
+        tournament={tournament}
+        slideState={slideState}
+        bidAnimating={bidAnimating}
+        showParticles={overlaySettings.showParticles}
+        accentColor={effectiveAccentColor}
+      />
+    );
+  }
+
+  if (resolvedTheme === 'city-standard') {
+    return (
+      <CityStandardOverlay
         player={currentPlayer}
         currentBid={currentBid}
         currentTeam={currentTeam}
@@ -335,7 +358,7 @@ export default function OverlayView() {
                 <img
                   src={tournament.logo_url}
                   alt={tournament.name}
-                  className="relative h-36 w-auto object-contain drop-shadow-2xl"
+                  className="relative h-48 w-auto object-contain drop-shadow-2xl"
                   style={{ filter: 'drop-shadow(0 6px 25px rgba(0,0,0,0.9))' }}
                 />
               </div>
@@ -349,23 +372,21 @@ export default function OverlayView() {
           </div>
         </div>
 
-        {/* Top Right - Broadcaster Logo (Large, Floating) */}
-        {tournament?.broadcaster_logo_url && (
-          <div className="absolute top-6 right-6 z-30 animate-slide-down">
-            <div className="relative">
-              <div
-                className="absolute -inset-5 rounded-3xl opacity-50 blur-2xl"
-                style={{ background: effectiveAccentColor }}
-              />
-              <img
-                src={tournament.broadcaster_logo_url}
-                alt={tournament.broadcaster_name || 'Broadcaster'}
-                className="relative h-32 w-auto object-contain drop-shadow-2xl"
-                style={{ filter: 'drop-shadow(0 6px 25px rgba(0,0,0,0.9))' }}
-              />
-            </div>
+        {/* Top Right - Rotating Logo (Broadcaster ↔ App Logo) */}
+        <div className="absolute top-6 right-6 z-30 animate-slide-down">
+          <div className="relative">
+            <div
+              className="absolute -inset-5 rounded-3xl opacity-50 blur-2xl transition-colors duration-500"
+              style={{ background: showAppLogo ? '#06b6d4' : effectiveAccentColor }}
+            />
+            <img
+              src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+              alt={showAppLogo ? 'Game Auction' : (tournament?.broadcaster_name || 'Broadcaster')}
+              className="relative h-60 w-auto object-contain drop-shadow-2xl transition-opacity duration-500"
+              style={{ filter: 'drop-shadow(0 6px 25px rgba(0,0,0,0.9))' }}
+            />
           </div>
-        )}
+        </div>
 
         {/* Bottom Bar Strip */}
         <div className="absolute bottom-0 left-0 right-0 animate-slide-up">
@@ -528,7 +549,7 @@ export default function OverlayView() {
 
         {/* Top Header Bar - Premium Broadcast Style */}
         <div
-          className="absolute top-0 left-0 right-0 h-24 flex items-center justify-between px-8 animate-slide-down"
+          className="absolute top-0 left-0 right-0 h-44 flex items-center justify-between px-8 animate-slide-down"
           style={{
             background: `linear-gradient(180deg, rgba(0,0,0,0.98) 0%, rgba(10,15,25,0.95) 100%)`,
             borderBottom: `3px solid ${effectiveAccentColor}`,
@@ -555,7 +576,7 @@ export default function OverlayView() {
                 <img
                   src={tournament.logo_url}
                   alt={tournament.name}
-                  className="relative h-14 w-auto object-contain"
+                  className="relative h-36 w-auto object-contain"
                   style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }}
                 />
               </div>
@@ -592,33 +613,24 @@ export default function OverlayView() {
             </div>
           </div>
 
-          {/* Right - Broadcaster Logo */}
-          {tournament?.broadcaster_logo_url ? (
-            <div className="relative">
-              <div
-                className="absolute -inset-1 rounded-xl opacity-30 blur-md"
-                style={{ background: effectiveAccentColor }}
-              />
-              <img
-                src={tournament.broadcaster_logo_url}
-                alt={tournament.broadcaster_name || 'Broadcaster'}
-                className="relative h-12 w-auto object-contain"
-                style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }}
-                onError={(e) => console.error('[Overlay] Broadcaster logo failed to load:', tournament.broadcaster_logo_url)}
-              />
-            </div>
-          ) : tournament?.broadcaster_name ? (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ background: `${effectiveAccentColor}20`, border: `1px solid ${effectiveAccentColor}40` }}>
-              <span className="text-sm font-semibold text-white/80">{tournament.broadcaster_name}</span>
-            </div>
-          ) : (
-            <div className="w-32" />
-          )}
+          {/* Right - Rotating Logo (Broadcaster ↔ App Logo) */}
+          <div className="relative">
+            <div
+              className="absolute -inset-1 rounded-xl opacity-30 blur-md transition-colors duration-500"
+              style={{ background: showAppLogo ? '#06b6d4' : effectiveAccentColor }}
+            />
+            <img
+              src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+              alt={showAppLogo ? 'Game Auction' : (tournament?.broadcaster_name || 'Broadcaster')}
+              className="relative h-36 w-auto object-contain transition-opacity duration-500"
+              style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }}
+            />
+          </div>
         </div>
 
         {/* Left Side Panel - Premium Player Card */}
         <div
-          className="absolute left-0 top-24 bottom-0 w-[380px] animate-slide-right"
+          className="absolute left-0 top-44 bottom-0 w-[380px] animate-slide-right"
           style={{
             background: `linear-gradient(180deg, rgba(5,10,20,0.98) 0%, rgba(15,25,40,0.95) 100%)`,
             borderRight: `3px solid ${effectiveAccentColor}`,
@@ -846,7 +858,7 @@ export default function OverlayView() {
               <img
                 src={tournament.logo_url}
                 alt={tournament.name}
-                className="relative h-40 w-auto object-contain drop-shadow-2xl"
+                className="relative h-52 w-auto object-contain drop-shadow-2xl"
                 style={{ filter: 'drop-shadow(0 6px 30px rgba(0,0,0,0.9))' }}
               />
             </div>
@@ -860,24 +872,21 @@ export default function OverlayView() {
         </div>
       </div>
 
-      {/* Top Right - Broadcaster Logo (Large, Floating) */}
-      {tournament?.broadcaster_logo_url && (
-        <div className="absolute top-6 right-6 z-30 animate-premium-slide-down">
-          <div className="relative">
-            <div
-              className="absolute -inset-6 rounded-3xl opacity-50 blur-3xl"
-              style={{ background: effectiveAccentColor }}
-            />
-            <img
-              src={tournament.broadcaster_logo_url}
-              alt={tournament.broadcaster_name || 'Broadcaster'}
-              className="relative h-36 w-auto object-contain drop-shadow-2xl"
-              style={{ filter: 'drop-shadow(0 6px 30px rgba(0,0,0,0.9))' }}
-              onError={(e) => console.error('[Overlay] Broadcaster logo failed to load:', tournament.broadcaster_logo_url)}
-            />
-          </div>
+      {/* Top Right - Rotating Logo (Broadcaster ↔ App Logo) */}
+      <div className="absolute top-6 right-6 z-30 animate-premium-slide-down">
+        <div className="relative">
+          <div
+            className="absolute -inset-6 rounded-3xl opacity-50 blur-3xl transition-colors duration-500"
+            style={{ background: showAppLogo ? '#06b6d4' : effectiveAccentColor }}
+          />
+          <img
+            src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+            alt={showAppLogo ? 'Game Auction' : (tournament?.broadcaster_name || 'Broadcaster')}
+            className="relative h-52 w-auto object-contain drop-shadow-2xl transition-opacity duration-500"
+            style={{ filter: 'drop-shadow(0 6px 30px rgba(0,0,0,0.9))' }}
+          />
         </div>
-      )}
+      </div>
 
       {/* Top Center - Live Status Badge (Floating) */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 z-30 animate-premium-slide-down">
@@ -940,7 +949,7 @@ export default function OverlayView() {
 
       {/* ========== MAIN CONTENT - BIDDING STATE ========== */}
       {slideState === 'active' && status === 'bidding' && (
-        <div className="absolute top-36 left-0 right-0 bottom-0 flex">
+        <div className="absolute top-52 left-0 right-0 bottom-0 flex">
           {/* Left Side - Player Card */}
           <div className="w-[420px] flex-shrink-0 p-6 animate-premium-slide-right">
             <div
@@ -1285,11 +1294,13 @@ export default function OverlayView() {
               </div>
             </div>
 
-            {/* Right - Broadcaster */}
+            {/* Right - Rotating Logo */}
             <div className="flex-shrink-0">
-              {tournament?.broadcaster_logo_url && (
-                <img src={tournament.broadcaster_logo_url} className="h-10 w-auto object-contain opacity-70" />
-              )}
+              <img
+                src={showAppLogo ? '/logo.png' : (tournament?.broadcaster_logo_url || '/logo.png')}
+                alt={showAppLogo ? 'Game Auction' : 'Broadcaster'}
+                className="h-10 w-auto object-contain opacity-70 transition-opacity duration-500"
+              />
             </div>
           </div>
 

@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, X, Image, Loader2, AlertCircle, Link } from 'lucide-react';
+import { Upload, X, Image, Loader2, AlertCircle, Link, Crop } from 'lucide-react';
 import { supabaseClient, STORAGE_BUCKET, getPublicUrl, isStorageAvailable } from '../../config/supabase';
+import ImageCropper from './ImageCropper';
+import { fileToDataUrl } from '../../utils/imageUtils';
 
 interface ImageUploadProps {
   value?: string;
@@ -10,6 +12,10 @@ interface ImageUploadProps {
   folder?: string;
   maxSizeMB?: number;
   className?: string;
+  // Cropper options
+  enableCropper?: boolean;
+  aspectRatio?: number; // 1 for square, 16/9 for widescreen, etc.
+  outputSize?: { width: number; height: number };
 }
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -22,6 +28,9 @@ export default function ImageUpload({
   folder = 'uploads',
   maxSizeMB = 5,
   className = '',
+  enableCropper = true, // Enable cropper by default
+  aspectRatio = 1,
+  outputSize,
 }: ImageUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -30,6 +39,10 @@ export default function ImageUpload({
   const [showUrlInput, setShowUrlInput] = useState(!isStorageAvailable());
   const [urlInput, setUrlInput] = useState(value);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cropper state
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [cropperImageUrl, setCropperImageUrl] = useState('');
 
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
@@ -50,20 +63,15 @@ export default function ImageUpload({
       return;
     }
 
-    const validationError = validateFile(file);
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
     setError(null);
     setUploading(true);
     setUploadProgress(0);
 
     try {
-      // Generate unique filename
+      // Generate unique filename - preserve extension based on file type
       const timestamp = Date.now();
-      const fileExt = file.name.split('.').pop();
+      const isPng = file.type === 'image/png';
+      const fileExt = isPng ? 'png' : 'jpg';
       const fileName = `${folder}/${timestamp}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
       // Upload to Supabase Storage
@@ -72,6 +80,7 @@ export default function ImageUpload({
         .upload(fileName, file, {
           cacheControl: '3600',
           upsert: false,
+          contentType: file.type,
         });
 
       if (uploadError) {
@@ -90,6 +99,42 @@ export default function ImageUpload({
     }
   };
 
+  const handleFileSelected = async (file: File) => {
+    const validationError = validateFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError(null);
+
+    if (enableCropper) {
+      // Open cropper with the selected file
+      const dataUrl = await fileToDataUrl(file);
+      setCropperImageUrl(dataUrl);
+      setCropperOpen(true);
+    } else {
+      // Upload directly without cropping
+      uploadFile(file);
+    }
+  };
+
+  const handleCropperSave = async (_croppedImageUrl: string, croppedFile: File) => {
+    setCropperOpen(false);
+    setCropperImageUrl('');
+
+    // Upload the cropped file
+    await uploadFile(croppedFile);
+  };
+
+  const handleCropperClose = () => {
+    setCropperOpen(false);
+    setCropperImageUrl('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
@@ -97,10 +142,10 @@ export default function ImageUpload({
 
       const files = e.dataTransfer.files;
       if (files.length > 0) {
-        uploadFile(files[0]);
+        handleFileSelected(files[0]);
       }
     },
-    [folder]
+    [enableCropper]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -116,7 +161,7 @@ export default function ImageUpload({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      uploadFile(files[0]);
+      handleFileSelected(files[0]);
     }
   };
 
@@ -134,6 +179,14 @@ export default function ImageUpload({
     }
   };
 
+  // Handle editing existing image with cropper
+  const handleEditImage = async () => {
+    if (value && enableCropper) {
+      setCropperImageUrl(value);
+      setCropperOpen(true);
+    }
+  };
+
   // If there's a value, show the preview
   if (value) {
     return (
@@ -143,14 +196,27 @@ export default function ImageUpload({
         )}
         <div className="relative group">
           <div className="relative bg-slate-700/50 border border-slate-600/50 rounded-xl p-3 flex items-center gap-3">
-            <img
-              src={value}
-              alt="Uploaded"
-              className="w-16 h-16 object-cover rounded-lg"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect fill="%23374151" width="64" height="64"/><text x="32" y="32" text-anchor="middle" dy=".3em" fill="%239CA3AF" font-size="12">Error</text></svg>';
-              }}
-            />
+            <div className="relative">
+              <img
+                src={value}
+                alt="Uploaded"
+                className="w-16 h-16 object-cover rounded-lg"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect fill="%23374151" width="64" height="64"/><text x="32" y="32" text-anchor="middle" dy=".3em" fill="%239CA3AF" font-size="12">Error</text></svg>';
+                }}
+              />
+              {/* Edit overlay for cropping */}
+              {enableCropper && (
+                <button
+                  type="button"
+                  onClick={handleEditImage}
+                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center"
+                  title="Edit image"
+                >
+                  <Crop size={20} className="text-white" />
+                </button>
+              )}
+            </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-white truncate">{value.split('/').pop()}</p>
               <p className="text-xs text-slate-500 truncate">{value}</p>
@@ -165,6 +231,17 @@ export default function ImageUpload({
             </button>
           </div>
         </div>
+
+        {/* Cropper Modal */}
+        <ImageCropper
+          isOpen={cropperOpen}
+          imageUrl={cropperImageUrl}
+          aspectRatio={aspectRatio}
+          outputSize={outputSize}
+          onSave={handleCropperSave}
+          onClose={handleCropperClose}
+          title={`Edit ${label || 'Image'}`}
+        />
       </div>
     );
   }
@@ -196,6 +273,12 @@ export default function ImageUpload({
           >
             URL
           </button>
+          {enableCropper && !showUrlInput && (
+            <span className="text-xs text-emerald-400 ml-auto flex items-center gap-1">
+              <Crop size={12} />
+              Cropper enabled
+            </span>
+          )}
         </div>
       )}
 
@@ -270,6 +353,12 @@ export default function ImageUpload({
                   <p className="text-xs text-slate-500">
                     JPEG, PNG, GIF or WebP up to {maxSizeMB}MB
                   </p>
+                  {enableCropper && (
+                    <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1">
+                      <Crop size={12} />
+                      PNG transparency preserved
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -284,6 +373,17 @@ export default function ImageUpload({
           <span>{error}</span>
         </div>
       )}
+
+      {/* Cropper Modal */}
+      <ImageCropper
+        isOpen={cropperOpen}
+        imageUrl={cropperImageUrl}
+        aspectRatio={aspectRatio}
+        outputSize={outputSize}
+        onSave={handleCropperSave}
+        onClose={handleCropperClose}
+        title={`Adjust ${label || 'Image'}`}
+      />
     </div>
   );
 }

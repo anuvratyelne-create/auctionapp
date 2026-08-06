@@ -7,6 +7,14 @@ import { clearTournamentState } from '../socket/handlers';
 import { z } from 'zod';
 import { auditLog } from '../utils/auditLog';
 
+// Helper to broadcast public auction updates
+function broadcastPublicAuctionUpdate(req: any): void {
+  const io = req.app.get('io');
+  if (io) {
+    io.to('public:landing').emit('public:auction-update');
+  }
+}
+
 // Generate cryptographically secure share code
 function generateSecureShareCode(): string {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -67,6 +75,7 @@ const updateTournamentSchema = z.object({
   status: z.enum(['setup', 'live', 'paused', 'completed']).optional(),
   player_display_mode: z.enum(['random', 'sequential']).optional(),
   overlay_settings: overlaySettingsSchema,
+  is_public: z.boolean().optional(),
   // Optimistic locking - client passes current version to prevent concurrent edit conflicts
   version: z.number().int().positive().optional()
 });
@@ -288,6 +297,76 @@ router.get('/my', authenticateToken, async (req: AuthRequest, res: Response) => 
   } catch (error) {
     console.error('Error in /my:', error);
     res.status(500).json({ error: 'Failed to fetch tournaments' });
+  }
+});
+
+// Get public tournaments for landing page (no auth required)
+// Returns live, upcoming, and recently completed auctions
+router.get('/public', async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+
+    // Get all public approved tournaments
+    const { data: tournaments, error } = await supabase
+      .from('tournaments')
+      .select('id, name, logo_url, sports_type, auction_date, auction_time, status, share_code, created_at')
+      .eq('is_public', true)
+      .eq('approval_status', 'approved')
+      .order('auction_date', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching public tournaments:', error);
+      return res.status(500).json({ error: 'Failed to fetch public tournaments' });
+    }
+
+    // Categorize tournaments
+    const live: any[] = [];
+    const upcoming: any[] = [];
+    const completed: any[] = [];
+
+    for (const tournament of tournaments || []) {
+      if (tournament.status === 'live') {
+        live.push(tournament);
+      } else if (tournament.status === 'completed') {
+        completed.push(tournament);
+      } else if (tournament.status === 'setup' || tournament.status === 'paused') {
+        // Check if auction date is in the future or today
+        if (tournament.auction_date && tournament.auction_date >= today) {
+          upcoming.push(tournament);
+        }
+      }
+    }
+
+    // Sort upcoming by date (nearest first)
+    upcoming.sort((a, b) => {
+      const dateA = a.auction_date || '9999-12-31';
+      const dateB = b.auction_date || '9999-12-31';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      // If same date, sort by time
+      const timeA = a.auction_time || '23:59';
+      const timeB = b.auction_time || '23:59';
+      return timeA.localeCompare(timeB);
+    });
+
+    // Sort completed by date (most recent first)
+    completed.sort((a, b) => {
+      const dateA = a.auction_date || '0000-01-01';
+      const dateB = b.auction_date || '0000-01-01';
+      return dateB.localeCompare(dateA);
+    });
+
+    // Limit completed to last 10
+    const recentCompleted = completed.slice(0, 10);
+
+    res.json({
+      live,
+      upcoming,
+      completed: recentCompleted
+    });
+  } catch (error) {
+    console.error('Error in public tournaments:', error);
+    res.status(500).json({ error: 'Failed to fetch public tournaments' });
   }
 });
 
@@ -543,6 +622,11 @@ router.put('/current', authenticateToken, async (req: AuthRequest, res: Response
     auditLog.tournamentUpdated(req.userId!, req.tournamentId!, {
       updatedFields: Object.keys(updates)
     });
+
+    // Broadcast to public landing page if status or is_public changed
+    if (updates.status || updates.is_public !== undefined) {
+      broadcastPublicAuctionUpdate(req);
+    }
 
     res.json(tournament);
   } catch (error) {
