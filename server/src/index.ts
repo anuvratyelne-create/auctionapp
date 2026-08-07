@@ -19,6 +19,7 @@ import statsRoutes from './routes/stats';
 import exportRoutes from './routes/export';
 import uploadRoutes from './routes/upload';
 import adminRoutes from './routes/admin';
+import superAdminRoutes from './routes/superAdmin';
 import { setupSocketHandlers } from './socket/handlers';
 import { authenticateToken, AuthRequest } from './middleware/auth';
 import { requestLogger, errorLogger } from './middleware/requestLogger';
@@ -131,6 +132,9 @@ app.use('/api/export', exportRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin/auth', adminAuthLimiter); // Apply stricter limit to admin auth
 app.use('/api/admin', adminRoutes);
+
+// Super Admin routes (hidden path - not discoverable)
+app.use('/api/sa', superAdminRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

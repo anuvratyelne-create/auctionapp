@@ -23,6 +23,17 @@ import SystemSettings from './admin/pages/SystemSettings';
 import { useAdminStore } from './admin/stores/adminStore';
 import { adminApi } from './admin/utils/adminApi';
 
+// Super Admin imports (hidden system)
+import SALogin from './superadmin/pages/SALogin';
+import SADashboard from './superadmin/pages/SADashboard';
+import AdminControl from './superadmin/pages/AdminControl';
+import AllTournaments from './superadmin/pages/AllTournaments';
+import FinancialReports from './superadmin/pages/FinancialReports';
+import SAAuditLogs from './superadmin/pages/AuditLogs';
+import ExportData from './superadmin/pages/ExportData';
+import SASettings from './superadmin/pages/SASettings';
+import { useSuperAdminStore } from './superadmin/stores/superAdminStore';
+
 // Admin Protected Route
 function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, token } = useAdminStore();
@@ -62,6 +73,42 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated && !hasStoredAuth) {
     return <Navigate to="/admin/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Super Admin Protected Route (hidden system)
+function SAProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useSuperAdminStore();
+  const [isReady, setIsReady] = useState(false);
+  const [hasStoredAuth, setHasStoredAuth] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('sa-storage');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.state?.token && parsed?.state?.isAuthenticated) {
+          setHasStoredAuth(true);
+        }
+      }
+    } catch (e) {
+      // Silent fail
+    }
+    setIsReady(true);
+  }, []);
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin w-6 h-6 border-2 border-gray-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated && !hasStoredAuth) {
+    return <Navigate to="/system-health" replace />;
   }
 
   return <>{children}</>;
@@ -241,6 +288,65 @@ function App() {
           <AdminProtectedRoute>
             <SystemSettings />
           </AdminProtectedRoute>
+        }
+      />
+
+      {/* System Health Routes (Super Admin - Hidden) */}
+      <Route path="/system-health" element={<SALogin />} />
+      <Route
+        path="/system-health/dashboard"
+        element={
+          <SAProtectedRoute>
+            <SADashboard />
+          </SAProtectedRoute>
+        }
+      />
+      <Route
+        path="/system-health/admins"
+        element={
+          <SAProtectedRoute>
+            <AdminControl />
+          </SAProtectedRoute>
+        }
+      />
+      <Route
+        path="/system-health/tournaments"
+        element={
+          <SAProtectedRoute>
+            <AllTournaments />
+          </SAProtectedRoute>
+        }
+      />
+      <Route
+        path="/system-health/financial"
+        element={
+          <SAProtectedRoute>
+            <FinancialReports />
+          </SAProtectedRoute>
+        }
+      />
+      <Route
+        path="/system-health/logs"
+        element={
+          <SAProtectedRoute>
+            <SAAuditLogs />
+          </SAProtectedRoute>
+        }
+      />
+      <Route
+        path="/system-health/export"
+        element={
+          <SAProtectedRoute>
+            <ExportData />
+          </SAProtectedRoute>
+        }
+      />
+      <Route
+        path="/system-health/settings"
+        element={
+          <SAProtectedRoute>
+            <SASettings />
+          </SAProtectedRoute>
         }
       />
     </Routes>
