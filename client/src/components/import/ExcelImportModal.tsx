@@ -21,11 +21,12 @@ interface ExcelImportModalProps {
   categories: Category[];
   onClose: () => void;
   onSuccess: () => void;
+  defaultBasePrice?: number; // Tournament's default base bid
 }
 
 const CHUNK_SIZE = 100;
 
-export default function ExcelImportModal({ categories, onClose, onSuccess }: ExcelImportModalProps) {
+export default function ExcelImportModal({ categories, onClose, onSuccess, defaultBasePrice }: ExcelImportModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParsedExcelPlayer[]>([]);
   const [parsing, setParsing] = useState(false);
@@ -85,7 +86,8 @@ export default function ExcelImportModal({ categories, onClose, onSuccess }: Exc
           id: p.id,
           name: p.name,
           jersey_number: p.jersey_number,
-        }))
+        })),
+        defaultBasePrice || 10000 // Pass tournament's default base bid with fallback
       );
       setParsedData(parsed);
     } catch (err: any) {
@@ -94,7 +96,7 @@ export default function ExcelImportModal({ categories, onClose, onSuccess }: Exc
     } finally {
       setParsing(false);
     }
-  }, [categories, existingPlayers]);
+  }, [categories, existingPlayers, defaultBasePrice]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];

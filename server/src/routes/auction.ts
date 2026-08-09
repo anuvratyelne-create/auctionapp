@@ -118,8 +118,7 @@ router.get('/next-player', authenticateToken, async (req: AuthRequest, res: Resp
       .eq('tournament_id', req.tournamentId)
       .eq('status', 'available')
       .eq('is_retained', false)
-      // Exclude pending registrations (players without category_id or base_price)
-      .not('category_id', 'is', null)
+      // Players need base_price to be auctioned (category is optional)
       .not('base_price', 'is', null);
 
     if (category_id && category_id !== 'all') {

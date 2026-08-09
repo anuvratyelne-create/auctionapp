@@ -162,11 +162,13 @@ function normalizeBowlingStyle(value: string | undefined): string | undefined {
 
 /**
  * Parse an Excel file and extract player data
+ * @param defaultBasePrice - Tournament's default base bid to use when neither category nor base_price is provided
  */
 export function parseExcelFile(
   buffer: ArrayBuffer,
   categories: Category[],
-  existingPlayers?: Array<{ id: string; name: string; jersey_number?: string }>
+  existingPlayers?: Array<{ id: string; name: string; jersey_number?: string }>,
+  defaultBasePrice?: number
 ): ParsedExcelPlayer[] {
   // Convert ArrayBuffer to Uint8Array for xlsx library
   const uint8Array = new Uint8Array(buffer);
@@ -288,7 +290,7 @@ export function parseExcelFile(
       errors.push('Name is required');
     }
 
-    // Match category
+    // Match category (optional - either category or base_price is required)
     let resolvedCategoryName = categoryName;
     if (categoryName) {
       const matchedCategory = categories.find(
@@ -300,13 +302,8 @@ export function parseExcelFile(
       } else {
         errors.push(`Category "${categoryName}" not found`);
       }
-    } else if (categories.length > 0) {
-      // Default to first category if none specified
-      categoryId = categories[0].id;
-      resolvedCategoryName = categories[0].name;
-    } else {
-      errors.push('No category available');
     }
+    // Note: Category is optional if base_price is provided
 
     // Parse base price
     if (basePriceRaw !== undefined && basePriceRaw !== '') {
@@ -355,20 +352,31 @@ export function parseExcelFile(
       isUpdate = !!matchedPlayer;
     }
 
+    // Use default base price from tournament if neither category nor base_price provided
+    let finalBasePrice = basePrice;
+    if (!categoryId && !basePrice && defaultBasePrice) {
+      finalBasePrice = defaultBasePrice;
+    }
+
+    // Either category_id or base_price (or default) is required
+    if (!categoryId && !finalBasePrice) {
+      errors.push('Either category or base price is required');
+    }
+
     players.push({
       rowNumber: i + 1, // 1-indexed for user display
       name,
       jersey_number: jerseyNumber || undefined,
       category_name: resolvedCategoryName,
       category_id: categoryId,
-      base_price: basePrice,
+      base_price: finalBasePrice,
       photo_url: processedPhotoUrl,
       role,
       city: city || undefined,
       age,
       batting_style: battingStyle,
       bowling_style: bowlingStyle,
-      isValid: errors.length === 0 && !!name && !!categoryId,
+      isValid: errors.length === 0 && !!name && (!!categoryId || !!finalBasePrice),
       errors,
       matchedPlayerId: matchedPlayer?.id,
       isUpdate,

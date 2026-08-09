@@ -6,15 +6,22 @@ import { getRolesByFilterCategory } from '../config/roleMapping';
 
 const router = Router();
 
-const createPlayerSchema = z.object({
+// Base schema without refine - used for partial updates
+const playerBaseSchema = z.object({
   name: z.string().min(1),
   photo_url: z.string().url().optional().nullable(),
   jersey_number: z.string().optional(),
-  category_id: z.string().uuid(),
+  category_id: z.string().uuid().optional().nullable(),
   base_price: z.number().optional(),
   stats: z.record(z.any()).optional(),
   sequence_num: z.number().optional()
 });
+
+// Full schema with validation - used for creation
+const createPlayerSchema = playerBaseSchema.refine(
+  (data) => data.category_id || data.base_price,
+  { message: "Either category_id or base_price is required" }
+);
 
 // Helper function to generate next player UID per tournament (P001, P002, etc.)
 async function generatePlayerUID(tournamentId: string): Promise<string> {
@@ -58,8 +65,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (status && status !== 'all') {
       query = query.eq('status', status);
       if (status === 'available') {
+        // Players need base_price to be auctioned (category is optional)
         query = query
-          .not('category_id', 'is', null)
           .not('base_price', 'is', null)
           .or('stats->>pending.is.null,stats->>pending.neq.true');
       }
@@ -257,15 +264,20 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const data = createPlayerSchema.parse(req.body);
 
-    // Get category base price if not provided
+    // Get base price: use provided value, or derive from category, or fail
     let basePrice = data.base_price;
-    if (!basePrice) {
+    if (!basePrice && data.category_id) {
       const { data: category } = await supabase
         .from('categories')
         .select('base_price')
         .eq('id', data.category_id)
         .single();
       basePrice = category?.base_price || 1000;
+    }
+
+    // If still no base price and no category, reject
+    if (!basePrice) {
+      return res.status(400).json({ error: 'Base price is required when no category is selected' });
     }
 
     // Get next sequence number
@@ -324,6 +336,14 @@ router.post('/bulk', authenticateToken, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'Players array required' });
     }
 
+    // Validate each player has either category_id or base_price
+    const invalidPlayers = players.filter((p: any, idx: number) => !p.category_id && !p.base_price);
+    if (invalidPlayers.length > 0) {
+      return res.status(400).json({
+        error: 'Each player must have either a category or a base price'
+      });
+    }
+
     // Get last sequence number
     const { data: lastPlayer } = await supabase
       .from('players')
@@ -353,12 +373,14 @@ router.post('/bulk', authenticateToken, async (req: AuthRequest, res: Response) 
 
     const playersToInsert = players.map((p: any, idx: number) => {
       const uniqueNum = (baseUID + idx) * 10000 + baseTimestamp + idx;
+      // Determine base_price: use provided, then category price, fallback to 1000
+      const playerBasePrice = p.base_price || (p.category_id ? categoryPrices.get(p.category_id) : null) || 1000;
       return {
         name: p.name,
         photo_url: p.photo_url || null,
         jersey_number: p.jersey_number || null,
-        category_id: p.category_id,
-        base_price: p.base_price || categoryPrices.get(p.category_id) || 1000,
+        category_id: p.category_id || null,
+        base_price: playerBasePrice,
         stats: p.stats || {},
         sequence_num: nextSeq + idx,
         player_uid: `P${uniqueNum.toString().padStart(8, '0')}`,
@@ -572,7 +594,7 @@ router.post('/bulk-upsert', authenticateToken, async (req: AuthRequest, res: Res
 // Update player
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const updates = createPlayerSchema.partial().parse(req.body);
+    const updates = playerBaseSchema.partial().parse(req.body);
 
     const { data: player, error } = await supabase
       .from('players')
@@ -871,20 +893,27 @@ router.post('/:id/approve', authenticateToken, async (req: AuthRequest, res: Res
   try {
     const { category_id, base_price } = req.body;
 
-    if (!category_id) {
-      return res.status(400).json({ error: 'Category is required' });
+    // Either category_id or base_price is required
+    if (!category_id && !base_price) {
+      return res.status(400).json({ error: 'Either category or base price is required' });
     }
 
-    // Verify category exists
-    const { data: category, error: categoryError } = await supabase
-      .from('categories')
-      .select('id, base_price')
-      .eq('id', category_id)
-      .eq('tournament_id', req.tournamentId)
-      .single();
+    let finalBasePrice = base_price;
 
-    if (categoryError || !category) {
-      return res.status(400).json({ error: 'Invalid category' });
+    // If category_id is provided, verify it exists and get its base_price
+    if (category_id) {
+      const { data: category, error: categoryError } = await supabase
+        .from('categories')
+        .select('id, base_price')
+        .eq('id', category_id)
+        .eq('tournament_id', req.tournamentId)
+        .single();
+
+      if (categoryError || !category) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+      // Use provided base_price, or fall back to category base_price
+      finalBasePrice = base_price || category.base_price || 1000;
     }
 
     // Get current player to preserve stats.role
@@ -895,16 +924,13 @@ router.post('/:id/approve', authenticateToken, async (req: AuthRequest, res: Res
       .eq('tournament_id', req.tournamentId)
       .single();
 
-    // Determine final base price
-    const finalBasePrice = base_price || category.base_price || 1000;
-
     // Update player - remove pending flag, set category and price
     const updatedStats = { ...currentPlayer?.stats, pending: false };
 
     const { data: player, error } = await supabase
       .from('players')
       .update({
-        category_id: category_id,
+        category_id: category_id || null,
         base_price: finalBasePrice,
         stats: updatedStats,
       })

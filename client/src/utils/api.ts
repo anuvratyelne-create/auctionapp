@@ -658,7 +658,7 @@ class ApiClient {
     name: string;
     photo_url?: string;
     jersey_number?: string;
-    category_id: string;
+    category_id?: string;
     base_price?: number;
     stats?: Record<string, any>;
   }) {
@@ -674,7 +674,7 @@ class ApiClient {
     name: string;
     photo_url?: string;
     jersey_number?: string;
-    category_id: string;
+    category_id?: string;
     base_price?: number;
     stats?: Record<string, any>;
   }>) {
@@ -688,7 +688,7 @@ class ApiClient {
     name: string;
     photo_url?: string;
     jersey_number?: string;
-    category_id: string;
+    category_id?: string;
     base_price?: number;
     stats?: Record<string, any>;
     rowNumber?: number;
@@ -945,7 +945,7 @@ class ApiClient {
     return this.request('/players/pending');
   }
 
-  async approvePlayer(id: string, data: { category_id: string; base_price?: number }) {
+  async approvePlayer(id: string, data: { category_id?: string; base_price?: number }) {
     return this.request(`/players/${id}/approve`, {
       method: 'POST',
       body: JSON.stringify(data),

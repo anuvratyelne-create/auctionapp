@@ -3668,8 +3668,8 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
     city: '',
     roleCategory: '',
     role: '',
-    categoryId: categories[0]?.id || '',
-    basePrice: categories[0]?.base_price || 10000,
+    categoryId: '', // Optional - can be empty if base_price is set
+    basePrice: tournament?.default_base_bid || 10000,
     jerseyNumber: '',
     jerseyName: '',
     tshirtSize: '',
@@ -3733,8 +3733,9 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
       setError('Player name is required');
       return;
     }
-    if (!formData.categoryId) {
-      setError('Please select a category');
+    // Either category or base price is required
+    if (!formData.categoryId && !formData.basePrice) {
+      setError('Please select a category or set a base price');
       return;
     }
     if (!formData.role) {
@@ -3754,7 +3755,7 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
         name: formData.name,
         jersey_number: formData.jerseyNumber || undefined,
         photo_url: photoUrl,
-        category_id: formData.categoryId,
+        category_id: formData.categoryId || undefined,
         base_price: formData.basePrice,
         stats: {
           fatherName: formData.fatherName,
@@ -3902,17 +3903,16 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
               </div>
             </div>
 
-            {/* Row 4: Category */}
+            {/* Row 4: Category (Optional if base price is set) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex items-center gap-4">
-                <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Category *</label>
+                <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Category {!formData.basePrice && '*'}</label>
                 <select
                   value={formData.categoryId}
                   onChange={(e) => handleCategoryChange(e.target.value)}
                   className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-500/50 text-sm"
-                  required
                 >
-                  <option value="">Select category</option>
+                  <option value="">No category</option>
                   {categories.map(cat => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name} - {cat.base_price.toLocaleString('en-IN')} pts
@@ -4032,16 +4032,30 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
               />
             </div>
 
-            {/* Base Value - Read only, comes from category */}
+            {/* Base Value - Editable when no category selected */}
             <div className="flex items-center gap-4">
-              <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Base Value</label>
+              <label className="text-slate-400 w-24 flex-shrink-0 text-sm">Base Value {!formData.categoryId && '*'}</label>
               <div className="flex items-center gap-2">
-                <div className="w-40 bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2.5 text-green-400 font-semibold text-sm">
-                  {formData.basePrice.toLocaleString('en-IN')} pts
-                </div>
-                <span className="text-xs text-slate-500">(Auto-set from category)</span>
+                {formData.categoryId ? (
+                  <>
+                    <div className="w-40 bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2.5 text-green-400 font-semibold text-sm">
+                      {formData.basePrice.toLocaleString('en-IN')} pts
+                    </div>
+                    <span className="text-xs text-slate-500">(Auto-set from category)</span>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      value={formData.basePrice}
+                      onChange={(e) => setFormData(prev => ({ ...prev, basePrice: parseInt(e.target.value) || 0 }))}
+                      className="w-40 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-2.5 text-green-400 font-semibold text-sm focus:outline-none focus:border-green-500/50"
+                      placeholder="Enter base price"
+                    />
+                    <span className="text-xs text-slate-500">(Required when no category)</span>
+                  </>
+                )}
               </div>
-              <span className="text-xs text-slate-500">(If different from Category Base Value)</span>
             </div>
 
             {error && (

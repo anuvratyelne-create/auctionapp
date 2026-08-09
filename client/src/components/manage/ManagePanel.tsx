@@ -482,6 +482,7 @@ interface PendingPlayer {
 }
 
 function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefresh: () => void }) {
+  const { tournament } = useAuthStore();
   const [showForm, setShowForm] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [pendingPlayers, setPendingPlayers] = useState<PendingPlayer[]>([]);
@@ -525,11 +526,15 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
 
   const handleApprove = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!approvingPlayer || !approvalData.category_id) return;
+    // Either category_id or base_price is required
+    if (!approvingPlayer || (!approvalData.category_id && !approvalData.base_price)) {
+      alert('Either category or base price is required');
+      return;
+    }
 
     try {
       await api.approvePlayer(approvingPlayer.id, {
-        category_id: approvalData.category_id,
+        category_id: approvalData.category_id || undefined,
         base_price: approvalData.base_price ? Number(approvalData.base_price) : undefined,
       });
       setApprovingPlayer(null);
@@ -559,11 +564,16 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Either category_id or base_price is required
+    if (!formData.category_id && !formData.base_price) {
+      alert('Either category or base price is required');
+      return;
+    }
     try {
       await api.createPlayer({
         name: formData.name,
         jersey_number: formData.jersey_number,
-        category_id: formData.category_id,
+        category_id: formData.category_id || undefined,
         base_price: formData.base_price ? Number(formData.base_price) : undefined,
         photo_url: formData.photo_url || undefined,
         stats: formData.role ? { role: formData.role } : undefined,
@@ -795,16 +805,16 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                           </div>
                         </div>
 
+                        <p className="text-xs text-amber-400 mb-2">Either category or base price is required</p>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs text-slate-400 mb-1">Category *</label>
+                            <label className="block text-xs text-slate-400 mb-1">Category</label>
                             <select
                               value={approvalData.category_id}
                               onChange={(e) => setApprovalData({ ...approvalData, category_id: e.target.value })}
                               className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white text-sm focus:border-primary-500 transition-all"
-                              required
                             >
-                              <option value="">Select Category</option>
+                              <option value="">No Category</option>
                               {categories.map((cat) => (
                                 <option key={cat.id} value={cat.id}>
                                   {cat.name} ({formatCompactIndian(cat.base_price)} pts)
@@ -813,10 +823,10 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs text-slate-400 mb-1">Base Price (optional)</label>
+                            <label className="block text-xs text-slate-400 mb-1">Base Price {!approvalData.category_id && '*'}</label>
                             <input
                               type="number"
-                              placeholder="Uses category price"
+                              placeholder={approvalData.category_id ? "Uses category price" : "Required"}
                               value={approvalData.base_price}
                               onChange={(e) => setApprovalData({ ...approvalData, base_price: e.target.value })}
                               className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white text-sm focus:border-primary-500 transition-all"
@@ -912,14 +922,13 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1.5">Category *</label>
+                <label className="block text-xs text-slate-400 mb-1.5">Category {!formData.base_price && '*'}</label>
                 <select
                   value={formData.category_id}
                   onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                   className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-2.5 text-white focus:border-primary-500 transition-all"
-                  required
                 >
-                  <option value="">Select Category</option>
+                  <option value="">No Category</option>
                   {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name} ({formatCompactIndian(cat.base_price)} pts)
@@ -969,10 +978,10 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
               </div>
 
               <div>
-                <label className="block text-xs text-slate-400 mb-1.5">Base Price (optional)</label>
+                <label className="block text-xs text-slate-400 mb-1.5">Base Price {!formData.category_id && '*'}</label>
                 <input
                   type="number"
-                  placeholder="Uses category base price"
+                  placeholder={formData.category_id ? "Uses category base price" : "Required when no category"}
                   value={formData.base_price}
                   onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
                   className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-4 py-2.5 text-white focus:border-primary-500 transition-all"
@@ -1113,6 +1122,7 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
       {showExcelImport && (
         <ExcelImportModal
           categories={categories}
+          defaultBasePrice={tournament?.default_base_bid || 10000}
           onClose={() => setShowExcelImport(false)}
           onSuccess={() => {
             loadPlayers();
