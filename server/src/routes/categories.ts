@@ -11,13 +11,8 @@ const createCategorySchema = z.object({
   display_order: z.number().optional()
 });
 
-// Default categories to create if none exist
-const DEFAULT_CATEGORIES = [
-  { name: 'Platinum', base_price: 50000, display_order: 1 },
-  { name: 'Gold', base_price: 30000, display_order: 2 },
-  { name: 'Silver', base_price: 20000, display_order: 3 },
-  { name: 'Bronze', base_price: 10000, display_order: 4 }
-];
+// Note: Auto-creation of default categories removed since categories are now optional
+// Users can use "Set Standard Prices" button to create budget-appropriate categories
 
 // Get all categories with stats
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
@@ -35,34 +30,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(500).json({ error: 'Failed to fetch categories' });
     }
 
-    // Auto-create default categories if none exist (self-healing for older tournaments)
-    if (!categories || categories.length === 0) {
-      console.log(`No categories found for tournament ${req.tournamentId}, creating defaults...`);
-
-      const { error: insertError } = await supabase.from('categories').insert(
-        DEFAULT_CATEGORIES.map(cat => ({
-          ...cat,
-          tournament_id: req.tournamentId
-        }))
-      );
-
-      if (insertError) {
-        console.error('Failed to create default categories:', insertError);
-      } else {
-        // Re-fetch categories after creation
-        const { data: newCategories } = await supabase
-          .from('categories')
-          .select(`
-            *,
-            players:players(id, status, sold_price, retention_price, is_retained)
-          `)
-          .eq('tournament_id', req.tournamentId)
-          .order('display_order', { ascending: true });
-
-        categories = newCategories;
-        console.log(`Created ${categories?.length || 0} default categories for tournament ${req.tournamentId}`);
-      }
-    }
+    // Categories are now optional - no auto-creation
+    // Users can use "Set Standard Prices" button to create categories with budget-appropriate prices
 
     // Calculate stats for each category (include retained players)
     const categoriesWithStats = categories?.map(cat => {

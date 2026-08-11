@@ -5,6 +5,7 @@ import { api } from '../../utils/api';
 import { useAuthStore } from '../../stores/authStore';
 import { Team, Category, Player, OverlaySettings, OverlayTheme, OverlayMode } from '../../types';
 import { formatCompactIndian } from '../../utils/formatters';
+import { getPresetByBudget } from '../../config/budgetPresets';
 import { PLAYER_CATEGORIES, getRoleShortLabel, getRoleIcon, getRoleLabel, convertLegacyRole } from '../../config/playerRoles';
 import ExportSection from '../export/ExportSection';
 import ImageUpload from '../common/ImageUpload';
@@ -1122,7 +1123,7 @@ function PlayersTab({ categories, onRefresh }: { categories: Category[]; onRefre
       {showExcelImport && (
         <ExcelImportModal
           categories={categories}
-          defaultBasePrice={tournament?.default_base_bid || 10000}
+          defaultBasePrice={tournament?.default_base_bid || (tournament?.total_points ? getPresetByBudget(tournament.total_points)?.baseBid : undefined) || 10000}
           onClose={() => setShowExcelImport(false)}
           onSuccess={() => {
             loadPlayers();

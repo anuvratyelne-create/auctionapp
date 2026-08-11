@@ -87,7 +87,7 @@ export default function ExcelImportModal({ categories, onClose, onSuccess, defau
           name: p.name,
           jersey_number: p.jersey_number,
         })),
-        defaultBasePrice || 10000 // Pass tournament's default base bid with fallback
+        defaultBasePrice // Pass tournament's default base bid
       );
       setParsedData(parsed);
     } catch (err: any) {

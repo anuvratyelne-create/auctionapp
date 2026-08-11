@@ -22,7 +22,7 @@ import { layoutTemplates } from '../config/auctionLayouts';
 import { premiumBackgrounds } from '../config/premiumBackgrounds';
 import { cityBackgrounds } from '../config/cityBackgrounds';
 import { PLAYER_CATEGORIES } from '../config/playerRoles';
-import { budgetPresets, formatBudgetLabel } from '../config/budgetPresets';
+import { budgetPresets, formatBudgetLabel, getPresetByBudget } from '../config/budgetPresets';
 import AnimatedBackground from '../components/auction/AnimatedBackground';
 import ImageUpload from '../components/common/ImageUpload';
 import ImageCropper from '../components/common/ImageCropper';
@@ -1309,6 +1309,7 @@ function StatCard({ icon, label, value, subtext, color }: StatCardProps) {
 // New Auction Panel with Form
 function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (panel: SidebarPanel) => void; onTournamentCreated: () => void }) {
   const { user, setAuth } = useAuthStore();
+  const defaultPreset = budgetPresets.find(p => p.id === 'standard') || budgetPresets[3];
   const [selectedPresetId, setSelectedPresetId] = useState('standard');
   const [formData, setFormData] = useState({
     logo: null as File | null,
@@ -1316,16 +1317,16 @@ function NewAuctionPanel({ onNavigate, onTournamentCreated }: { onNavigate: (pan
     auctionName: '',
     auctionDate: '',
     auctionTime: '',
-    pointsPerTeam: 1000000,
-    baseBid: 10000,
-    bidIncreaseBy: 5000,
+    pointsPerTeam: defaultPreset.teamBudget,
+    baseBid: defaultPreset.baseBid,
+    bidIncreaseBy: defaultPreset.bidIncrements.tier4.increment,
     maxPlayersPerTeam: 18,
     minPlayersPerTeam: 15,
-    // Category prices
-    platinumPrice: 50000,
-    goldPrice: 30000,
-    silverPrice: 20000,
-    bronzePrice: 10000,
+    // Category prices from preset
+    platinumPrice: defaultPreset.categories.platinum,
+    goldPrice: defaultPreset.categories.gold,
+    silverPrice: defaultPreset.categories.silver,
+    bronzePrice: defaultPreset.categories.bronze,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -3377,10 +3378,16 @@ function CategoriesListPanel({ tournament, categories, onNavigate, onRefresh }: 
 }
 
 // Create Category Panel
-function CreateCategoryPanel({ tournament: _tournament, onNavigate, onCategoryCreated }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onCategoryCreated: () => void }) {
+function CreateCategoryPanel({ tournament, onNavigate, onCategoryCreated }: { tournament: any; onNavigate: (panel: SidebarPanel) => void; onCategoryCreated: () => void }) {
+  // Use tournament's default_base_bid or derive from budget preset
+  const getDefaultBasePrice = () => {
+    if (tournament?.default_base_bid) return tournament.default_base_bid;
+    const preset = getPresetByBudget(tournament?.total_points);
+    return preset?.baseBid || 10000;
+  };
   const [formData, setFormData] = useState({
     name: '',
-    basePrice: 10000,
+    basePrice: getDefaultBasePrice(),
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -3405,7 +3412,7 @@ function CreateCategoryPanel({ tournament: _tournament, onNavigate, onCategoryCr
       onCategoryCreated();
 
       if (addAnother) {
-        setFormData({ name: '', basePrice: 10000 });
+        setFormData({ name: '', basePrice: getDefaultBasePrice() });
       } else {
         onNavigate('categories');
       }
@@ -3658,6 +3665,12 @@ function PlayersListPanel({ tournament, players, categories, onNavigate, onRefre
 
 // Create Player Panel
 function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated }: { tournament: any; categories: Category[]; onNavigate: (panel: SidebarPanel) => void; onPlayerCreated: () => void }) {
+  // Get default base price from tournament or budget preset
+  const getPlayerDefaultBasePrice = () => {
+    if (tournament?.default_base_bid) return tournament.default_base_bid;
+    const preset = getPresetByBudget(tournament?.total_points);
+    return preset?.baseBid || 10000;
+  };
   const [formData, setFormData] = useState({
     photo: null as File | null,
     photoPreview: '',
@@ -3669,7 +3682,7 @@ function CreatePlayerPanel({ tournament, categories, onNavigate, onPlayerCreated
     roleCategory: '',
     role: '',
     categoryId: '', // Optional - can be empty if base_price is set
-    basePrice: tournament?.default_base_bid || 10000,
+    basePrice: getPlayerDefaultBasePrice(),
     jerseyNumber: '',
     jerseyName: '',
     tshirtSize: '',
