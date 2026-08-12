@@ -213,6 +213,31 @@ export default function AuctionPanel() {
     }
   }, [currentPlayer, currentBid, status, bidIncrement]);
 
+  const handleManualBid = useCallback(async (amount: number) => {
+    if (!currentPlayer || status !== 'bidding') return false;
+
+    const basePrice = currentPlayer.base_price || 0;
+
+    if (amount < basePrice) {
+      alert(`Amount must be at least base price: ₹${basePrice.toLocaleString('en-IN')}`);
+      return false;
+    }
+
+    if (amount <= currentBid) {
+      alert(`Amount must be higher than current bid: ₹${currentBid.toLocaleString('en-IN')}`);
+      return false;
+    }
+
+    try {
+      await api.incrementBid(amount);
+      return true;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to set manual bid';
+      alert(message);
+      return false;
+    }
+  }, [currentPlayer, currentBid, status]);
+
   const handleSold = useCallback(async () => {
     if (!currentPlayer || !currentTeam || soldLoading) {
       if (!currentTeam) alert('Please place a bid first');
@@ -345,6 +370,8 @@ export default function AuctionPanel() {
                 currentTeam={currentTeam ? teams.find(t => t.id === currentTeam.id) || currentTeam : null}
                 player={currentPlayer}
                 teamBudget={teams[0]?.total_budget}
+                onManualBid={handleManualBid}
+                disabled={status !== 'bidding'}
               />
             </div>
           </div>

@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Team, Player } from '../../types';
-import { TrendingUp, Wallet, Users, ArrowUp, Sparkles } from 'lucide-react';
+import { TrendingUp, Wallet, Users, ArrowUp, Sparkles, Edit3 } from 'lucide-react';
 import { formatAmountCompact } from '../../utils/formatters';
 import AnimatedBidAmount from './AnimatedBidAmount';
 import { getBidIncrement, formatIncrement } from '../../config/budgetPresets';
@@ -10,9 +11,14 @@ interface BidDisplayProps {
   currentTeam: Team | null;
   player: Player | null;
   teamBudget?: number;
+  onManualBid?: (amount: number) => Promise<boolean>;
+  disabled?: boolean;
 }
 
-export default function BidDisplay({ currentBid, currentTeam, player, teamBudget }: BidDisplayProps) {
+export default function BidDisplay({ currentBid, currentTeam, player, teamBudget, onManualBid, disabled }: BidDisplayProps) {
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualAmount, setManualAmount] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const nextIncrement = getBidIncrement(currentBid, teamBudget);
   const { displayMode } = useUIStore();
   const usePoints = displayMode === 'points';
@@ -154,9 +160,84 @@ export default function BidDisplay({ currentBid, currentTeam, player, teamBudget
                 <kbd className="px-1.5 py-0.5 rounded bg-slate-700/80 border border-slate-600 text-red-300 font-mono mx-1">↓</kbd> to decrease
               </p>
             </div>
+
+            {/* Manual Bid Section */}
+            {onManualBid && (
+              <div className="mt-3">
+                {!showManualInput ? (
+                  <button
+                    onClick={() => setShowManualInput(true)}
+                    disabled={disabled}
+                    className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-xl py-2.5 text-purple-300 hover:from-purple-600/30 hover:to-pink-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Edit3 size={14} />
+                    <span className="text-sm font-medium">Set Manual Amount</span>
+                  </button>
+                ) : (
+                  <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-3">
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-purple-400 font-bold">₹</span>
+                        <input
+                          type="number"
+                          value={manualAmount}
+                          onChange={(e) => setManualAmount(e.target.value)}
+                          placeholder="Enter amount"
+                          className="w-full bg-slate-800/80 border border-purple-500/50 rounded-lg py-2 pl-8 pr-3 text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 text-sm"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && manualAmount) {
+                              handleManualSubmit();
+                            } else if (e.key === 'Escape') {
+                              setShowManualInput(false);
+                              setManualAmount('');
+                            }
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={handleManualSubmit}
+                        disabled={!manualAmount || isSubmitting}
+                        className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white text-sm font-semibold hover:from-purple-400 hover:to-pink-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        {isSubmitting ? '...' : 'Set'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowManualInput(false);
+                          setManualAmount('');
+                        }}
+                        className="px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-slate-400 text-sm hover:bg-slate-700 transition-all"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <p className="text-purple-300/50 text-xs mt-2 text-center">
+                      Min: ₹{(currentBid + 1).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+
+  async function handleManualSubmit() {
+    const amount = parseInt(manualAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+
+    setIsSubmitting(true);
+    try {
+      const success = await onManualBid?.(amount);
+      if (success) {
+        setShowManualInput(false);
+        setManualAmount('');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 }

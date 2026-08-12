@@ -29,7 +29,7 @@ import CitySoldAnimation from './CitySoldAnimation';
 import ClassicIdleScreen from './layouts/ClassicIdleScreen';
 import AuctionResumeScreen from './layouts/AuctionResumeScreen';
 import { getBidIncrement } from '../../config/budgetPresets';
-import { UserPlus, Check, X, RotateCcw, Search, Zap, Disc, Layout, Undo2, Pause, Loader2 } from 'lucide-react';
+import { UserPlus, Check, X, RotateCcw, Search, Zap, Disc, Layout, Undo2, Pause, Loader2, Edit3 } from 'lucide-react';
 import RoleFilterDropdown from './RoleFilterDropdown';
 
 interface ProAuctionLayoutProps {
@@ -80,6 +80,9 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
   const [, setShowAppLogo] = useState(false); // Toggle between sponsor and app logo
   const [lastAction, setLastAction] = useState<{ player: Player; type: 'sold' | 'unsold' } | null>(null);
   const [availablePlayersCount, setAvailablePlayersCount] = useState<number | null>(null);
+  const [showManualBidInput, setShowManualBidInput] = useState(false);
+  const [manualBidAmount, setManualBidAmount] = useState('');
+  const [manualBidSubmitting, setManualBidSubmitting] = useState(false);
   const timerResetKey = useRef(0);
   const previousBidRef = useRef(currentBid);
   const previousStatusRef = useRef(status);
@@ -462,6 +465,42 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
     }
   }, [currentPlayer, currentBid, status, teams]);
 
+  const handleManualBid = useCallback(async (amount: number) => {
+    if (!currentPlayer || status !== 'bidding') return false;
+
+    const basePrice = currentPlayer.base_price || 0;
+
+    if (amount < basePrice) {
+      setToast({
+        message: `Amount must be at least base price: ₹${basePrice.toLocaleString('en-IN')}`,
+        type: 'error'
+      });
+      setTimeout(() => setToast(null), 3000);
+      return false;
+    }
+
+    if (amount <= currentBid) {
+      setToast({
+        message: `Amount must be higher than current bid: ₹${currentBid.toLocaleString('en-IN')}`,
+        type: 'error'
+      });
+      setTimeout(() => setToast(null), 3000);
+      return false;
+    }
+
+    try {
+      await api.incrementBid(amount);
+      return true;
+    } catch (error: any) {
+      setToast({
+        message: error.message || 'Failed to set manual bid',
+        type: 'error'
+      });
+      setTimeout(() => setToast(null), 3000);
+      return false;
+    }
+  }, [currentPlayer, currentBid, status]);
+
   // Stable callback for sold animation completion
   const handleSoldAnimationComplete = useCallback(() => {
     setShowSoldAnimation(false);
@@ -755,6 +794,69 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
                 <Undo2 size={18} />
                 Undo
               </button>
+              {/* Manual Bid Input */}
+              {!showManualBidInput ? (
+                <button
+                  onClick={() => setShowManualBidInput(true)}
+                  disabled={status !== 'bidding'}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white transition-all disabled:opacity-40"
+                  title="Set Manual Amount"
+                >
+                  <Edit3 size={18} />
+                  Manual
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 bg-purple-900/50 border border-purple-500/50 rounded-xl px-3 py-1.5">
+                  <span className="text-purple-400 font-bold">₹</span>
+                  <input
+                    type="number"
+                    value={manualBidAmount}
+                    onChange={(e) => setManualBidAmount(e.target.value)}
+                    placeholder="Amount"
+                    className="w-28 bg-transparent border-none text-white placeholder-purple-300/50 focus:outline-none text-sm"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && manualBidAmount) {
+                        setManualBidSubmitting(true);
+                        const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                        setManualBidSubmitting(false);
+                        if (success) {
+                          setShowManualBidInput(false);
+                          setManualBidAmount('');
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!manualBidAmount) return;
+                      setManualBidSubmitting(true);
+                      const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                      setManualBidSubmitting(false);
+                      if (success) {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }
+                    }}
+                    disabled={!manualBidAmount || manualBidSubmitting}
+                    className="px-3 py-1 bg-purple-500 rounded-lg text-white text-sm font-semibold hover:bg-purple-400 disabled:opacity-50 transition-all"
+                  >
+                    {manualBidSubmitting ? '...' : 'Set'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowManualBidInput(false);
+                      setManualBidAmount('');
+                    }}
+                    className="p-1 text-purple-300 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
               {/* Pause/Break Button */}
               <button
                 onClick={() => setAuctionPaused(true)}
@@ -994,6 +1096,73 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
                 <Undo2 size={16} />
                 Undo
               </button>
+              {/* Manual Bid - Fire theme */}
+              {!showManualBidInput ? (
+                <button
+                  onClick={() => setShowManualBidInput(true)}
+                  disabled={status !== 'bidding'}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-white text-sm transition-all disabled:opacity-40 hover:scale-105 border border-purple-500/40"
+                  style={{
+                    background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                    boxShadow: status !== 'bidding' ? 'none' : '0 0 12px rgba(168, 85, 247, 0.4)',
+                  }}
+                  title="Set Manual Amount"
+                >
+                  <Edit3 size={16} />
+                  Manual
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 bg-purple-900/50 border border-purple-500/50 rounded-lg px-2 py-1">
+                  <span className="text-purple-400 font-bold text-sm">₹</span>
+                  <input
+                    type="number"
+                    value={manualBidAmount}
+                    onChange={(e) => setManualBidAmount(e.target.value)}
+                    placeholder="Amount"
+                    className="w-24 bg-transparent border-none text-white placeholder-purple-300/50 focus:outline-none text-sm"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && manualBidAmount) {
+                        setManualBidSubmitting(true);
+                        const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                        setManualBidSubmitting(false);
+                        if (success) {
+                          setShowManualBidInput(false);
+                          setManualBidAmount('');
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!manualBidAmount) return;
+                      setManualBidSubmitting(true);
+                      const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                      setManualBidSubmitting(false);
+                      if (success) {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }
+                    }}
+                    disabled={!manualBidAmount || manualBidSubmitting}
+                    className="px-2 py-1 bg-purple-500 rounded text-white text-xs font-semibold hover:bg-purple-400 disabled:opacity-50 transition-all"
+                  >
+                    {manualBidSubmitting ? '...' : 'Set'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowManualBidInput(false);
+                      setManualBidAmount('');
+                    }}
+                    className="p-0.5 text-purple-300 hover:text-white transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               {/* Pause/Break Button */}
               <button
                 onClick={() => setAuctionPaused(true)}
@@ -1237,6 +1406,73 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
                 <Undo2 size={18} />
                 Undo
               </button>
+              {/* Manual Bid - City theme */}
+              {!showManualBidInput ? (
+                <button
+                  onClick={() => setShowManualBidInput(true)}
+                  disabled={status !== 'bidding'}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-white transition-all disabled:opacity-40 hover:scale-105 border border-purple-500/40"
+                  style={{
+                    background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                    boxShadow: status !== 'bidding' ? 'none' : '0 0 15px rgba(168, 85, 247, 0.4)',
+                  }}
+                  title="Set Manual Amount"
+                >
+                  <Edit3 size={18} />
+                  Manual
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 bg-purple-900/50 border border-purple-500/50 rounded-xl px-3 py-1.5">
+                  <span className="text-purple-400 font-bold">₹</span>
+                  <input
+                    type="number"
+                    value={manualBidAmount}
+                    onChange={(e) => setManualBidAmount(e.target.value)}
+                    placeholder="Amount"
+                    className="w-28 bg-transparent border-none text-white placeholder-purple-300/50 focus:outline-none text-sm"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && manualBidAmount) {
+                        setManualBidSubmitting(true);
+                        const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                        setManualBidSubmitting(false);
+                        if (success) {
+                          setShowManualBidInput(false);
+                          setManualBidAmount('');
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!manualBidAmount) return;
+                      setManualBidSubmitting(true);
+                      const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                      setManualBidSubmitting(false);
+                      if (success) {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }
+                    }}
+                    disabled={!manualBidAmount || manualBidSubmitting}
+                    className="px-3 py-1 bg-purple-500 rounded-lg text-white text-sm font-semibold hover:bg-purple-400 disabled:opacity-50 transition-all"
+                  >
+                    {manualBidSubmitting ? '...' : 'Set'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowManualBidInput(false);
+                      setManualBidAmount('');
+                    }}
+                    className="p-1 text-purple-300 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
               {/* Pause/Break Button */}
               <button
                 onClick={() => setAuctionPaused(true)}
@@ -1787,6 +2023,70 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
                   {undoLoading ? <Loader2 size={18} className="animate-spin" /> : <Undo2 size={18} />}
                   <span>{undoLoading ? 'Undoing...' : 'Undo'}</span>
                 </button>
+
+                {/* Manual Bid Input */}
+                {!showManualBidInput ? (
+                  <button
+                    onClick={() => setShowManualBidInput(true)}
+                    disabled={status !== 'bidding'}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Set Manual Amount"
+                  >
+                    <Edit3 size={18} />
+                    <span>Manual</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 bg-purple-900/50 border border-purple-500/50 rounded-xl px-3 py-1.5">
+                    <span className="text-purple-400 font-bold">₹</span>
+                    <input
+                      type="number"
+                      value={manualBidAmount}
+                      onChange={(e) => setManualBidAmount(e.target.value)}
+                      placeholder="Amount"
+                      className="w-28 bg-transparent border-none text-white placeholder-purple-300/50 focus:outline-none text-sm"
+                      autoFocus
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter' && manualBidAmount) {
+                          setManualBidSubmitting(true);
+                          const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                          setManualBidSubmitting(false);
+                          if (success) {
+                            setShowManualBidInput(false);
+                            setManualBidAmount('');
+                          }
+                        } else if (e.key === 'Escape') {
+                          setShowManualBidInput(false);
+                          setManualBidAmount('');
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!manualBidAmount) return;
+                        setManualBidSubmitting(true);
+                        const success = await handleManualBid(parseInt(manualBidAmount, 10));
+                        setManualBidSubmitting(false);
+                        if (success) {
+                          setShowManualBidInput(false);
+                          setManualBidAmount('');
+                        }
+                      }}
+                      disabled={!manualBidAmount || manualBidSubmitting}
+                      className="px-3 py-1 bg-purple-500 rounded-lg text-white text-sm font-semibold hover:bg-purple-400 disabled:opacity-50 transition-all"
+                    >
+                      {manualBidSubmitting ? '...' : 'Set'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowManualBidInput(false);
+                        setManualBidAmount('');
+                      }}
+                      className="p-1 text-purple-300 hover:text-white transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
 
                 <button
                   onClick={handleNewPlayer}

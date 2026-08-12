@@ -3595,6 +3595,7 @@ function PlayersListPanel({ tournament, players, categories, onNavigate, onRefre
         <React.Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
           <ExcelImportModal
             categories={categories}
+            defaultBasePrice={tournament?.default_base_bid || (tournament?.total_points ? getPresetByBudget(tournament.total_points)?.baseBid : undefined) || 10000}
             onClose={() => setShowImportModal(false)}
             onSuccess={handleImportComplete}
           />

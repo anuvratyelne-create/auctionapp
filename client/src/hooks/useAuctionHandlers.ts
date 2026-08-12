@@ -164,6 +164,31 @@ export function useAuctionHandlers({
     }
   }, [currentPlayer, currentBid, status, teams]);
 
+  const handleManualBid = useCallback(async (amount: number) => {
+    if (!currentPlayer || status !== 'bidding') return;
+
+    const basePrice = currentPlayer.base_price || 0;
+
+    // Validate amount
+    if (amount < basePrice) {
+      onShowToast?.(`Amount must be at least base price: ₹${basePrice.toLocaleString('en-IN')}`, 'error');
+      return false;
+    }
+
+    if (amount <= currentBid) {
+      onShowToast?.(`Amount must be higher than current bid: ₹${currentBid.toLocaleString('en-IN')}`, 'error');
+      return false;
+    }
+
+    try {
+      await api.incrementBid(amount);
+      return true;
+    } catch (error: any) {
+      onShowToast?.(error.message || 'Failed to set manual bid', 'error');
+      return false;
+    }
+  }, [currentPlayer, currentBid, status, onShowToast]);
+
   const handleSold = useCallback(async () => {
     if (!currentPlayer || !currentTeam) {
       alert('Please place a bid first');
@@ -256,6 +281,7 @@ export function useAuctionHandlers({
     handleTeamBid,
     handleIncrementBid,
     handleDecrementBid,
+    handleManualBid,
     handleSold,
     handleUnsold,
     handleUndo,
