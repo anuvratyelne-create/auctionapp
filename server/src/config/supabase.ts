@@ -14,7 +14,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 let keepAliveInterval: NodeJS.Timeout | null = null;
 
 // Custom fetch with timeout and retry logic
-const fetchWithRetry = async (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
+const fetchWithRetry = async (url: string | URL | Request, options?: RequestInit): Promise<Response> => {
   const maxRetries = 1; // Reduced from 2 to prevent long waits
   const timeout = 45000; // Increased to 45 seconds (Supabase can be slow)
 
