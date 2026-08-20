@@ -139,38 +139,50 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const limitNum = limit ? Math.min(parseInt(limit as string, 10), 50) : null; // Max 50 per page
     const usePagination = pageNum !== null && limitNum !== null && pageNum > 0 && limitNum > 0;
 
-    const { data: tournament } = await supabase
-      .from('tournaments')
-      .select('total_points, min_players')
-      .eq('id', req.tournamentId)
-      .single();
+    // Parallel fetch for better performance (avoids slow JOINs)
+    const [tournamentRes, teamsRes, playersRes] = await Promise.all([
+      supabase
+        .from('tournaments')
+        .select('total_points, min_players')
+        .eq('id', req.tournamentId)
+        .single(),
+      supabase
+        .from('teams')
+        .select('*', usePagination ? { count: 'exact' } : undefined)
+        .eq('tournament_id', req.tournamentId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('players')
+        .select('id, team_id, sold_price, retention_price, status, is_retained')
+        .eq('tournament_id', req.tournamentId)
+        .in('status', ['sold', 'retained'])
+    ]);
 
-    let query = supabase
-      .from('teams')
-      .select(`
-        *,
-        players:players(id, sold_price, retention_price, status, is_retained)
-      `, usePagination ? { count: 'exact' } : undefined)
-      .eq('tournament_id', req.tournamentId)
-      .order('created_at', { ascending: true });
+    const tournament = tournamentRes.data;
+    const { data: teams, error, count } = teamsRes;
+    const players = playersRes.data || [];
 
-    // Apply pagination if requested
-    if (usePagination) {
-      const offset = (pageNum - 1) * limitNum;
-      query = query.range(offset, offset + limitNum - 1);
+    // Group players by team_id for O(1) lookup
+    const playersByTeam = new Map<string, typeof players>();
+    for (const p of players) {
+      if (p.team_id) {
+        if (!playersByTeam.has(p.team_id)) {
+          playersByTeam.set(p.team_id, []);
+        }
+        playersByTeam.get(p.team_id)!.push(p);
+      }
     }
-
-    const { data: teams, error, count } = await query;
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch teams' });
     }
 
-    // Calculate stats for each team
+    // Calculate stats for each team using the pre-grouped players
     const teamsWithStats = teams?.map(team => {
+      const teamPlayers = playersByTeam.get(team.id) || [];
       // Count both sold AND retained players
-      const soldPlayers = team.players?.filter((p: any) => p.status === 'sold') || [];
-      const retainedPlayers = team.players?.filter((p: any) => p.status === 'retained') || [];
+      const soldPlayers = teamPlayers.filter((p: any) => p.status === 'sold');
+      const retainedPlayers = teamPlayers.filter((p: any) => p.status === 'retained');
 
       // Spent points from sold players only (retention_spent is tracked separately)
       const soldSpentPoints = soldPlayers.reduce((sum: number, p: any) => sum + (p.sold_price || 0), 0);
@@ -227,28 +239,48 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 // Get teams for public view
 router.get('/public/:tournamentId', async (req, res) => {
   try {
-    const { data: tournament } = await supabase
-      .from('tournaments')
-      .select('total_points, min_players')
-      .eq('id', req.params.tournamentId)
-      .single();
+    // Parallel fetch for better performance (avoids slow JOINs)
+    const [tournamentRes, teamsRes, playersRes] = await Promise.all([
+      supabase
+        .from('tournaments')
+        .select('total_points, min_players')
+        .eq('id', req.params.tournamentId)
+        .single(),
+      supabase
+        .from('teams')
+        .select('id, name, short_name, logo_url, retention_spent')
+        .eq('tournament_id', req.params.tournamentId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('players')
+        .select('id, team_id, sold_price, retention_price, status')
+        .eq('tournament_id', req.params.tournamentId)
+        .in('status', ['sold', 'retained'])
+    ]);
 
-    const { data: teams, error } = await supabase
-      .from('teams')
-      .select(`
-        id, name, short_name, logo_url, retention_spent,
-        players:players(id, sold_price, retention_price, status)
-      `)
-      .eq('tournament_id', req.params.tournamentId)
-      .order('created_at', { ascending: true });
+    const tournament = tournamentRes.data;
+    const { data: teams, error } = teamsRes;
+    const players = playersRes.data || [];
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch teams' });
     }
 
+    // Group players by team_id for O(1) lookup
+    const playersByTeam = new Map<string, typeof players>();
+    for (const p of players) {
+      if (p.team_id) {
+        if (!playersByTeam.has(p.team_id)) {
+          playersByTeam.set(p.team_id, []);
+        }
+        playersByTeam.get(p.team_id)!.push(p);
+      }
+    }
+
     const teamsWithStats = teams?.map(team => {
-      const soldPlayers = team.players?.filter((p: any) => p.status === 'sold') || [];
-      const retainedPlayers = team.players?.filter((p: any) => p.status === 'retained') || [];
+      const teamPlayers = playersByTeam.get(team.id) || [];
+      const soldPlayers = teamPlayers.filter((p: any) => p.status === 'sold');
+      const retainedPlayers = teamPlayers.filter((p: any) => p.status === 'retained');
       const soldSpentPoints = soldPlayers.reduce((sum: number, p: any) => sum + (p.sold_price || 0), 0);
       const retentionSpent = team.retention_spent || 0;
       const totalSpentPoints = soldSpentPoints + retentionSpent;

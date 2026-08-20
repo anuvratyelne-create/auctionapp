@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, lazy, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useSocket } from '../hooks/useSocket';
@@ -80,6 +80,7 @@ import {
   Eye,
   Layout,
   Timer,
+  Home,
 } from 'lucide-react';
 
 // Panel types - Account level and Auction level
@@ -620,8 +621,18 @@ export default function Dashboard() {
           })}
         </nav>
 
-        {/* Logout */}
-        <div className="p-3 border-t border-slate-800">
+        {/* Home & Logout */}
+        <div className="p-3 border-t border-slate-800 space-y-1">
+          <RouterLink
+            to="/"
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all ${
+              sidebarCollapsed ? 'justify-center px-3' : ''
+            }`}
+            title={sidebarCollapsed ? 'Back to Home' : undefined}
+          >
+            <Home size={20} />
+            {!sidebarCollapsed && <span className="font-medium">Back to Home</span>}
+          </RouterLink>
           <button
             onClick={handleLogout}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-all ${

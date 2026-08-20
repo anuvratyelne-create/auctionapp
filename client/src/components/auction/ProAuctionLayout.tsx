@@ -698,9 +698,9 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
         {/* Control Bar Overlay - positioned above bottom nav (hidden when paused or idle) */}
         {!isAuctionPaused && currentPlayer && (
         <div className="absolute bottom-16 left-0 right-0 z-40 bg-gradient-to-t from-black/90 via-black/70 to-transparent pt-8 pb-4 px-6">
-          <div className="flex items-center justify-between max-w-6xl mx-auto">
+          <div className="flex items-center justify-between gap-2">
             {/* Left: New Player + Role Filter + Search */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <button
                 onClick={handleNewPlayer}
                 disabled={loading || status === 'bidding'}
@@ -757,7 +757,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             </div>
 
             {/* Center: Teams */}
-            <div className="flex-1 flex justify-center">
+            <div className="flex-1 flex justify-center px-2 min-w-0">
               <TeamButtons
                 teams={teams}
                 onTeamBid={handleTeamBid}
@@ -768,7 +768,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             </div>
 
             {/* Right: Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <button
                 onClick={handleSold}
                 disabled={!currentTeam || status !== 'bidding'}
@@ -1285,9 +1285,9 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             background: 'linear-gradient(to top, rgba(10,22,40,0.98), rgba(10,22,40,0.8), transparent)',
           }}
         >
-          <div className="flex items-center justify-between max-w-6xl mx-auto">
+          <div className="flex items-center justify-between gap-2">
             {/* Left: New Player + Role Filter + Fortune Wheel */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <button
                 onClick={handleNewPlayer}
                 disabled={loading || status === 'bidding'}
@@ -1357,7 +1357,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             </div>
 
             {/* Center: Teams */}
-            <div className="flex-1 flex justify-center">
+            <div className="flex-1 flex justify-center px-2 min-w-0">
               <TeamButtons
                 teams={teams}
                 onTeamBid={handleTeamBid}
@@ -1368,7 +1368,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
             </div>
 
             {/* Right: Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <button
                 onClick={handleSold}
                 disabled={!currentTeam || status !== 'bidding'}
@@ -1932,9 +1932,9 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
           />
 
           <div className="relative z-10 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-2">
               {/* Left: New Player & Role Filter & Search */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <button
                   onClick={handleNewPlayer}
                   disabled={loading || status === 'bidding'}
@@ -1985,7 +1985,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
               </div>
 
               {/* Center: Team Buttons */}
-              <div className="flex-1 flex justify-center">
+              <div className="flex-1 flex justify-center px-2 min-w-0">
                 <TeamButtons
                   teams={teams}
                   onTeamBid={handleTeamBid}
@@ -1995,7 +1995,7 @@ export default function ProAuctionLayout({ onClose }: ProAuctionLayoutProps) {
               </div>
 
               {/* Right: Action Buttons */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <button
                   onClick={handleSold}
                   disabled={!currentTeam || status !== 'bidding' || soldLoading}

@@ -189,7 +189,7 @@ class ApiClient {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    timeoutMs: number = 30000 // 30 second default timeout
+    timeoutMs: number = 60000 // 60 second default timeout (Supabase can be slow)
   ): Promise<T> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -410,7 +410,7 @@ class ApiClient {
     return this.request(`/tournaments/sponsors/${id}`, { method: 'DELETE' });
   }
 
-  // Teams (with localStorage caching + stale-while-revalidate)
+  // Teams (with localStorage caching + stale-while-revalidate + offline fallback)
   async getTeams(options?: { skipCache?: boolean }) {
     const cacheKey = 'teams';
 
@@ -436,11 +436,22 @@ class ApiClient {
     }
 
     this.teamsPromiseTime = now;
-    this.teamsPromise = this.request('/teams').then((data) => {
-      apiCache.set(cacheKey, data, CACHE_TTL.TEAMS);
-      localCache.setTeams(data as any[]);
-      return data;
-    });
+    this.teamsPromise = this.request('/teams')
+      .then((data) => {
+        apiCache.set(cacheKey, data, CACHE_TTL.TEAMS);
+        localCache.setTeams(data as any[]);
+        return data;
+      })
+      .catch((error) => {
+        // On network failure, fall back to localStorage cache
+        const fallbackData = localCache.getTeams();
+        if (fallbackData) {
+          console.log('[API] Using cached teams data (offline fallback)');
+          apiCache.set(cacheKey, fallbackData, CACHE_TTL.TEAMS);
+          return fallbackData;
+        }
+        throw error;
+      });
 
     // Clear promise after it resolves
     this.teamsPromise.finally(() => {
@@ -536,11 +547,22 @@ class ApiClient {
       return Promise.resolve(localCached);
     }
 
-    return this.request('/categories').then((data) => {
-      apiCache.set(cacheKey, data, CACHE_TTL.CATEGORIES);
-      localCache.setCategories(data as any[]);
-      return data;
-    });
+    return this.request('/categories')
+      .then((data) => {
+        apiCache.set(cacheKey, data, CACHE_TTL.CATEGORIES);
+        localCache.setCategories(data as any[]);
+        return data;
+      })
+      .catch((error) => {
+        // On network failure, fall back to localStorage cache
+        const fallbackData = localCache.getCategories();
+        if (fallbackData) {
+          console.log('[API] Using cached categories data (offline fallback)');
+          apiCache.set(cacheKey, fallbackData, CACHE_TTL.CATEGORIES);
+          return fallbackData;
+        }
+        throw error;
+      });
   }
 
   // Background refresh for categories
@@ -624,14 +646,27 @@ class ApiClient {
       }
     }
 
-    return this.request(`/players${query}`).then((data) => {
-      apiCache.set(cacheKey, data, CACHE_TTL.PLAYERS);
-      // Only cache to localStorage if no filters
-      if (!query) {
-        localCache.setPlayers(data as any[]);
-      }
-      return data;
-    });
+    return this.request(`/players${query}`)
+      .then((data) => {
+        apiCache.set(cacheKey, data, CACHE_TTL.PLAYERS);
+        // Only cache to localStorage if no filters
+        if (!query) {
+          localCache.setPlayers(data as any[]);
+        }
+        return data;
+      })
+      .catch((error) => {
+        // On network failure, fall back to localStorage cache (only for base query)
+        if (!query) {
+          const fallbackData = localCache.getPlayers();
+          if (fallbackData) {
+            console.log('[API] Using cached players data (offline fallback)');
+            apiCache.set(cacheKey, fallbackData, CACHE_TTL.PLAYERS);
+            return fallbackData;
+          }
+        }
+        throw error;
+      });
   }
 
   // Background refresh for players

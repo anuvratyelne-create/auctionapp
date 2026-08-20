@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Mail, Lock, UserPlus, User, MapPin, Building, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, UserPlus, User, MapPin, Building, ChevronDown, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
 // Indian states list
 const INDIAN_STATES = [
@@ -125,18 +125,18 @@ export default function Register() {
         {/* Left Side - Branding */}
         <div className="hidden lg:flex lg:w-1/2 flex-col justify-center px-16 xl:px-24">
           <div className="max-w-xl">
-            {/* Logo with Glow */}
-            <div className="flex items-center gap-5 mb-12">
+            {/* Logo with Glow - Clickable to go back to landing */}
+            <Link to="/" className="flex items-center gap-5 mb-12 group">
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-2xl blur-xl opacity-40 animate-pulse" />
                 <img
                   src="/logo.png"
                   alt="Game Auction"
-                  className="relative w-auto object-contain"
+                  className="relative w-auto object-contain transition-transform group-hover:scale-105"
                   style={{ height: '22.5rem', filter: 'drop-shadow(0 0 50px rgba(6, 182, 212, 0.5))' }}
                 />
               </div>
-            </div>
+            </Link>
 
             {/* Hero Text with Glow */}
             <div className="relative mb-10">
@@ -184,15 +184,15 @@ export default function Register() {
         {/* Right Side - Form */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12">
           <div className="w-full max-w-md">
-            {/* Mobile Logo */}
-            <div className="lg:hidden text-center mb-8">
+            {/* Mobile Logo - Clickable to go back to landing */}
+            <Link to="/" className="lg:hidden text-center mb-8 block">
               <img
                 src="/logo.png"
                 alt="Game Auction"
                 className="w-auto object-contain mx-auto"
                 style={{ height: '10rem', filter: 'drop-shadow(0 0 30px rgba(6, 182, 212, 0.5))' }}
               />
-            </div>
+            </Link>
 
             {/* Form Card - Glassmorphism */}
             <div className="relative group">
@@ -348,9 +348,18 @@ export default function Register() {
               </div>
             </div>
 
+            {/* Back to Home Link */}
+            <Link
+              to="/"
+              className="mt-6 flex items-center justify-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors"
+            >
+              <ArrowLeft size={16} />
+              <span className="text-sm">Back to Home</span>
+            </Link>
+
             {/* Bottom Text */}
-            <p className="mt-6 text-center text-slate-500 text-sm">
-              🏏 Trusted by cricket leagues across India
+            <p className="mt-4 text-center text-slate-500 text-sm">
+              Trusted by cricket leagues across India
             </p>
           </div>
         </div>

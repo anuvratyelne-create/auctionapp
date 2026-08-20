@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../utils/api';
-import { Mail, Lock, LogIn, Sparkles, Trophy, Users, Zap, Eye, EyeOff, X, KeyRound } from 'lucide-react';
+import { Mail, Lock, LogIn, Sparkles, Trophy, Users, Zap, Eye, EyeOff, X, KeyRound, ArrowLeft } from 'lucide-react';
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('');
@@ -156,15 +156,15 @@ export default function Login() {
       {/* Left Side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 relative z-10 flex-col justify-center px-16">
         <div className="max-w-lg">
-          {/* Logo */}
-          <div className="flex items-center gap-4 mb-8">
+          {/* Logo - Clickable to go back to landing */}
+          <Link to="/" className="flex items-center gap-4 mb-8 group">
             <img
               src="/logo.png"
               alt="Game Auction"
-              className="w-auto object-contain"
+              className="w-auto object-contain transition-transform group-hover:scale-105"
               style={{ height: '22.5rem', filter: 'drop-shadow(0 0 40px rgba(6, 182, 212, 0.5))' }}
             />
-          </div>
+          </Link>
 
           {/* Tagline */}
           <h2 className="text-5xl font-black text-white leading-tight mb-6">
@@ -212,15 +212,15 @@ export default function Login() {
       {/* Right Side - Login Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative z-10">
         <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
+          {/* Mobile Logo - Clickable to go back to landing */}
+          <Link to="/" className="lg:hidden text-center mb-8 block">
             <img
               src="/logo.png"
               alt="Game Auction"
               className="w-auto object-contain mx-auto mb-2"
               style={{ height: '10rem', filter: 'drop-shadow(0 0 30px rgba(6, 182, 212, 0.5))' }}
             />
-          </div>
+          </Link>
 
           {/* Login Card */}
           <div className="relative">
@@ -347,8 +347,17 @@ export default function Login() {
             </div>
           </div>
 
+          {/* Back to Home Link */}
+          <Link
+            to="/"
+            className="mt-6 flex items-center justify-center gap-2 text-slate-400 hover:text-amber-400 transition-colors"
+          >
+            <ArrowLeft size={16} />
+            <span className="text-sm">Back to Home</span>
+          </Link>
+
           {/* Footer */}
-          <p className="mt-8 text-center text-slate-600 text-xs">
+          <p className="mt-4 text-center text-slate-600 text-xs">
             © 2024 Player Auction Pro. All rights reserved.
           </p>
         </div>

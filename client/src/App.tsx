@@ -161,42 +161,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Home route - show landing page for unauthenticated, redirect to dashboard for authenticated
+// Home route - always show landing page (accessible for both authenticated and unauthenticated users)
 function HomeRoute() {
-  const { isAuthenticated } = useAuthStore();
-  const [isReady, setIsReady] = useState(false);
-  const [hasStoredAuth, setHasStoredAuth] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('auction-auth');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.state?.token && parsed?.state?.isAuthenticated) {
-          setHasStoredAuth(true);
-        }
-      }
-    } catch (e) {
-      console.error('Error reading auth:', e);
-    }
-    setIsReady(true);
-  }, []);
-
-  if (!isReady) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
-        <img src="/logo.png" alt="Game Auction" className="h-16 w-auto object-contain opacity-80" />
-        <div className="animate-spin w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  // If authenticated, go to dashboard
-  if (isAuthenticated || hasStoredAuth) {
-    return <Navigate to="/manage" replace />;
-  }
-
-  // Otherwise show landing page
   return <LandingPage />;
 }
 

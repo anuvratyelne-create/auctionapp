@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Play, RotateCcw } from 'lucide-react';
+import { X, Play, RotateCcw, Sparkles } from 'lucide-react';
 import { Player } from '../../types';
 import { soundManager } from '../../utils/soundManager';
 
@@ -37,6 +37,7 @@ export default function FortuneWheel({
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+  const [lights, setLights] = useState<boolean[]>([]);
   const wheelRef = useRef<SVGSVGElement>(null);
   const tickCountRef = useRef(0);
 
@@ -44,21 +45,41 @@ export default function FortuneWheel({
   const wheelPlayers = (players || []).slice(0, 12);
   const segmentAngle = wheelPlayers.length > 0 ? 360 / wheelPlayers.length : 360;
 
+  // Initialize lights
+  useEffect(() => {
+    setLights(new Array(24).fill(false));
+  }, []);
+
+  // Animate lights during spin
+  useEffect(() => {
+    if (!isSpinning) {
+      setLights(new Array(24).fill(false));
+      return;
+    }
+
+    let index = 0;
+    const lightInterval = setInterval(() => {
+      setLights(() => {
+        const newLights = new Array(24).fill(false);
+        newLights[index % 24] = true;
+        newLights[(index + 12) % 24] = true;
+        return newLights;
+      });
+      index++;
+    }, 100);
+
+    return () => clearInterval(lightInterval);
+  }, [isSpinning]);
+
   // Early return if no players available (after hooks)
   if (!players || players.length === 0) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-        <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 max-w-md w-full mx-4 border border-slate-700/50 text-center">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95">
+        <div className="text-center">
+          <p className="text-white text-2xl mb-6">No players available for the wheel</p>
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full bg-slate-700/50 hover:bg-slate-600/50 transition-colors"
-          >
-            <X size={20} className="text-slate-400" />
-          </button>
-          <p className="text-white text-lg mb-4">No players available for the wheel</p>
-          <button
-            onClick={onClose}
-            className="px-6 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+            className="px-8 py-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors text-lg"
           >
             Close
           </button>
@@ -92,34 +113,24 @@ export default function FortuneWheel({
 
     const randomIndex = Math.floor(Math.random() * wheelPlayers.length);
 
-    // Calculate target effective rotation to put segment center at top (270 degrees in SVG coords)
-    // Segment center in original position: randomIndex * segmentAngle + segmentAngle/2 - 90
-    // For it to be at 270 degrees (top): segmentCenter + R = 270 (mod 360)
     const segmentCenter = randomIndex * segmentAngle + segmentAngle / 2 - 90;
     const targetEffectiveRotation = ((270 - segmentCenter) % 360 + 360) % 360;
-
-    // Current effective rotation (where wheel is now, mod 360)
     const currentEffectiveRotation = ((rotation % 360) + 360) % 360;
 
-    // Calculate delta needed to go from current to target position
     let deltaToTarget = targetEffectiveRotation - currentEffectiveRotation;
-    if (deltaToTarget <= 0) deltaToTarget += 360; // Always spin forward
+    if (deltaToTarget <= 0) deltaToTarget += 360;
 
-    // Add full spins for visual effect (5-7 full rotations)
     const fullSpins = 360 * (5 + Math.floor(Math.random() * 3));
-
     const newRotation = rotation + fullSpins + deltaToTarget;
 
     setRotation(newRotation);
 
-    // After spin completes
     setTimeout(() => {
       setIsSpinning(false);
       setSelectedPlayer(wheelPlayers[randomIndex]);
       setHighlightedIndex(randomIndex);
       soundManager.play('buzzer');
 
-      // Show result after a brief pause
       setTimeout(() => {
         setShowResult(true);
       }, 500);
@@ -141,9 +152,10 @@ export default function FortuneWheel({
 
   // SVG wheel rendering
   const renderWheel = () => {
-    const size = 280;
+    const size = 420;
     const center = size / 2;
-    const radius = center - 10;
+    const radius = center - 20;
+    const innerRadius = 50;
 
     return (
       <svg
@@ -158,224 +170,369 @@ export default function FortuneWheel({
             : 'none',
         }}
       >
-        {/* Outer glow */}
+        {/* Definitions */}
         <defs>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <filter id="wheelGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
             <feMerge>
               <feMergeNode in="coloredBlur"/>
               <feMergeNode in="SourceGraphic"/>
             </feMerge>
           </filter>
+          <filter id="segmentShadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.3"/>
+          </filter>
+          {/* Gradient for 3D effect */}
+          {wheelPlayers.map((_, index) => (
+            <linearGradient
+              key={`grad-${index}`}
+              id={`segmentGrad-${index}`}
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor={SEGMENT_COLORS[index % SEGMENT_COLORS.length]} stopOpacity="1" />
+              <stop offset="100%" stopColor={SEGMENT_COLORS[index % SEGMENT_COLORS.length]} stopOpacity="0.7" />
+            </linearGradient>
+          ))}
         </defs>
 
-        {wheelPlayers.map((player, index) => {
-          const startAngle = index * segmentAngle - 90; // Start from top
-          const endAngle = startAngle + segmentAngle;
-          const color = SEGMENT_COLORS[index % SEGMENT_COLORS.length];
+        {/* Outer decorative ring */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius + 8}
+          fill="none"
+          stroke="url(#outerRingGrad)"
+          strokeWidth="4"
+          opacity="0.5"
+        />
 
-          // Calculate arc path
+        {wheelPlayers.map((player, index) => {
+          const startAngle = index * segmentAngle - 90;
+          const endAngle = startAngle + segmentAngle;
+
           const startRad = (startAngle * Math.PI) / 180;
           const endRad = (endAngle * Math.PI) / 180;
 
+          // Outer arc points
           const x1 = center + radius * Math.cos(startRad);
           const y1 = center + radius * Math.sin(startRad);
           const x2 = center + radius * Math.cos(endRad);
           const y2 = center + radius * Math.sin(endRad);
 
+          // Inner arc points
+          const ix1 = center + innerRadius * Math.cos(startRad);
+          const iy1 = center + innerRadius * Math.sin(startRad);
+          const ix2 = center + innerRadius * Math.cos(endRad);
+          const iy2 = center + innerRadius * Math.sin(endRad);
+
           const largeArcFlag = segmentAngle > 180 ? 1 : 0;
 
+          // Path with inner cutout (donut shape)
           const pathData = `
-            M ${center} ${center}
-            L ${x1} ${y1}
+            M ${x1} ${y1}
             A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}
+            L ${ix2} ${iy2}
+            A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${ix1} ${iy1}
             Z
           `;
 
-          // Calculate text position (middle of segment)
+          // Text position
           const midAngle = ((startAngle + endAngle) / 2 * Math.PI) / 180;
-          const textRadius = radius * 0.65;
+          const textRadius = (radius + innerRadius) / 2;
           const textX = center + textRadius * Math.cos(midAngle);
           const textY = center + textRadius * Math.sin(midAngle);
+          const textRotation = (startAngle + endAngle) / 2 + 90;
 
           return (
             <g key={player.id}>
               {/* Segment */}
               <path
                 d={pathData}
-                fill={color}
-                stroke="rgba(255,255,255,0.3)"
-                strokeWidth="1"
+                fill={`url(#segmentGrad-${index})`}
+                stroke="rgba(255,255,255,0.4)"
+                strokeWidth="2"
+                filter="url(#segmentShadow)"
               />
-              {/* Number label */}
-              <text
-                x={textX}
-                y={textY}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill="white"
-                fontSize="18"
-                fontWeight="bold"
-                style={{ textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
-              >
-                {index + 1}
-              </text>
+              {/* Segment divider line */}
+              <line
+                x1={center + innerRadius * Math.cos(startRad)}
+                y1={center + innerRadius * Math.sin(startRad)}
+                x2={center + radius * Math.cos(startRad)}
+                y2={center + radius * Math.sin(startRad)}
+                stroke="rgba(255,255,255,0.6)"
+                strokeWidth="2"
+              />
+              {/* Player number */}
+              <g transform={`translate(${textX}, ${textY}) rotate(${textRotation})`}>
+                <text
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="white"
+                  fontSize="22"
+                  fontWeight="bold"
+                  style={{
+                    textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                    fontFamily: 'system-ui, -apple-system, sans-serif'
+                  }}
+                >
+                  {index + 1}
+                </text>
+              </g>
+              {/* Small decorative dot at outer edge */}
+              <circle
+                cx={center + (radius - 15) * Math.cos(midAngle)}
+                cy={center + (radius - 15) * Math.sin(midAngle)}
+                r="4"
+                fill="rgba(255,255,255,0.6)"
+              />
             </g>
           );
         })}
 
-        {/* Center circle */}
+        {/* Inner circle with gradient */}
         <circle
           cx={center}
           cy={center}
-          r="45"
+          r={innerRadius}
           fill={accentColor}
           stroke="white"
-          strokeWidth="3"
-          filter="url(#glow)"
+          strokeWidth="4"
+          filter="url(#wheelGlow)"
+        />
+        <circle
+          cx={center}
+          cy={center}
+          r={innerRadius - 8}
+          fill="none"
+          stroke="rgba(255,255,255,0.3)"
+          strokeWidth="2"
         />
         <text
           x={center}
-          y={center}
+          y={center - 8}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="white"
+          fontSize="12"
+          fontWeight="bold"
+          letterSpacing="2"
+        >
+          FORTUNE
+        </text>
+        <text
+          x={center}
+          y={center + 10}
           textAnchor="middle"
           dominantBaseline="middle"
           fill="white"
           fontSize="14"
           fontWeight="bold"
+          letterSpacing="1"
         >
-          SPIN
+          WHEEL
         </text>
       </svg>
     );
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 max-w-4xl w-full mx-4 border border-slate-700/50 shadow-2xl">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full bg-slate-700/50 hover:bg-slate-600/50 transition-colors z-10"
-        >
-          <X size={20} className="text-slate-400" />
-        </button>
+  // Render decorative lights around the wheel
+  const renderLights = () => {
+    const lightRadius = 250;
+    return (
+      <div className="absolute inset-0 pointer-events-none">
+        {lights.map((isOn, index) => {
+          const angle = (index * 15 - 90) * (Math.PI / 180);
+          const x = 50 + (lightRadius / 5) * Math.cos(angle);
+          const y = 50 + (lightRadius / 5) * Math.sin(angle);
+          return (
+            <div
+              key={index}
+              className="absolute w-3 h-3 rounded-full transition-all duration-100"
+              style={{
+                left: `${x}%`,
+                top: `${y}%`,
+                transform: 'translate(-50%, -50%)',
+                backgroundColor: isOn ? '#fbbf24' : '#374151',
+                boxShadow: isOn ? '0 0 15px #fbbf24, 0 0 30px #f59e0b' : 'none',
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  };
 
-        {/* Header */}
-        <div className="text-center mb-4">
-          <h2 className="text-2xl font-bold text-white mb-1">Fortune Wheel</h2>
-          <p className="text-slate-400 text-sm">Spin to randomly select the next player!</p>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
+      {/* Background with radial gradient */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(circle at center, ${accentColor}15 0%, #000000 50%, #000000 100%)`,
+        }}
+      />
+
+      {/* Animated background particles */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-1 h-1 bg-white/20 rounded-full animate-pulse"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 2}s`,
+              animationDuration: `${2 + Math.random() * 2}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Close Button */}
+      <button
+        onClick={onClose}
+        className="absolute top-6 right-6 p-3 rounded-full bg-white/10 hover:bg-white/20 transition-all z-20 backdrop-blur-sm"
+      >
+        <X size={24} className="text-white" />
+      </button>
+
+      {/* Main Content */}
+      <div className="relative z-10 flex flex-col items-center">
+        {/* Title */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl md:text-5xl font-black text-white mb-2 tracking-tight">
+            <Sparkles className="inline-block mr-3 text-yellow-400" size={40} />
+            FORTUNE WHEEL
+            <Sparkles className="inline-block ml-3 text-yellow-400" size={40} />
+          </h1>
+          <p className="text-white/60 text-lg">Spin to select the next player!</p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6 items-center">
-          {/* Wheel Container */}
-          <div className="relative flex justify-center items-center flex-shrink-0">
-            {/* Pointer/Arrow */}
+        {/* Wheel Container */}
+        <div className="relative">
+          {/* Outer glow ring */}
+          <div
+            className="absolute inset-0 rounded-full"
+            style={{
+              background: `radial-gradient(circle, ${accentColor}30 0%, transparent 70%)`,
+              transform: 'scale(1.3)',
+              filter: 'blur(20px)',
+            }}
+          />
+
+          {/* Decorative lights */}
+          {renderLights()}
+
+          {/* Pointer/Arrow at top */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4 z-20">
             <div
-              className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10"
-              style={{ filter: `drop-shadow(0 0 10px ${accentColor})` }}
+              className="relative"
+              style={{ filter: `drop-shadow(0 0 20px ${accentColor})` }}
             >
               <div
-                className="w-0 h-0 border-l-[12px] border-r-[12px] border-t-[20px] border-l-transparent border-r-transparent"
+                className="w-0 h-0 border-l-[20px] border-r-[20px] border-t-[35px] border-l-transparent border-r-transparent"
                 style={{ borderTopColor: accentColor }}
               />
-            </div>
-
-            {/* Wheel */}
-            <div
-              className="rounded-full p-2"
-              style={{
-                background: `linear-gradient(135deg, ${accentColor}40, transparent)`,
-                boxShadow: `0 0 40px ${accentColor}30`
-              }}
-            >
-              {renderWheel()}
+              <div
+                className="absolute top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[12px] border-r-[12px] border-t-[22px] border-l-transparent border-r-transparent border-t-white/30"
+              />
             </div>
           </div>
 
-          {/* Player Legend */}
-          <div className="flex-1 w-full lg:w-auto">
-            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-              Players on Wheel
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2 max-h-[280px] overflow-y-auto pr-2">
-              {wheelPlayers.map((player, index) => (
-                <div
-                  key={player.id}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                    highlightedIndex === index
-                      ? 'bg-white/20 ring-2 ring-white scale-105'
-                      : 'bg-slate-800/50 hover:bg-slate-700/50'
-                  }`}
+          {/* The Wheel */}
+          <div className="relative p-8">
+            {renderWheel()}
+          </div>
+        </div>
+
+        {/* Player Legend - Horizontal below wheel */}
+        <div className="mt-8 w-full max-w-3xl px-4">
+          <div className="flex flex-wrap justify-center gap-2">
+            {wheelPlayers.map((player, index) => (
+              <div
+                key={player.id}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all ${
+                  highlightedIndex === index
+                    ? 'bg-white/30 ring-2 ring-white scale-110'
+                    : 'bg-white/10 hover:bg-white/15'
+                }`}
+              >
+                <span
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                  style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }}
                 >
-                  <span
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                    style={{ backgroundColor: SEGMENT_COLORS[index % SEGMENT_COLORS.length] }}
-                  >
-                    {index + 1}
-                  </span>
-                  <span className="text-sm text-white truncate">
-                    {player.name}
-                  </span>
-                </div>
-              ))}
-            </div>
+                  {index + 1}
+                </span>
+                <span className="text-sm text-white font-medium truncate max-w-[100px]">
+                  {player.name}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Result Display */}
         {showResult && selectedPlayer && (
           <div
-            className="mt-6 text-center p-4 rounded-xl animate-pulse"
-            style={{ background: `${accentColor}20`, border: `2px solid ${accentColor}` }}
+            className="mt-6 text-center px-12 py-6 rounded-2xl animate-bounce"
+            style={{
+              background: `linear-gradient(135deg, ${accentColor}40, ${accentColor}20)`,
+              border: `3px solid ${accentColor}`,
+              boxShadow: `0 0 40px ${accentColor}50`
+            }}
           >
-            <p className="text-slate-400 text-sm mb-1">Selected Player</p>
-            <p className="text-2xl font-bold text-white">{selectedPlayer.name}</p>
+            <p className="text-white/70 text-sm mb-1 uppercase tracking-wider">Selected Player</p>
+            <p className="text-4xl font-black text-white">{selectedPlayer.name}</p>
             {selectedPlayer.player_uid && (
-              <p className="text-cyan-400 font-medium">{selectedPlayer.player_uid}</p>
+              <p className="text-xl text-cyan-400 font-bold mt-1">{selectedPlayer.player_uid}</p>
             )}
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="flex justify-center gap-4 mt-6">
+        <div className="flex justify-center gap-4 mt-8">
           {!selectedPlayer ? (
             <button
               onClick={spinWheel}
               disabled={isSpinning || wheelPlayers.length === 0}
-              className="flex items-center gap-2 px-8 py-3 rounded-xl font-bold text-white transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="group flex items-center gap-3 px-10 py-4 rounded-full font-bold text-white text-xl transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               style={{
                 background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`,
-                boxShadow: `0 0 20px ${accentColor}40`
+                boxShadow: `0 0 30px ${accentColor}60, inset 0 1px 0 rgba(255,255,255,0.2)`
               }}
             >
-              <Play size={20} />
-              {isSpinning ? 'Spinning...' : 'Spin the Wheel!'}
+              <Play size={24} className={isSpinning ? 'animate-spin' : 'group-hover:scale-110 transition-transform'} />
+              {isSpinning ? 'Spinning...' : 'SPIN NOW!'}
             </button>
           ) : (
             <>
               <button
                 onClick={handleReset}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white bg-slate-700 hover:bg-slate-600 transition-all"
+                className="flex items-center gap-2 px-8 py-4 rounded-full font-bold text-white bg-white/10 hover:bg-white/20 transition-all text-lg backdrop-blur-sm"
               >
-                <RotateCcw size={18} />
+                <RotateCcw size={20} />
                 Spin Again
               </button>
               <button
                 onClick={handleConfirm}
-                className="flex items-center gap-2 px-8 py-3 rounded-xl font-bold text-white transition-all hover:scale-105"
+                className="flex items-center gap-2 px-10 py-4 rounded-full font-bold text-white text-lg transition-all hover:scale-105"
                 style={{
                   background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`,
-                  boxShadow: `0 0 20px ${accentColor}40`
+                  boxShadow: `0 0 30px ${accentColor}60`
                 }}
               >
+                <Sparkles size={20} />
                 Start Bidding
               </button>
             </>
           )}
         </div>
 
-        {/* Player Count Info */}
-        <p className="text-center text-slate-500 text-xs mt-4">
+        {/* Player Count */}
+        <p className="text-white/40 text-sm mt-6">
           {wheelPlayers.length} players on wheel
           {players.length > 12 && ` (showing first 12 of ${players.length})`}
         </p>

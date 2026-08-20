@@ -50,10 +50,59 @@ export default function TeamButtons({
     );
   }
 
-  // Split teams into two rows for better visual balance
-  const midPoint = Math.ceil(teams.length / 2);
-  const topRow = teams.slice(0, midPoint);
-  const bottomRow = teams.slice(midPoint);
+  // Calculate size based on team count
+  const getSizeClass = () => {
+    const count = teams.length;
+    if (count <= 10) return 'normal';
+    if (count <= 16) return 'small';
+    return 'compact';
+  };
+  const sizeClass = getSizeClass();
+
+  // Define size-based styles
+  const sizeStyles = {
+    normal: {
+      button: 'px-4 py-2.5 gap-2.5 rounded-xl',
+      logo: 'w-7 h-7',
+      text: 'font-bold',
+      indicator: 'w-2.5 h-2.5',
+      gap: 'gap-2',
+    },
+    small: {
+      button: 'px-2.5 py-1.5 gap-1.5 rounded-lg',
+      logo: 'w-5 h-5',
+      text: 'text-sm font-semibold',
+      indicator: 'w-2 h-2',
+      gap: 'gap-1.5',
+    },
+    compact: {
+      button: 'px-2 py-1 gap-1 rounded-md',
+      logo: 'w-4 h-4',
+      text: 'text-xs font-semibold',
+      indicator: 'w-1.5 h-1.5',
+      gap: 'gap-1',
+    },
+  };
+  const sizes = sizeStyles[sizeClass];
+
+  // Adaptive row splitting based on team count
+  const getRowCount = () => {
+    if (teams.length <= 10) return 2;
+    if (teams.length <= 16) return 2;
+    return 3; // 3 rows for 17+ teams
+  };
+  const rowCount = getRowCount();
+
+  // Split teams into rows
+  const teamsPerRow = Math.ceil(teams.length / rowCount);
+  const rows: Team[][] = [];
+  for (let i = 0; i < rowCount; i++) {
+    const start = i * teamsPerRow;
+    const end = Math.min(start + teamsPerRow, teams.length);
+    if (start < teams.length) {
+      rows.push(teams.slice(start, end));
+    }
+  }
 
   const renderTeamButton = (team: Team, isTopRow: boolean) => {
     const isCurrentBidder = currentTeamId === team.id;
@@ -100,7 +149,7 @@ export default function TeamButtons({
           }}
           disabled={isButtonDisabled}
           className={`
-            group relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl font-semibold transition-all duration-200
+            group relative flex items-center ${sizes.button} font-semibold transition-all duration-200
             ${getButtonStyles()}
             ${isButtonDisabled && !isCurrentBidder ? 'opacity-50 cursor-not-allowed' : ''}
           `}
@@ -113,25 +162,25 @@ export default function TeamButtons({
         >
         {/* Team Logo or Loading Spinner */}
         {isLoading ? (
-          <Loader2 className="w-7 h-7 animate-spin text-primary-400" />
+          <Loader2 className={`${sizes.logo} animate-spin text-primary-400`} />
         ) : team.logo_url ? (
           <img
             src={team.logo_url}
             alt={team.short_name}
-            className="w-7 h-7 object-contain"
+            className={`${sizes.logo} object-contain`}
           />
         ) : (
-          <div className="w-7 h-7 bg-slate-600 rounded-lg flex items-center justify-center text-xs font-bold">
+          <div className={`${sizes.logo} bg-slate-600 rounded-lg flex items-center justify-center text-xs font-bold`}>
             {team.short_name.charAt(0)}
           </div>
         )}
 
         {/* Team Name */}
-        <span className="font-bold">{team.short_name}</span>
+        <span className={sizes.text}>{team.short_name}</span>
 
         {/* Capacity Indicator Dot */}
         <span
-          className={`w-2.5 h-2.5 rounded-full ${capacityColor} shadow-lg`}
+          className={`${sizes.indicator} rounded-full ${capacityColor} shadow-lg`}
           title={`Max bid: ${formatCompactIndian(team.max_bid)}`}
         />
 
@@ -148,7 +197,7 @@ export default function TeamButtons({
 
         {/* Active indicator glow */}
         {isCurrentBidder && (
-          <div className={`absolute inset-0 rounded-xl animate-pulse pointer-events-none ${
+          <div className={`absolute inset-0 ${sizeClass === 'normal' ? 'rounded-xl' : sizeClass === 'small' ? 'rounded-lg' : 'rounded-md'} animate-pulse pointer-events-none ${
             theme === 'fire' ? 'bg-orange-500/20' : 'bg-primary-500/20'
           }`} />
         )}
@@ -167,17 +216,12 @@ export default function TeamButtons({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Top Row */}
-      <div className="flex flex-wrap justify-center gap-2">
-        {topRow.map((team) => renderTeamButton(team, true))}
-      </div>
-      {/* Bottom Row */}
-      {bottomRow.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-2">
-          {bottomRow.map((team) => renderTeamButton(team, false))}
+    <div className={`flex flex-col ${sizes.gap}`}>
+      {rows.map((row, rowIndex) => (
+        <div key={rowIndex} className={`flex flex-wrap justify-center ${sizes.gap}`}>
+          {row.map((team) => renderTeamButton(team, rowIndex === 0))}
         </div>
-      )}
+      ))}
     </div>
   );
 }
